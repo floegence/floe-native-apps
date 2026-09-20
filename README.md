@@ -61,6 +61,10 @@ or changed. The graphical self-check exercises this relocation after installatio
 go run ./cmd/floe-native-apps -arch arm64 -state /absolute/private/cache -bundle /absolute/native-arm64.zip
 ```
 
+Bundle acquisition builds on Linux, macOS and Windows and never executes the
+Linux components on the acquisition machine. Installation and graphical
+qualification execute only on Linux.
+
 The ZIP contains original pinned publisher archives. Use its actual byte length
 with `Start(owner, requestID, "upload", size)`, then `WriteChunk` with ordered
 256 KiB maximum chunks and `CompleteUpload`. Replayed identical chunks are
@@ -84,8 +88,10 @@ binary distribution. Redistributing an offline ZIP or installed stack creates
 separate obligations under the components' licenses, including applicable source
 availability obligations. Original license files are retained during extraction.
 
-The v0.1.1 qualification exercised Ubuntu 22.04 arm64 and Debian 11 amd64
+The v0.1.2 qualification exercised Ubuntu 22.04 arm64 and Debian 11 amd64
 hosts, and clean Debian 13 and Alpine 3.23 fixtures on both architectures.
 The same amd64 stack passed Arch Linux, Rocky Linux 9, AlmaLinux 9 and RHEL UBI 9 fixtures.
+Qualification checks GIO application launch, a live private D-Bus connection,
+rendered pixels and input. Clean fixtures use an existing unprivileged account.
 This evidence covers component rendering/input; it does not promise that every
 third-party application works on every distribution.

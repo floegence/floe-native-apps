@@ -1,3 +1,5 @@
+//go:build linux
+
 package nativeapps
 
 import (
@@ -51,7 +53,10 @@ func SelfTest(parent context.Context, root string) (result error) {
 	clean = append(clean, "XPRA_PRIVATE_XAUTH=1", "XPRA_SHARED_XAUTHORITY=0", "XPRA_DEFAULT_CONF_DIRS=", "XPRA_SYSTEM_CONF_DIRS=", "XPRA_USER_CONF_DIRS=", "XDG_RUNTIME_DIR="+state, "GDK_BACKEND=x11", "QT_QPA_PLATFORM=xcb")
 	quote := func(value string) string { return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'" }
 	args := []string{"--", t.Xpra, "start", "--daemon=no", "--systemd-run=no", "--attach=no", "--use-display=no", "--html=no", "--source=", "--source-start=", "--input-method=none", "--socket-dir=" + state, "--socket-dirs=" + state, "--sessions-dir=" + filepath.Join(state, "sessions"), "--exit-with-windows=yes", "--start-child=" + quote(t.Python) + " " + quote(launcher) + " " + quote(t.Python) + " " + quote(fixture) + " " + quote(state), "--xvfb=" + quote(t.Xvfb) + " -screen 0 1024x768x24 -nolisten tcp -noreset +extension Composite -auth $XAUTHORITY", "--notifications=no", "--mdns=no", "--pulseaudio=no", "--speaker=off", "--microphone=off", "--webcam=no", "--printing=no", "--dbus-launch=", "--start-new-commands=no", "--opengl=no"}
-	command := exec.Command(t.DBus, args...)
+	// Xpra intentionally discards inherited DBUS_* variables. Its child env
+	// option admits only the bus this qualification process just created.
+	shellArgs := []string{"--", "/bin/sh", "-c", `exec "$@" --dbus=no --dbus-control=no "--start-env=DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS"`, "native-check"}
+	command := exec.Command(t.DBus, append(shellArgs, args[1:]...)...)
 	command.Env = clean
 	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	log, err := os.OpenFile(filepath.Join(state, "check.log"), os.O_CREATE|os.O_WRONLY, 0600)
@@ -133,7 +138,9 @@ func SelfTest(parent context.Context, root string) (result error) {
 
 const nativeFixture = `import gi, json, os, pathlib, sys
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gtk, GLib
+from gi.repository import Gtk, GLib, Gio
+assert os.environ.get("DBUS_SESSION_BUS_ADDRESS"), "private session bus missing"
+assert Gio.bus_get_sync(Gio.BusType.SESSION, None).get_unique_name(), "private session bus unavailable"
 root=pathlib.Path(sys.argv[1])
 window=Gtk.Window(title="Native graphics check")
 button=Gtk.Button(label="Native display and input")

@@ -90,7 +90,7 @@ func New(root string, pkg Package, validate func(context.Context, string) error)
 	if err != nil {
 		return nil, err
 	}
-	if err = syscall.Flock(int(lease.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+	if err = lockRoot(lease); err != nil {
 		lease.Close()
 		return nil, ErrBusy
 	}
