@@ -1,0 +1,27 @@
+#!/bin/sh
+# Administrators use direct-main integration; validate the exact local tip first.
+set -eu
+cd "$(git rev-parse --show-toplevel)"
+check_main=false
+while read -r local_ref local_sha remote_ref remote_sha; do
+  case "$remote_ref" in
+    refs/heads/main)
+      test "$local_ref" = refs/heads/main
+      test "$local_sha" = "$(git rev-parse HEAD)"
+      test -z "$(git status --porcelain)"
+      git merge-base --is-ancestor "$remote_sha" "$local_sha"
+      check_main=true
+      ;;
+    refs/tags/v*)
+      test "$remote_sha" = 0000000000000000000000000000000000000000
+      test "$(git rev-parse "$local_sha^{commit}")" = "$(git rev-parse refs/heads/main)"
+      ;;
+    *)
+      echo "Publish the integrated main tip or a new release tag; feature branches stay private." >&2
+      exit 1
+      ;;
+  esac
+done
+if [ "$check_main" = true ]; then
+  ./scripts/check.sh
+fi

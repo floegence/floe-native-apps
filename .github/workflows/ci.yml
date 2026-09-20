@@ -1,17 +1,43 @@
 name: Source checks
-on: [push, pull_request, workflow_dispatch]
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+
 permissions:
   contents: read
+
+concurrency:
+  group: source-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   source:
-    runs-on: ubuntu-latest
+    name: Source (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
-          go-version: '1.24.x'
-      - run: test -z "$(gofmt -l .)"
-      - run: go vet ./...
-      - run: go test -race ./...
-      - run: GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build ./...
-      - run: GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build ./...
+          go-version-file: go.mod
+          cache: true
+      - run: ./scripts/check.sh
+
+  source-gate:
+    name: Source checks
+    if: always()
+    needs: source
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - env:
+          RESULT: ${{ needs.source.result }}
+        run: test "$RESULT" = success

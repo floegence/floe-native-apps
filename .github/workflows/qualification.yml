@@ -1,0 +1,70 @@
+name: Release qualification
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: qualification-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  source:
+    uses: ./.github/workflows/ci.yml
+  vulnerabilities:
+    uses: ./.github/workflows/security.yml
+  native:
+    name: Native (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+      - name: Install and qualify native components
+        env:
+          NATIVE_ARCH: ${{ matrix.arch }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/qualification"
+          CGO_ENABLED=0 go build -trimpath -o "$RUNNER_TEMP/native-check" ./cmd/floe-native-apps
+          "$RUNNER_TEMP/native-check" -state "$RUNNER_TEMP/native-state" 2>&1 | tee "$RUNNER_TEMP/qualification/install.log"
+          root=$(find "$RUNNER_TEMP/native-state/packages" -mindepth 1 -maxdepth 1 -type d)
+          test -n "$root"
+          # The clean fixtures run as nobody and only read this disposable tree.
+          chmod -R a+rX "$RUNNER_TEMP/native-state/packages" "$RUNNER_TEMP/native-check"
+          NATIVE_CHECK="$RUNNER_TEMP/native-check" NATIVE_ROOT="$root" \
+            ./scripts/qualify.sh 2>&1 | tee "$RUNNER_TEMP/qualification/native.log"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: qualification-${{ matrix.arch }}
+          path: ${{ runner.temp }}/qualification/
+          retention-days: 30
+          if-no-files-found: error
+  release-gate:
+    name: Release gate
+    if: always()
+    needs: [source, vulnerabilities, native]
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - env:
+          SOURCE: ${{ needs.source.result }}
+          VULNERABILITIES: ${{ needs.vulnerabilities.result }}
+          NATIVE: ${{ needs.native.result }}
+        run: test "$SOURCE" = success && test "$VULNERABILITIES" = success && test "$NATIVE" = success

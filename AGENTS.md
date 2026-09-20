@@ -27,3 +27,12 @@ The catalog pins upstream archive bytes and records their original license and
 source metadata. Native archives are acquired from their original publishers;
 this repository must not silently redistribute third-party binaries or replace
 their license/source obligations with a generated aggregate notice.
+
+Go 1.27.1 in go.mod is authoritative and must track Redeven's Go toolchain.
+Use scripts/check.sh for the source gate, pinned go tool invocations for
+vulnerability checks, and Release qualification for fresh native installation
+and distribution evidence. Ordinary push/PR checks remain source-only.
+Read CONTRIBUTING.md and SECURITY.md before changing release or trust boundaries.
+Check both Git author and committer identity before every task's first commit;
+never invent a GitHub noreply address. Published tags and module bytes are
+immutable; correct historical display attribution through an accurate .mailmap.

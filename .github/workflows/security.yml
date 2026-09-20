@@ -1,0 +1,24 @@
+name: Dependency vulnerabilities
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '31 4 * * *'
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  vulnerabilities:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+      - name: Check runtime and maintained tools
+        run: |
+          go tool govulncheck ./...
+          go tool govulncheck golang.org/x/vuln/cmd/govulncheck github.com/rhysd/actionlint/cmd/actionlint

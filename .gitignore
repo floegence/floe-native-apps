@@ -1,0 +1,6 @@
+/floe-native-apps
+/floe-native-apps.exe
+/coverage.out
+__pycache__/
+*.pyc
+.DS_Store
