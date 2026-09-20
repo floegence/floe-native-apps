@@ -33,7 +33,7 @@ func testManager(t *testing.T, validator func(context.Context, string) error) (*
 	}
 	t.Cleanup(m.Close)
 	m.prepare = func(ctx context.Context, root, arch string) error {
-		for _, name := range []string{"xpra", "python3", "Xvfb", "xauth", "dbus-run-session", "dbus-daemon", "xkbcomp"} {
+		for _, name := range []string{"xpra", "python3", "Xvfb", "xauth", "dbus-run-session", "dbus-daemon", "xkbcomp", "gio-launch-desktop"} {
 			path := filepath.Join(root, "floe/bin", name)
 			if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 				return err

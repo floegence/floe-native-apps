@@ -3,7 +3,7 @@
 Prepare a private native graphical stack for Linux applications. Applications
 continue running directly on the host. The library downloads pinned original
 archives, verifies every byte, extracts into a private staging directory, and
-activates only after an isolated Xpra session proves window discovery, decoded
+activates only after an isolated Xpra session proves GIO application launch, window discovery, decoded
 pixels, and input delivery.
 
 The host product owns consent, authorization, application metadata and launch,
@@ -84,8 +84,8 @@ binary distribution. Redistributing an offline ZIP or installed stack creates
 separate obligations under the components' licenses, including applicable source
 availability obligations. Original license files are retained during extraction.
 
-The v0.1.0 qualification exercised Ubuntu 22.04 arm64 and Debian 11 amd64
+The v0.1.1 qualification exercised Ubuntu 22.04 arm64 and Debian 11 amd64
 hosts, and clean Debian 13 and Alpine 3.23 fixtures on both architectures.
-The same amd64 stack passed Arch Linux, AlmaLinux 9 and RHEL UBI 9 fixtures.
+The same amd64 stack passed Arch Linux, Rocky Linux 9, AlmaLinux 9 and RHEL UBI 9 fixtures.
 This evidence covers component rendering/input; it does not promise that every
 third-party application works on every distribution.

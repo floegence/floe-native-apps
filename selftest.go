@@ -34,6 +34,10 @@ func SelfTest(parent context.Context, root string) (result error) {
 	if err = os.WriteFile(fixture, []byte(nativeFixture), 0600); err != nil {
 		return err
 	}
+	launcher := filepath.Join(state, "launch.py")
+	if err = os.WriteFile(launcher, []byte(nativeLaunchProbe), 0600); err != nil {
+		return err
+	}
 	env := t.Environment(os.Environ())
 	var clean []string
 	for _, item := range env {
@@ -46,7 +50,7 @@ func SelfTest(parent context.Context, root string) (result error) {
 	}
 	clean = append(clean, "XPRA_PRIVATE_XAUTH=1", "XPRA_SHARED_XAUTHORITY=0", "XPRA_DEFAULT_CONF_DIRS=", "XPRA_SYSTEM_CONF_DIRS=", "XPRA_USER_CONF_DIRS=", "XDG_RUNTIME_DIR="+state, "GDK_BACKEND=x11", "QT_QPA_PLATFORM=xcb")
 	quote := func(value string) string { return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'" }
-	args := []string{"--", t.Xpra, "start", "--daemon=no", "--systemd-run=no", "--attach=no", "--use-display=no", "--html=no", "--source=", "--source-start=", "--input-method=none", "--socket-dir=" + state, "--socket-dirs=" + state, "--sessions-dir=" + filepath.Join(state, "sessions"), "--exit-with-windows=yes", "--start-child=" + quote(t.Python) + " " + quote(fixture) + " " + quote(state), "--xvfb=" + quote(t.Xvfb) + " -screen 0 1024x768x24 -nolisten tcp -noreset +extension Composite -auth $XAUTHORITY", "--notifications=no", "--mdns=no", "--pulseaudio=no", "--speaker=off", "--microphone=off", "--webcam=no", "--printing=no", "--dbus-launch=", "--start-new-commands=no", "--opengl=no"}
+	args := []string{"--", t.Xpra, "start", "--daemon=no", "--systemd-run=no", "--attach=no", "--use-display=no", "--html=no", "--source=", "--source-start=", "--input-method=none", "--socket-dir=" + state, "--socket-dirs=" + state, "--sessions-dir=" + filepath.Join(state, "sessions"), "--exit-with-windows=yes", "--start-child=" + quote(t.Python) + " " + quote(launcher) + " " + quote(t.Python) + " " + quote(fixture) + " " + quote(state), "--xvfb=" + quote(t.Xvfb) + " -screen 0 1024x768x24 -nolisten tcp -noreset +extension Composite -auth $XAUTHORITY", "--notifications=no", "--mdns=no", "--pulseaudio=no", "--speaker=off", "--microphone=off", "--webcam=no", "--printing=no", "--dbus-launch=", "--start-new-commands=no", "--opengl=no"}
 	command := exec.Command(t.DBus, args...)
 	command.Env = clean
 	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
@@ -159,3 +163,18 @@ Gtk.main()
 
 //go:embed selfcheck/client.py
 var nativeInputProbe string
+
+const nativeLaunchProbe = `import gi, sys
+gi.require_version("Gio","2.0")
+from gi.repository import Gio,GLib
+def quote(value):
+    for c in ("\\", '"', "\u0060", "$", "%"):
+        value=value.replace(c, "%%" if c=="%" else "\\"+c)
+    return '"'+value+'"'
+entry=GLib.KeyFile.new()
+entry.set_string("Desktop Entry","Type","Application")
+entry.set_string("Desktop Entry","Name","Native launch qualification")
+entry.set_string("Desktop Entry","Exec"," ".join(quote(a) for a in sys.argv[1:]))
+app=Gio.DesktopAppInfo.new_from_keyfile(entry)
+assert app and app.launch([],Gio.AppLaunchContext.new()), "native GIO launch failed"
+`

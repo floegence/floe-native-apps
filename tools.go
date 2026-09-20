@@ -20,7 +20,7 @@ func ResolveTools(root string) (Tools, error) {
 	}
 	bin := filepath.Join(root, "floe", "bin")
 	t := Tools{root, filepath.Join(bin, "xpra"), filepath.Join(bin, "python3"), filepath.Join(bin, "Xvfb"), filepath.Join(bin, "xauth"), filepath.Join(bin, "dbus-run-session"), filepath.Join(root, "usr", "share", "xpra", "www")}
-	for _, name := range []string{t.Xpra, t.Python, t.Xvfb, t.Xauth, t.DBus, filepath.Join(bin, "dbus-daemon"), filepath.Join(bin, "xkbcomp")} {
+	for _, name := range []string{t.Xpra, t.Python, t.Xvfb, t.Xauth, t.DBus, filepath.Join(bin, "dbus-daemon"), filepath.Join(bin, "xkbcomp"), filepath.Join(bin, "gio-launch-desktop")} {
 		info, err := os.Stat(name)
 		if err != nil || !info.Mode().IsRegular() || info.Mode()&0111 == 0 {
 			return Tools{}, fmt.Errorf("native executable unavailable: %s", filepath.Base(name))
@@ -40,7 +40,7 @@ func ResolveTools(root string) (Tools, error) {
 // caller's private graphical session.
 func (t Tools) Environment(base []string) []string {
 	keys := map[string]bool{}
-	for _, k := range []string{"PATH", "PYTHONHOME", "PYTHONPATH", "PYTHONNOUSERSITE", "GI_TYPELIB_PATH", "GIO_MODULE_DIR", "GIO_EXTRA_MODULES", "GDK_PIXBUF_MODULE_FILE", "GDK_PIXBUF_MODULEDIR", "GTK_PATH", "FONTCONFIG_PATH", "FONTCONFIG_FILE", "LD_LIBRARY_PATH", "LD_PRELOAD", "XPRA_RESOURCES_DIR", "XKB_CONFIG_ROOT", "XKB_BINDIR"} {
+	for _, k := range []string{"PATH", "PYTHONHOME", "PYTHONPATH", "PYTHONNOUSERSITE", "GI_TYPELIB_PATH", "GIO_MODULE_DIR", "GIO_EXTRA_MODULES", "GDK_PIXBUF_MODULE_FILE", "GDK_PIXBUF_MODULEDIR", "GTK_PATH", "FONTCONFIG_PATH", "FONTCONFIG_FILE", "LD_LIBRARY_PATH", "LD_PRELOAD", "XPRA_RESOURCES_DIR", "XKB_CONFIG_ROOT", "XKB_BINDIR", "GIO_LAUNCH_DESKTOP"} {
 		keys[k] = true
 	}
 	saved := map[string]*string{}
@@ -101,11 +101,12 @@ func prepareTools(ctx context.Context, root, architecture string) error {
 			return err
 		}
 	}
-	for _, name := range []string{"python3", "xpra", "Xvfb", "xauth", "xkbcomp", "dbus-run-session", "dbus-daemon", "gdk-pixbuf-query-loaders"} {
+	for _, name := range []string{"python3", "xpra", "Xvfb", "xauth", "xkbcomp", "dbus-run-session", "dbus-daemon", "gdk-pixbuf-query-loaders", "gio-launch-desktop"} {
 		prefix := "#!/bin/sh\nROOT=$(CDPATH= cd -- \"$(dirname -- \"$0\")/../..\" && pwd)\n"
 		binary := name
 		if name == "python3" || name == "xpra" {
 			prefix += `export FLOE_NATIVE_ROOT="$ROOT" PYTHONHOME="$ROOT/usr" PYTHONNOUSERSITE=1
+export GIO_LAUNCH_DESKTOP="$ROOT/floe/bin/gio-launch-desktop"
 export GI_TYPELIB_PATH="$ROOT/usr/lib/girepository-1.0" GIO_MODULE_DIR="$ROOT/usr/lib/gio/modules"
 export GDK_PIXBUF_MODULE_FILE="$ROOT/floe/pixbuf.loaders" GDK_PIXBUF_MODULEDIR="$ROOT/usr/lib/gdk-pixbuf-2.0/2.10.0/loaders"
 export XPRA_RESOURCES_DIR="$ROOT/usr/share/xpra" XKB_CONFIG_ROOT="$ROOT/usr/share/X11/xkb" XKB_BINDIR="$ROOT/floe/bin"
@@ -126,7 +127,11 @@ done
 		if name == "xpra" {
 			binary = "python3"
 		}
-		prefix += fmt.Sprintf("exec \"$ROOT/lib/%s\" --library-path \"$ROOT/lib:$ROOT/usr/lib:$ROOT/usr/lib/gdk-pixbuf-2.0/2.10.0/loaders\" \"$ROOT/usr/bin/%s\"", loader, binary)
+		directory := "usr/bin"
+		if name == "gio-launch-desktop" {
+			directory = "usr/libexec"
+		}
+		prefix += fmt.Sprintf("exec \"$ROOT/lib/%s\" --library-path \"$ROOT/lib:$ROOT/usr/lib:$ROOT/usr/lib/gdk-pixbuf-2.0/2.10.0/loaders\" \"$ROOT/%s/%s\"", loader, directory, binary)
 		if name == "xpra" {
 			prefix += " -c 'from xpra.scripts.main import main; import sys; sys.argv[0]=\"xpra\"; sys.exit(main(\"xpra\", sys.argv))'"
 		}

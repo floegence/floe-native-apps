@@ -1,6 +1,6 @@
 [
   {
-    "id": "alpine-3.23-xpra-6.2.2-amd64",
+    "id": "alpine-3.23-xpra-6.2.2-amd64-r1",
     "architecture": "amd64",
     "size_bytes": 176668991,
     "installed_bytes": 509133955,
@@ -1637,7 +1637,7 @@
     ]
   },
   {
-    "id": "alpine-3.23-xpra-6.2.2-arm64",
+    "id": "alpine-3.23-xpra-6.2.2-arm64-r1",
     "architecture": "arm64",
     "size_bytes": 161894731,
     "installed_bytes": 461678078,
