@@ -18,6 +18,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/floegence/floe-native-apps/artifactcache"
 )
 
 var ErrInvalid = errors.New("invalid native preparation request")
@@ -423,21 +425,11 @@ func (m *Manager) progress(n int64) error {
 	return m.publishLocked(false)
 }
 func (m *Manager) artifactPath(a Artifact) string { return filepath.Join(m.root, "archives", a.SHA256) }
+func archiveSpec(a Artifact) artifactcache.Spec {
+	return artifactcache.Spec{URL: a.URL, SHA256: a.SHA256, SizeBytes: a.Size}
+}
 func verifyFile(name string, a Artifact) bool {
-	file, err := os.Open(name)
-	if err != nil {
-		return false
-	}
-	defer file.Close()
-	info, err := file.Stat()
-	if err != nil || !info.Mode().IsRegular() || info.Size() != a.Size {
-		return false
-	}
-	hash := sha256.New()
-	if _, err := io.Copy(hash, file); err != nil {
-		return false
-	}
-	return fmt.Sprintf("%x", hash.Sum(nil)) == a.SHA256
+	return artifactcache.Verify(context.Background(), name, archiveSpec(a)) == nil
 }
 func (m *Manager) download(ctx context.Context) {
 	if err := os.MkdirAll(filepath.Join(m.root, "archives"), 0700); err != nil {
@@ -484,65 +476,19 @@ func (m *Manager) downloadOne(ctx context.Context, a Artifact) error {
 }
 
 func downloadArchive(ctx context.Context, client *http.Client, root string, a Artifact, progress func(int64) error) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	if verifyFile(filepath.Join(root, "archives", a.SHA256), a) {
-		return progress(a.Size)
-	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, a.URL, nil)
-	if err != nil {
-		return err
-	}
-	response, err := client.Do(request)
-	if err != nil {
-		return err
-	}
-	defer response.Body.Close()
-	if response.StatusCode != http.StatusOK || (response.ContentLength >= 0 && response.ContentLength != a.Size) {
-		return errors.New("unexpected native download response")
-	}
-	file, err := os.CreateTemp(root, ".part-")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(file.Name())
-	defer file.Close()
-	hash := sha256.New()
-	writer := io.MultiWriter(file, hash)
-	buffer := make([]byte, 128<<10)
-	var total int64
-	for {
-		n, readErr := response.Body.Read(buffer)
-		if n > 0 {
-			total += int64(n)
-			if total > a.Size {
-				return errors.New("native archive exceeds size")
+	var reported int64
+	_, err := artifactcache.Acquire(ctx, filepath.Join(root, "archives"), archiveSpec(a), artifactcache.Options{
+		Client: client,
+		OnProgress: func(p artifactcache.Progress) error {
+			delta := p.ReceivedBytes - reported
+			reported = p.ReceivedBytes
+			if delta > 0 && progress != nil {
+				return progress(delta)
 			}
-			if _, err = writer.Write(buffer[:n]); err != nil {
-				return err
-			}
-			if err = progress(int64(n)); err != nil {
-				return err
-			}
-		}
-		if readErr == io.EOF {
-			break
-		}
-		if readErr != nil {
-			return readErr
-		}
-	}
-	if total != a.Size || fmt.Sprintf("%x", hash.Sum(nil)) != a.SHA256 {
-		return errors.New("native archive integrity failure")
-	}
-	if err = file.Sync(); err != nil {
-		return err
-	}
-	if err = file.Close(); err != nil {
-		return err
-	}
-	return os.Rename(file.Name(), filepath.Join(root, "archives", a.SHA256))
+			return nil
+		},
+	})
+	return err
 }
 func (m *Manager) receive(ctx context.Context, file *os.File) {
 	defer file.Close()

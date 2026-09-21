@@ -4,6 +4,9 @@ This repository owns the reusable, optional native graphical support distributio
 its pinned upstream artifact catalog, bounded acquisition and extraction, native
 tool environment, and isolated graphical self-check. Consumers own authentication,
 application inventory, application sessions, UI, and launch continuation.
+The public artifactcache package also supplies pinned archive acquisition and
+verification to trusted host catalogs. Consumers own those catalogs, consent and
+cache placement; renderer input must never become an acquisition specification.
 
 Applications run directly on their host. Never introduce a container, virtual
 machine, global library path, system package installation, security-policy bypass,

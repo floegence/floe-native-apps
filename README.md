@@ -51,7 +51,7 @@ flowchart LR
 Use **Go 1.27.1**, aligned with Redeven. Install the released module:
 
 ```sh
-go get github.com/floegence/floe-native-apps@v0.1.3
+go get github.com/floegence/floe-native-apps@v0.2.0
 ```
 
 Select a supported package and create one long-lived manager for an absolute,
@@ -127,6 +127,38 @@ hashes, custom catalogs, or package identities from renderer/client input. Pass
 is a trusted host integration hook, not a client option.
 
 ## Offline delivery
+
+Hosts that supply another reviewed archive catalog can use the public
+`github.com/floegence/floe-native-apps/artifactcache` package. This is the same
+acquisition implementation used by native component preparation and offline
+bundles. It downloads original publisher bytes without extracting or executing
+them, independently of the downloading machine's OS and architecture.
+
+```go
+result, err := artifactcache.Acquire(ctx, privateCacheDirectory, artifactcache.Spec{
+    URL: pinnedPublisherURL,
+    SHA256: pinnedSHA256,
+    SizeBytes: pinnedSize,
+}, artifactcache.Options{
+    OnProgress: func(p artifactcache.Progress) error {
+        // Absolute byte counts; checking, downloading, or verifying.
+        return report(p)
+    },
+})
+// Use result.Path only after success. result.FromCache identifies a verified hit.
+```
+
+The host chooses the catalog, absolute private cache directory and user consent
+before calling `Acquire`; renderer-supplied URLs, digests and paths are not a
+trusted catalog. Cache filenames are exact SHA-256 digests. Every reuse checks
+length and digest without network access. `Verify` validates an existing regular
+file without modifying it; integrity errors match `artifactcache.ErrIntegrity`,
+while cancellation and filesystem errors retain their normal classifications.
+HTTP redirects cannot downgrade HTTPS. Invalid or incomplete downloads never
+replace a cache entry. Concurrent acquisitions use independent temporary files
+and may repeat a download; cancellation removes only the current call's staging
+file. The host owns cache retention and must not remove entries while readers use
+them. This API grants neither permission to install nor to execute an archive.
 
 Acquire original publisher archives on Linux, macOS, or Windows for a Linux
 target. Acquisition does not execute those components on the downloading machine.

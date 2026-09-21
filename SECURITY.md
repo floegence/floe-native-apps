@@ -23,6 +23,12 @@ contains extraction paths/links and expansion, strips privileged file modes,
 and activates only a complete stack after a graphical self-check. Clients must
 not select catalogs, URLs, executables, hashes, or installation paths.
 
+The public `artifactcache` package additionally accepts a trusted host's pinned
+archive specification. That API does not authenticate or approve specifications:
+the host resolves them from reviewed source, never renderer or client input.
+It verifies HTTPS acquisition, exact length and SHA-256 before publishing into
+the host's private cache. It neither extracts nor executes the archive.
+
 The host product owns authentication, authorization, consent, state-directory
 permissions, network/session exposure, and application lifecycle. The SDK's
 owner identifiers bind admitted operations to callers; they do not authenticate
