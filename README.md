@@ -126,6 +126,16 @@ hashes, custom catalogs, or package identities from renderer/client input. Pass
 `nil` as the validator to retain the built-in graphical check. A custom validator
 is a trusted host integration hook, not a client option.
 
+**Disable unused audio completely.** Append `XpraNoAudioArgs()` when starting a
+silent Xpra 6.x graphics session. It disables the audio subsystem, PulseAudio,
+speaker, and microphone support. `--speaker=off` and `--microphone=off` only start
+muted; they still initialize audio codecs and can make every window inventory
+query wait five seconds when an audio backend is unavailable. The graphical
+self-check uses the same options and requires two inventory queries to complete
+within three seconds each, in addition to proving decoded pixels and input.
+Consumers retain their own authentication, private display, process lifetime,
+transport, and actual-window readiness checks.
+
 ## Offline delivery
 
 Hosts that supply another reviewed archive catalog can use the public

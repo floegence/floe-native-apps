@@ -5,6 +5,7 @@ package nativeapps
 import (
 	"context"
 	_ "embed"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -52,7 +53,8 @@ func SelfTest(parent context.Context, root string) (result error) {
 	}
 	clean = append(clean, "XPRA_PRIVATE_XAUTH=1", "XPRA_SHARED_XAUTHORITY=0", "XPRA_DEFAULT_CONF_DIRS=", "XPRA_SYSTEM_CONF_DIRS=", "XPRA_USER_CONF_DIRS=", "XDG_RUNTIME_DIR="+state, "GDK_BACKEND=x11", "QT_QPA_PLATFORM=xcb")
 	quote := func(value string) string { return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'" }
-	args := []string{"--", t.Xpra, "start", "--daemon=no", "--systemd-run=no", "--attach=no", "--use-display=no", "--html=no", "--source=", "--source-start=", "--input-method=none", "--socket-dir=" + state, "--socket-dirs=" + state, "--sessions-dir=" + filepath.Join(state, "sessions"), "--exit-with-windows=yes", "--start-child=" + quote(t.Python) + " " + quote(launcher) + " " + quote(t.Python) + " " + quote(fixture) + " " + quote(state), "--xvfb=" + quote(t.Xvfb) + " -screen 0 1024x768x24 -nolisten tcp -noreset +extension Composite -auth $XAUTHORITY", "--notifications=no", "--mdns=no", "--pulseaudio=no", "--speaker=off", "--microphone=off", "--webcam=no", "--printing=no", "--dbus-launch=", "--start-new-commands=no", "--opengl=no"}
+	args := []string{"--", t.Xpra, "start", "--daemon=no", "--systemd-run=no", "--attach=no", "--use-display=no", "--html=no", "--source=", "--source-start=", "--input-method=none", "--socket-dir=" + state, "--socket-dirs=" + state, "--sessions-dir=" + filepath.Join(state, "sessions"), "--exit-with-windows=yes", "--start-child=" + quote(t.Python) + " " + quote(launcher) + " " + quote(t.Python) + " " + quote(fixture) + " " + quote(state), "--xvfb=" + quote(t.Xvfb) + " -screen 0 1024x768x24 -nolisten tcp -noreset +extension Composite -auth $XAUTHORITY", "--notifications=no", "--mdns=no", "--webcam=no", "--printing=no", "--dbus-launch=", "--start-new-commands=no", "--opengl=no"}
+	args = append(args, XpraNoAudioArgs()...)
 	// Xpra intentionally discards inherited DBUS_* variables. Its child env
 	// option admits only the bus this qualification process just created.
 	shellArgs := []string{"--", "/bin/sh", "-c", `exec "$@" --dbus=no --dbus-control=no "--start-env=DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS"`, "native-check"}
@@ -90,9 +92,18 @@ func SelfTest(parent context.Context, root string) (result error) {
 		}
 	}()
 	run := func(args ...string) ([]byte, error) {
-		child := exec.CommandContext(ctx, t.Xpra, args...)
+		// A ready graphics server must answer inventory requests without waiting
+		// for unused subsystems. Xpra 6.2 can otherwise wait five seconds on
+		// every query after an unsuccessful audio initialization.
+		query, cancel := context.WithTimeout(ctx, 3*time.Second)
+		defer cancel()
+		child := exec.CommandContext(query, t.Xpra, args...)
 		child.Env = clean
-		return child.Output()
+		out, err := child.Output()
+		if errors.Is(query.Err(), context.DeadlineExceeded) {
+			return nil, fmt.Errorf("native window inventory exceeded three seconds: %w", query.Err())
+		}
+		return out, err
 	}
 	ticker := time.NewTicker(200 * time.Millisecond)
 	defer ticker.Stop()
@@ -119,6 +130,9 @@ func SelfTest(parent context.Context, root string) (result error) {
 			return ctx.Err()
 		}
 		info, err := run("info", address)
+		if errors.Is(err, context.DeadlineExceeded) {
+			return err
+		}
 		if err == nil && strings.Contains(string(info), "state.windows=1") {
 			break
 		}
@@ -127,6 +141,11 @@ func SelfTest(parent context.Context, root string) (result error) {
 			return ctx.Err()
 		case <-ticker.C:
 		}
+	}
+	// Repeat the request after readiness: a completed startup must not leave
+	// an unset initialization event that delays every subsequent connection.
+	if _, err := run("info", address); err != nil {
+		return fmt.Errorf("native ready window inventory: %w", err)
 	}
 	probe := exec.CommandContext(ctx, t.Python, "-c", nativeInputProbe, state, strings.TrimPrefix(address, "socket://"))
 	probe.Env = clean

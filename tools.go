@@ -14,6 +14,14 @@ import (
 
 type Tools struct{ Root, Xpra, Python, Xvfb, Xauth, DBus, HTML string }
 
+// XpraNoAudioArgs disables audio support for a silent Xpra 6.x graphics session.
+// Muting the speaker and microphone with "off" still initializes audio codecs;
+// a missing audio backend can then delay every server inventory request.
+// Session ownership, transport, and all other feature choices remain with the host.
+func XpraNoAudioArgs() []string {
+	return []string{"--audio=no", "--pulseaudio=no", "--speaker=disabled", "--microphone=disabled"}
+}
+
 func ResolveTools(root string) (Tools, error) {
 	if !filepath.IsAbs(root) {
 		return Tools{}, ErrInvalid
