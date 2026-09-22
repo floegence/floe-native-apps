@@ -52,7 +52,7 @@ flowchart LR
 Use **Go 1.27.1**, aligned with Redeven. Install the released module:
 
 ```sh
-go get github.com/floegence/floe-native-apps@v0.3.0
+go get github.com/floegence/floe-native-apps@v0.3.1
 ```
 
 Select a supported package and create one long-lived manager for an absolute,

@@ -11,7 +11,18 @@ if [ "${NATIVE_ARCH:-$(uname -m)}" = amd64 ] || [ "${NATIVE_ARCH:-$(uname -m)}" 
 fi
 for image in $images; do
   echo "Qualifying $image"
-  docker pull "$image"
+  # Public registries may throttle an anonymous runner. Retry acquisition only;
+  # a native qualification failure must remain a failure on its first attempt.
+  delay=10
+  until docker pull "$image"; do
+    if [ "$delay" -gt 40 ]; then
+      echo "Image acquisition exhausted its retry budget: $image" >&2
+      exit 1
+    fi
+    echo "Image acquisition failed; retrying in ${delay}s: $image" >&2
+    sleep "$delay"
+    delay=$((delay * 2))
+  done
   docker image inspect --format '{{json .RepoDigests}}' "$image"
   docker run --rm --user nobody --env HOME=/tmp -v "$NATIVE_ROOT:/components:ro" -v "$NATIVE_CHECK:/check:ro" "$image" /check -check /components
 done
