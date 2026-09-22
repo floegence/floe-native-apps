@@ -17,6 +17,10 @@ func WriteBundle(ctx context.Context, pkg Package, cacheRoot string, output io.W
 	if err := pkg.Validate(); err != nil {
 		return err
 	}
+	return writeBundle(ctx, pkg.Artifacts, cacheRoot, output, progress)
+}
+
+func writeBundle(ctx context.Context, artifacts []Artifact, cacheRoot string, output io.Writer, progress func(int64)) error {
 	if !filepath.IsAbs(cacheRoot) {
 		return ErrInvalid
 	}
@@ -25,7 +29,7 @@ func WriteBundle(ctx context.Context, pkg Package, cacheRoot string, output io.W
 	}
 	client := &http.Client{Timeout: 15 * time.Minute}
 	var received int64
-	for _, a := range pkg.Artifacts {
+	for _, a := range artifacts {
 		if err := downloadArchive(ctx, client, cacheRoot, a, func(n int64) error {
 			received += n
 			if progress != nil {
@@ -37,7 +41,7 @@ func WriteBundle(ctx context.Context, pkg Package, cacheRoot string, output io.W
 		}
 	}
 	archive := zip.NewWriter(output)
-	for _, a := range pkg.Artifacts {
+	for _, a := range artifacts {
 		if err := ctx.Err(); err != nil {
 			return err
 		}

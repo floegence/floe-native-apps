@@ -27,12 +27,15 @@ var ErrForbidden = errors.New("native preparation belongs to another caller")
 var ErrBusy = errors.New("native preparation is already running")
 
 type Status struct {
-	State         string `json:"state"`
-	OperationID   string `json:"operation_id,omitempty"`
-	ReceivedBytes int64  `json:"received_bytes"`
-	ExpectedBytes int64  `json:"expected_bytes"`
-	ErrorCode     string `json:"error_code,omitempty"`
-	CanCancel     bool   `json:"can_cancel"`
+	State                 string        `json:"state"`
+	OperationID           string        `json:"operation_id,omitempty"`
+	ReceivedBytes         int64         `json:"received_bytes"`
+	ExpectedBytes         int64         `json:"expected_bytes"`
+	ErrorCode             string        `json:"error_code,omitempty"`
+	CanCancel             bool          `json:"can_cancel"`
+	Installed             *Installation `json:"installed,omitempty"`
+	UpdateAvailable       bool          `json:"update_available"`
+	InstallationErrorCode string        `json:"installation_error_code,omitempty"`
 }
 
 func (s Status) Active() bool {
@@ -45,6 +48,7 @@ func (s Status) Active() bool {
 
 type operation struct {
 	Version    int    `json:"version"`
+	Installed  string `json:"installed,omitempty"`
 	Package    string `json:"package"`
 	Owner      string `json:"owner"`
 	RequestID  string `json:"request_id"`
@@ -54,21 +58,23 @@ type operation struct {
 }
 
 type Manager struct {
-	mu        sync.Mutex
-	root      string
-	pkg       Package
-	op        operation
-	client    *http.Client
-	validate  func(context.Context, string) error
-	prepare   func(context.Context, string, string) error
-	ctx       context.Context
-	cancel    context.CancelFunc
-	done      chan struct{}
-	upload    *os.File
-	lease     *os.File
-	watchers  map[chan struct{}]bool
-	lastWrite time.Time
-	closed    bool
+	mu                sync.Mutex
+	root              string
+	pkg               Package
+	op                operation
+	client            *http.Client
+	validate          func(context.Context, string) error
+	prepare           func(context.Context, string, string) error
+	ctx               context.Context
+	cancel            context.CancelFunc
+	done              chan struct{}
+	upload            *os.File
+	lease             *os.File
+	watchers          map[chan struct{}]bool
+	lastWrite         time.Time
+	closed            bool
+	installationError string
+	installations     []Installation
 }
 
 // New requires a private state root. Creating a manager never downloads or starts
@@ -100,29 +106,47 @@ func New(root string, pkg Package, validate func(context.Context, string) error)
 		validate = SelfTest
 	}
 	m := &Manager{root: root, pkg: pkg, client: &http.Client{Timeout: 15 * time.Minute}, validate: validate, prepare: prepareTools, lease: lease, watchers: map[chan struct{}]bool{}}
-	m.op = operation{Version: 1, Package: pkg.Digest(), Status: Status{State: "available", ExpectedBytes: pkg.SizeBytes}}
+	m.installations = compatibleInstallations(pkg)
+	m.op = operation{Version: 2, Package: pkg.Digest(), Status: Status{State: "available", ExpectedBytes: pkg.SizeBytes}}
 	data, err := os.ReadFile(filepath.Join(root, "operation.json"))
+	savedVersion := 0
 	if err == nil {
 		var saved operation
-		if json.Unmarshal(data, &saved) != nil || saved.Version != 1 || !validState(saved.Status.State) {
+		decoder := json.NewDecoder(bytes.NewReader(data))
+		decoder.DisallowUnknownFields()
+		if len(data) > 1<<20 || decoder.Decode(&saved) != nil || decoder.Decode(new(any)) != io.EOF || (saved.Version != 1 && saved.Version != 2) || !validState(saved.Status.State) {
 			lease.Close()
 			return nil, errors.New("invalid native preparation record")
 		}
-		if saved.Package == pkg.Digest() {
-			m.op = saved
-		}
+		m.op = saved
+		savedVersion = saved.Version
 	} else if !errors.Is(err, os.ErrNotExist) {
 		lease.Close()
 		return nil, err
 	}
-	if m.installed() {
-		m.op.Status.State = "ready"
-		m.op.Status.ErrorCode = ""
-	} else if m.op.Status.Active() {
+	if err := m.adoptInstallation(savedVersion); err != nil {
+		lease.Close()
+		return nil, err
+	}
+	if m.op.Package != pkg.Digest() {
+		m.op = operation{Version: 2, Installed: m.op.Installed, Package: pkg.Digest(), Status: Status{State: "available", ExpectedBytes: pkg.SizeBytes}}
+	}
+	m.op.Version = 2
+	if m.op.Status.Active() {
 		m.op.Status.State = "interrupted"
-	} else if m.op.Status.State == "ready" {
-		m.op.Status.State = "failed"
-		m.op.Status.ErrorCode = "invalid_archive"
+	} else if m.op.Status.State == "available" || m.op.Status.State == "ready" {
+		if installed, _ := m.installedSnapshot(); installed != nil && installed.Ready {
+			m.op.Status.State = "ready"
+		} else if m.op.Status.State == "ready" {
+			m.op.Status.State = "failed"
+			m.op.Status.ErrorCode = "installation_damaged"
+		}
+	}
+	if savedVersion == 1 || (savedVersion == 0 && m.op.Installed != "") {
+		if err := m.publishLocked(true); err != nil {
+			lease.Close()
+			return nil, err
+		}
 	}
 	// This manager owns these staging names under the exclusive root lease.
 	for _, pattern := range []string{".stage-*", ".upload-*", ".part-*", ".operation-*"} {
@@ -137,30 +161,26 @@ func New(root string, pkg Package, validate func(context.Context, string) error)
 	return m, nil
 }
 
-func (m *Manager) Package() Package  { return m.pkg }
-func (m *Manager) directory() string { return filepath.Join(m.root, "packages", m.pkg.Digest()) }
+func (m *Manager) Package() Package { return m.pkg }
+func (m *Manager) directory() string {
+	return filepath.Join(m.root, "packages", m.installations[0].Digest)
+}
 func (m *Manager) installed() bool {
-	data, err := os.ReadFile(filepath.Join(m.directory(), ".native-apps"))
-	if err != nil || string(data) != m.pkg.Digest() {
-		return false
-	}
-	_, err = ResolveTools(m.directory())
+	_, err := m.installedDirectory(m.installations[0].Digest)
 	return err == nil
 }
 func (m *Manager) Directory() (string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if m.closed || m.op.Status.State != "ready" || !m.installed() {
+	if m.closed {
 		return "", ErrInvalid
 	}
-	return m.directory(), nil
+	return m.installedDirectory(m.op.Installed)
 }
 func (m *Manager) Snapshot(owner string) Status {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	s := m.op.Status
-	s.CanCancel = s.Active() && m.op.Owner == owner
-	return s
+	return m.snapshotLocked(owner)
 }
 
 func (m *Manager) Watch() (<-chan struct{}, func()) {
@@ -199,19 +219,22 @@ func (m *Manager) publishLocked(force bool) error {
 		return err
 	}
 	m.lastWrite = time.Now()
+	m.notifyLocked()
+	return nil
+}
+func (m *Manager) notifyLocked() {
 	for ch := range m.watchers {
 		select {
 		case ch <- struct{}{}:
 		default:
 		}
 	}
-	return nil
 }
 
 func (m *Manager) Start(owner, requestID, source string, uploadSize int64) (Status, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if m.closed || owner == "" || requestID == "" || len(owner) > 256 || len(requestID) > 128 || (source != "download" && source != "upload") {
+	if m.closed || owner == "" || requestID == "" || len(owner) > 256 || len(requestID) > 128 || (source != "download" && source != "upload" && source != "cache") {
 		return m.op.Status, ErrInvalid
 	}
 	if m.op.RequestID == requestID && m.op.Owner == owner {
@@ -224,10 +247,17 @@ func (m *Manager) Start(owner, requestID, source string, uploadSize int64) (Stat
 		return m.snapshotLocked(owner), ErrBusy
 	}
 	if m.installed() {
+		previous := m.op
+		m.op.Installed = m.installations[0].Digest
 		m.op.Status.State = "ready"
+		m.op.Status.ErrorCode = ""
+		if err := m.publishLocked(true); err != nil {
+			m.op = previous
+			return m.snapshotLocked(owner), err
+		}
 		return m.snapshotLocked(owner), nil
 	}
-	if source == "upload" && (uploadSize < m.pkg.SizeBytes || uploadSize > m.pkg.SizeBytes+2<<20) {
+	if source == "upload" && (uploadSize <= 0 || uploadSize > m.pkg.SizeBytes+2<<20) {
 		return m.op.Status, ErrInvalid
 	}
 	seed := make([]byte, 16)
@@ -236,7 +266,7 @@ func (m *Manager) Start(owner, requestID, source string, uploadSize int64) (Stat
 	}
 	m.ctx, m.cancel = context.WithCancel(context.Background())
 	m.done = make(chan struct{})
-	m.op = operation{Version: 1, Package: m.pkg.Digest(), Owner: owner, RequestID: requestID, Source: source, UploadSize: uploadSize, Status: Status{State: "downloading", OperationID: hex.EncodeToString(seed), ExpectedBytes: m.pkg.SizeBytes}}
+	m.op = operation{Version: 2, Installed: m.op.Installed, Package: m.installations[0].Digest, Owner: owner, RequestID: requestID, Source: source, UploadSize: uploadSize, Status: Status{State: "downloading", OperationID: hex.EncodeToString(seed), ExpectedBytes: m.pkg.SizeBytes}}
 	if source == "upload" {
 		m.op.Status.State = "receiving"
 		m.op.Status.ExpectedBytes = uploadSize
@@ -254,7 +284,7 @@ func (m *Manager) Start(owner, requestID, source string, uploadSize int64) (Stat
 		}
 		return m.op.Status, err
 	}
-	if source == "download" {
+	if source != "upload" {
 		go m.download(m.ctx)
 	}
 	return m.snapshotLocked(owner), nil
@@ -263,6 +293,8 @@ func (m *Manager) Start(owner, requestID, source string, uploadSize int64) (Stat
 func (m *Manager) snapshotLocked(owner string) Status {
 	s := m.op.Status
 	s.CanCancel = s.Active() && owner == m.op.Owner
+	s.Installed, s.InstallationErrorCode = m.installedSnapshot()
+	s.UpdateAvailable = s.Installed != nil && s.Installed.Ready && s.Installed.Digest != m.installations[0].Digest
 	return s
 }
 func (m *Manager) authorizeLocked(owner, id string) error {
@@ -369,11 +401,15 @@ func (m *Manager) Close() {
 func (m *Manager) finishLocked(state, code string) {
 	m.op.Status.State = state
 	m.op.Status.ErrorCode = code
-	m.cancel = nil
 	if err := m.publishLocked(true); err != nil {
 		m.op.Status.State = "failed"
 		m.op.Status.ErrorCode = "install_failed"
+		m.notifyLocked()
 	}
+	m.completeLocked()
+}
+func (m *Manager) completeLocked() {
+	m.cancel = nil
 	if m.done != nil {
 		close(m.done)
 		m.done = nil
@@ -438,6 +474,32 @@ func (m *Manager) download(ctx context.Context) {
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	if err := m.stage("checking"); err != nil {
+		m.fail(ctx, err, "install_failed")
+		return
+	}
+	plan, err := m.Plan(ctx)
+	if err != nil {
+		m.fail(ctx, err, "install_failed")
+		return
+	}
+	m.mu.Lock()
+	cacheOnly := m.op.Source == "cache"
+	m.op.Status.ReceivedBytes = 0
+	m.op.Status.ExpectedBytes = plan.MissingBytes
+	m.mu.Unlock()
+	if cacheOnly && plan.MissingBytes != 0 {
+		m.fail(ctx, nil, "cache_changed")
+		return
+	}
+	if err := m.stage("downloading"); err != nil {
+		m.fail(ctx, err, "install_failed")
+		return
+	}
+	missing := map[string]bool{}
+	for _, digest := range plan.MissingArtifacts {
+		missing[digest] = true
+	}
 	jobs := make(chan Artifact)
 	var workers sync.WaitGroup
 	var once sync.Once
@@ -454,6 +516,9 @@ func (m *Manager) download(ctx context.Context) {
 		}()
 	}
 	for _, a := range m.pkg.Artifacts {
+		if !missing[a.SHA256] {
+			continue
+		}
 		select {
 		case jobs <- a:
 		case <-ctx.Done():
@@ -499,7 +564,7 @@ func (m *Manager) receive(ctx context.Context, file *os.File) {
 		return
 	}
 	archive, err := zip.NewReader(file, info.Size())
-	if err != nil || len(archive.File) != len(m.pkg.Artifacts) {
+	if err != nil || len(archive.File) > len(m.pkg.Artifacts) {
 		m.fail(ctx, err, "invalid_archive")
 		return
 	}
@@ -551,6 +616,14 @@ func (m *Manager) receive(ctx context.Context, file *os.File) {
 			return
 		}
 	}
+	// A partial relay is complete only when the union of uploaded and cached
+	// original archives covers the entire trusted recipe.
+	for _, a := range m.pkg.Artifacts {
+		if err := artifactcache.Verify(ctx, m.artifactPath(a), archiveSpec(a)); err != nil {
+			m.fail(ctx, err, "cache_changed")
+			return
+		}
+	}
 	m.install(ctx)
 }
 func (m *Manager) install(ctx context.Context) {
@@ -592,7 +665,7 @@ func (m *Manager) install(ctx context.Context) {
 		m.fail(ctx, err, "validation_failed")
 		return
 	}
-	if err = os.WriteFile(filepath.Join(staging, ".native-apps"), []byte(m.pkg.Digest()), 0600); err != nil {
+	if err = os.WriteFile(filepath.Join(staging, ".native-apps"), []byte(m.installations[0].Digest), 0600); err != nil {
 		m.fail(ctx, err, "install_failed")
 		return
 	}
@@ -614,5 +687,14 @@ func (m *Manager) install(ctx context.Context) {
 		m.finishLocked("failed", classify(err, "install_failed"))
 		return
 	}
-	m.finishLocked("ready", "")
+	previous := m.op.Installed
+	m.op.Installed = m.installations[0].Digest
+	m.op.Status.State = "ready"
+	m.op.Status.ErrorCode = ""
+	if err := m.publishLocked(true); err != nil {
+		m.op.Installed = previous
+		m.finishLocked("failed", "install_failed")
+		return
+	}
+	m.completeLocked()
 }

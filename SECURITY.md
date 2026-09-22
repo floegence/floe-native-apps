@@ -21,7 +21,11 @@ The SDK trusts its compiled, reviewed artifact catalog and its product-owned
 private state directory. It verifies original archive sizes and SHA-256 hashes,
 contains extraction paths/links and expansion, strips privileged file modes,
 and activates only a complete stack after a graphical self-check. Clients must
-not select catalogs, URLs, executables, hashes, or installation paths.
+not select catalogs, URLs, executables, acquisition specifications, or installation
+paths. A transfer plan may carry component and archive identities only as
+selectors within the matching compiled catalog; unknown identities, duplicate
+entries and inconsistent totals are rejected. The receiving host independently
+verifies the union of cached and transferred original bytes.
 
 The public `artifactcache` package additionally accepts a trusted host's pinned
 archive specification. That API does not authenticate or approve specifications:

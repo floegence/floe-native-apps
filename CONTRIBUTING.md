@@ -138,3 +138,20 @@ there is one wait owner. Applications that delegate to unrelated pre-existing
 processes or an external system service are outside this child-tree contract.
 A host must not infer process exit from a missing window, or revoke sharing merely
 by deleting a route while its upgraded connections remain open.
+
+## Component compatibility qualification
+
+An SDK release must preserve supported installed recipe identities independently
+of its recommended recipe. Test v1 record adoption, v2 restart, failed and
+cancelled updates with a usable installation, atomic activation, partial relay
+coverage and zero-network cache-only updates. Do not change existing package
+digests merely to add SDK metadata. Compatibility metadata is a reviewed
+contract, not a directory-name heuristic. Historical r1 compatibility retains
+its documented decoder limitation; only the updated r2 stack passes the current
+short-frame qualification.
+
+`FLOE_TEST_LEGACY_STATE=/absolute/disposable/r1-state go test -run
+TestNativeLegacyComponentUpdate -v` exercises a real r1-to-r2 local update and
+rejects every network request. Supply only a disposable state with original
+verified archive cache entries. The release workflow runs this on both native
+architectures using the published v0.2.1 installer to construct the old state.

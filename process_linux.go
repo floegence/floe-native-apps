@@ -5,9 +5,52 @@ package nativeapps
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
+
+// InstallationForProcess identifies a legacy backend's private loader using
+// kernel evidence. Nil means a system installation outside this manager's root.
+// The caller still owns application authorization and backend identity checks.
+func (m *Manager) InstallationForProcess(process ProcessIdentity) (*Installation, error) {
+	if !process.Alive() {
+		return nil, ErrInvalid
+	}
+	executable, err := os.Readlink("/proc/" + strconv.Itoa(process.PID) + "/exe")
+	if err != nil {
+		return nil, err
+	}
+	if !process.Alive() {
+		return nil, ErrInvalid
+	}
+	root, err := filepath.EvalSymlinks(m.root)
+	if err != nil {
+		return nil, err
+	}
+	rel, err := filepath.Rel(filepath.Join(root, "packages"), executable)
+	if err != nil || !filepath.IsLocal(rel) {
+		return nil, nil
+	}
+	parts := strings.Split(rel, string(filepath.Separator))
+	if len(parts) < 2 {
+		return nil, ErrInvalid
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.closed {
+		return nil, ErrInvalid
+	}
+	item, ok := m.installation(parts[0])
+	if !ok {
+		return nil, ErrInvalid
+	}
+	if _, err := m.installedDirectory(item.Digest); err != nil {
+		return nil, err
+	}
+	item.Ready = true
+	return &item, nil
+}
 
 // ObserveProcess reads the kernel's boot and start identity for a live process.
 func ObserveProcess(pid int) (ProcessIdentity, error) {

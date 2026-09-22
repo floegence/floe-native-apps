@@ -52,7 +52,7 @@ flowchart LR
 Use **Go 1.27.1**, aligned with Redeven. Install the released module:
 
 ```sh
-go get github.com/floegence/floe-native-apps@v0.3.1
+go get github.com/floegence/floe-native-apps@v0.4.0
 ```
 
 Select a supported package and create one long-lived manager for an absolute,
@@ -104,9 +104,40 @@ a remote desktop or launch a user's application.
 
 **Observe current state.** `Watch` provides coalesced invalidations, not an event
 log. Subscribe, read `Snapshot(owner)`, and read it again after each notification.
-Unsubscribing or losing an observer does not cancel preparation. `ready` permits
-`Directory` and `ResolveTools`; `failed`, `cancelled`, and `interrupted` require
-an explicit new user action to retry. No partial installation is activated.
+Unsubscribing or losing an observer does not cancel preparation. `state` reports
+one preparation operation; `installed.ready` independently reports the current
+usable installation. `Directory` continues resolving it during an update and
+after failure, cancellation or interruption. Retry requires an explicit user
+action. No partial installation is activated.
+
+**Update components independently.** SDK upgrades continue accepting published
+r1 and r2 installations for the matching architecture and private Xpra 6
+contract. `update_available` compares the active installation with the reviewed
+recommendation; it does not disable the installed feature. The v1 operation
+record is migrated atomically to v2 with an explicit installed identity. Unknown
+records are rejected without rewriting them, and damaged installations retain
+a distinct diagnostic. Package digests and existing package trees are unchanged.
+The r1 recipe retains its known short-frame decoder defect; compatibility does
+not claim that old bytes contain the r2 fix. Offer the r2 update to improve
+connection stability. Do not prepare components merely because a status was read.
+
+**Keep running applications on their original components.** Persist the selected
+`installed.digest` with a new backend and use `DirectoryFor` when recovering it.
+`InstallationForProcess` can identify a legacy private loader from a verified
+Linux process generation; the host must still verify application ownership and
+backend identity. Updates retain previous package directories and change the
+selection only after the target passes graphical qualification. There is no
+automatic installed-package garbage collection.
+
+**Transfer only missing archives.** After explicit user action, `Plan(ctx)`
+verifies the host cache and reports the target digest and missing original
+archive identities/bytes. Complete caches use `Start(..., "cache", 0)` with no
+network or upload. Otherwise the host downloads missing files, or Desktop uses
+`WriteTransferBundle` with its own trusted matching catalog. Plans cannot select
+URLs, paths or unrecognized artifacts. An old Desktop must report a target
+mismatch rather than silently substituting its package. The receiver verifies
+the union of cached and uploaded files; stale plans fail without changing the
+installed selection. Complete offline ZIPs remain supported.
 
 **Preserve request identity.** Retry an uncertain `Start` response with the same
 owner, request ID, source, and upload size. A competing operation returns
@@ -122,8 +153,9 @@ session's private display and D-Bus addresses. Never export the private loader
 path to user applications or substitute the support Python for their interpreter.
 
 **Keep the trust boundary closed.** Use the checked-in catalog selected through
-`NativePackage` or `ForPlatform`. Do not accept executable paths, artifact URLs,
-hashes, custom catalogs, or package identities from renderer/client input. Pass
+`NativePackage` or `ForPlatform`. Do not accept executable paths, artifact URLs, hashes as acquisition
+specifications, or custom catalogs from renderer/client input. Transfer plan
+identities may only select a subset of the matching compiled catalog. Pass
 `nil` as the validator to retain the built-in graphical check. A custom validator
 is a trusted host integration hook, not a client option.
 
