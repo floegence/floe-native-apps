@@ -7,6 +7,7 @@ import (
 	_ "embed"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -52,9 +53,21 @@ func SelfTest(parent context.Context, root string) (result error) {
 		clean = append(clean, item)
 	}
 	clean = append(clean, "XPRA_PRIVATE_XAUTH=1", "XPRA_SHARED_XAUTHORITY=0", "XPRA_DEFAULT_CONF_DIRS=", "XPRA_SYSTEM_CONF_DIRS=", "XPRA_USER_CONF_DIRS=", "XDG_RUNTIME_DIR="+state, "GDK_BACKEND=x11", "QT_QPA_PLATFORM=xcb")
+	decoder := exec.CommandContext(ctx, t.Python, "-c", nativeWebSocketProbe)
+	decoder.Env = clean
+	if out, err := decoder.CombinedOutput(); err != nil {
+		return fmt.Errorf("native WebSocket decoder check: %w (%s)", err, out)
+	}
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		return err
+	}
+	websocketAddress := listener.Addr().String()
+	_ = listener.Close()
 	quote := func(value string) string { return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'" }
 	args := []string{"--", t.Xpra, "start", "--daemon=no", "--systemd-run=no", "--attach=no", "--use-display=no", "--html=no", "--source=", "--source-start=", "--input-method=none", "--socket-dir=" + state, "--socket-dirs=" + state, "--sessions-dir=" + filepath.Join(state, "sessions"), "--exit-with-windows=yes", "--start-child=" + quote(t.Python) + " " + quote(launcher) + " " + quote(t.Python) + " " + quote(fixture) + " " + quote(state), "--xvfb=" + quote(t.Xvfb) + " -screen 0 1024x768x24 -nolisten tcp -noreset +extension Composite -auth $XAUTHORITY", "--notifications=no", "--mdns=no", "--webcam=no", "--printing=no", "--dbus-launch=", "--start-new-commands=no", "--opengl=no"}
 	args = append(args, XpraNoAudioArgs()...)
+	args = append(args, "--bind-ws="+websocketAddress, "--exit-with-client=no")
 	// Xpra intentionally discards inherited DBUS_* variables. Its child env
 	// option admits only the bus this qualification process just created.
 	shellArgs := []string{"--", "/bin/sh", "-c", `exec "$@" --dbus=no --dbus-control=no "--start-env=DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS"`, "native-check"}
@@ -147,10 +160,18 @@ func SelfTest(parent context.Context, root string) (result error) {
 	if _, err := run("info", address); err != nil {
 		return fmt.Errorf("native ready window inventory: %w", err)
 	}
-	probe := exec.CommandContext(ctx, t.Python, "-c", nativeInputProbe, state, strings.TrimPrefix(address, "socket://"))
-	probe.Env = clean
-	if out, err := probe.CombinedOutput(); err != nil {
-		return fmt.Errorf("native picture and input check: %w (%s)", err, string(out))
+	// Exercise both the local protocol and the browser's transport. Each new
+	// viewer must paint and deliver input to the same application after detach.
+	for _, transport := range []string{strings.TrimPrefix(address, "socket://"), "ws://" + websocketAddress, "ws://" + websocketAddress, "ws://" + websocketAddress} {
+		probe := exec.CommandContext(ctx, t.Python, "-c", nativeInputProbe, state, transport)
+		probe.Env = clean
+		if out, err := probe.CombinedOutput(); err != nil {
+			return fmt.Errorf("native picture, input and reconnect check: %w (%s)", err, string(out))
+		}
+		info, err := run("info", address)
+		if err != nil || !strings.Contains(string(info), "state.windows=1") {
+			return fmt.Errorf("native application did not survive viewer detach: %v", err)
+		}
 	}
 	return nil
 }
@@ -166,13 +187,13 @@ button=Gtk.Button(label="Native display and input")
 window.add(button)
 window.set_default_size(480,240)
 window.connect("destroy",Gtk.main_quit)
-receipt={"display":os.environ["DISPLAY"],"xauthority":os.environ.get("XAUTHORITY",""),"input":False}
+receipt={"display":os.environ["DISPLAY"],"xauthority":os.environ.get("XAUTHORITY",""),"pid":os.getpid(),"input_count":0}
 def save():
     temporary=root/"receipt.tmp"
     temporary.write_text(json.dumps(receipt))
     temporary.replace(root/"receipt.json")
 def clicked(*args):
-    receipt["input"]=True
+    receipt["input_count"]+=1
     save()
 button.connect("clicked",clicked)
 window.show_all()
@@ -189,6 +210,9 @@ Gtk.main()
 
 //go:embed selfcheck/client.py
 var nativeInputProbe string
+
+//go:embed selfcheck/websocket.py
+var nativeWebSocketProbe string
 
 const nativeLaunchProbe = `import gi, sys
 gi.require_version("Gio","2.0")

@@ -21,7 +21,8 @@ Keep applications on the host, with their own files, identity, and permissions.
 Floe Native Apps supplies the optional native graphics layer behind a host
 application launcher. A server can start without a desktop environment or a
 monitor. The SDK acquires a pinned component set into a private directory,
-verifies it, and proves that it can render a window and receive input before
+verifies it, and proves that it can render a window, receive input, and retain
+the same application across WebSocket viewer disconnects before
 making it available to the product.
 
 - **Private installation:** no root password, system package installation,
@@ -51,7 +52,7 @@ flowchart LR
 Use **Go 1.27.1**, aligned with Redeven. Install the released module:
 
 ```sh
-go get github.com/floegence/floe-native-apps@v0.2.0
+go get github.com/floegence/floe-native-apps@v0.2.2
 ```
 
 Select a supported package and create one long-lived manager for an absolute,

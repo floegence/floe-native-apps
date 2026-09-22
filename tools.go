@@ -83,6 +83,9 @@ func prepareTools(ctx context.Context, root, architecture string) error {
 	if info, err := os.Stat(filepath.Join(root, "lib", loader)); err != nil || !info.Mode().IsRegular() {
 		return errors.New("native loader missing")
 	}
+	if err := prepareXpraWebSocket(root); err != nil {
+		return err
+	}
 	base := filepath.Join(root, "floe")
 	if err := os.MkdirAll(filepath.Join(base, "bin"), 0700); err != nil {
 		return err

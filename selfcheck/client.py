@@ -2,8 +2,10 @@
 import io
 import json
 import pathlib
+import os
 import socket
 import sys
+from urllib.parse import urlsplit
 
 from PIL import Image
 from xpra.client.base.gobject import GObjectXpraClient, GLib
@@ -13,6 +15,12 @@ from xpra.scripts.config import make_defaults_struct, fixup_options
 
 root = pathlib.Path(sys.argv[1])
 address = sys.argv[2]
+initial = json.loads((root / "receipt.json").read_text())
+identity = root / "application-pid"
+if identity.exists():
+    assert int(identity.read_text()) == initial["pid"], "application changed between viewers"
+else:
+    identity.write_text(str(initial["pid"]))
 compression.init_all()
 packet_encoding.init_all()
 
@@ -80,7 +88,12 @@ class CheckClient(GObjectXpraClient):
     def receipt(self):
         try:
             result = json.loads((root / "receipt.json").read_text())
-            if self.picture and result["input"]:
+            assert result["pid"] == initial["pid"], "application restarted during reconnect"
+            if self.picture and result["input_count"] > initial["input_count"]:
+                if address.startswith("ws://"):
+                    # A browser may send a masked close frame with no reason.
+                    # Flush it before local cleanup closes the TCP connection.
+                    connection.sendall(b"\x88\x80" + os.urandom(4))
                 self.quit(0)
                 return False
         except (OSError, ValueError):
@@ -92,9 +105,17 @@ opts = make_defaults_struct()
 fixup_options(opts)
 client = CheckClient()
 client.init(opts)
-connection = socket.socket(socket.AF_UNIX)
-connection.connect(address)
-client.setup_connection(SocketConnection(connection, "local", address, address, "socket"))
+if address.startswith("ws://"):
+    from xpra.net.websockets.common import client_upgrade
+    endpoint = urlsplit(address)
+    connection = socket.create_connection((endpoint.hostname, endpoint.port), timeout=5)
+    client_upgrade(connection.recv, connection.send, endpoint.hostname, endpoint.port)
+    connection.settimeout(None)
+    client.setup_connection(SocketConnection(connection, "local", address, address, "ws"))
+else:
+    connection = socket.socket(socket.AF_UNIX)
+    connection.connect(address)
+    client.setup_connection(SocketConnection(connection, "local", address, address, "socket"))
 GLib.timeout_add(100, client.receipt)
 GLib.timeout_add_seconds(20, lambda: client.quit(1))
 sys.exit(client.run())

@@ -78,6 +78,22 @@ a private relative path without changing the ELF layout. Any change in upstream
 binary shape must fail until explicitly reviewed and qualified. Do not generalize
 this into arbitrary executable patching.
 
+Catalog revision `r2` also prepares the pinned Xpra 6.2.2 Python WebSocket
+decoder with a bounded short-frame correction. The publisher's native mask
+extension does not bound its alignment prefix by the payload length. Preparation
+requires the reviewed source block, retains the publisher's license header and
+all other decoder behavior, and invalidates only that module's cached bytecode.
+Payloads shorter than four bytes use bounded Python decoding; graphics packets
+keep the native path. No modified third-party archive is redistributed. Remove
+this preparation patch when a corrected publisher catalog passes the unchanged
+short-frame and disconnect/reconnect checks. Both architectures must qualify.
+
+The graphical check covers Unix sockets and three WebSocket attachments. Each
+attachment must paint, deliver fresh input, and preserve the fixture's process
+identity; each browser-style detach must leave its window available for the next
+viewer. The standalone decoder check also covers short, aligned, and extended
+frames against the installed native package before activation.
+
 The Go vulnerability scanner checks Go code and the standard library, not the
 catalog's native APK packages. Catalog updates also require review of publisher
 security advisories and dependency versions. CodeQL does not replace native
