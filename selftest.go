@@ -58,6 +58,15 @@ func SelfTest(parent context.Context, root string) (result error) {
 	if out, err := decoder.CombinedOutput(); err != nil {
 		return fmt.Errorf("native WebSocket decoder check: %w (%s)", err, out)
 	}
+	applicationLauncher, err := WriteApplicationLauncher(state)
+	if err != nil {
+		return err
+	}
+	lifetime := exec.CommandContext(ctx, t.Python, "-c", nativeApplicationProbe, t.Python, applicationLauncher)
+	lifetime.Env = clean
+	if out, err := lifetime.CombinedOutput(); err != nil {
+		return fmt.Errorf("native application lifetime check: %w (%s)", err, out)
+	}
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
 		return err
@@ -213,6 +222,9 @@ var nativeInputProbe string
 
 //go:embed selfcheck/websocket.py
 var nativeWebSocketProbe string
+
+//go:embed selfcheck/application.py
+var nativeApplicationProbe string
 
 const nativeLaunchProbe = `import gi, sys
 gi.require_version("Gio","2.0")

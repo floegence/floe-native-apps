@@ -52,7 +52,7 @@ flowchart LR
 Use **Go 1.27.1**, aligned with Redeven. Install the released module:
 
 ```sh
-go get github.com/floegence/floe-native-apps@v0.2.2
+go get github.com/floegence/floe-native-apps@v0.3.0
 ```
 
 Select a supported package and create one long-lived manager for an absolute,
@@ -267,3 +267,21 @@ files and catalog metadata are evidence, not a substitute for those obligations.
 
 Report vulnerabilities through [GitHub's private reporting form](https://github.com/floegence/floe-native-apps/security/advisories/new).
 See [SECURITY.md](SECURITY.md) for the security boundary and supported versions.
+
+## Application lifetime primitives
+
+`WriteApplicationLauncher` supplies a Linux GIO launcher that restores the host
+application environment and observes the launched process tree, including adopted
+descendants. Invoke it using the native tools’ Python with the selected absolute
+desktop-entry path and a private receipt path. The atomic receipt reports
+`running`, `exited`, or `failed`; running does not imply a window or decoded pixels.
+`XpraApplicationLifetimeArgs` keeps the display alive until that monitored child
+exits, independently of viewer detachment or window count.
+
+`ObserveProcess` and `ProcessIdentity.Alive` distinguish one Linux process
+generation from a reused PID across host restarts. This is observation, not
+authorization or permission to signal a persisted PID. A consumer recovering a
+backend must also verify its private endpoint identity. Consumers continue to own
+application inventory, authorization, instance persistence, sharing connections,
+resource limits and explicit termination policy. These primitives do not create a
+background service or recover applications whose display server was destroyed.

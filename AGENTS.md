@@ -2,7 +2,8 @@
 
 This repository owns the reusable, optional native graphical support distribution:
 its pinned upstream artifact catalog, bounded acquisition and extraction, native
-tool environment, and isolated graphical self-check. Consumers own authentication,
+tool environment, Linux launch/process-observation primitives, and isolated
+graphical self-check. Consumers own authentication,
 application inventory, application sessions, UI, and launch continuation.
 The public artifactcache package also supplies pinned archive acquisition and
 verification to trusted host catalogs. Consumers own those catalogs, consent and

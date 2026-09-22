@@ -125,3 +125,16 @@ resolved review conversations, and prohibits force pushes and branch deletion.
 Administrators retain the documented direct-main integration path through the
 local pre-push source gate and must verify its GitHub source result. CodeQL runs daily and manually, outside ordinary
 push/PR CI. Release qualification is the heavier release lane.
+
+Application lifetime qualification also covers windowless processes, intermediate
+launcher exit, double-forked descendants, the restored host environment and failed
+launch receipts, plus explicit supervisor termination without surviving children.
+Linux launch requires kernel pidfds (Linux 5.3 or later); an unavailable primitive
+fails before launch. Explicit supervisor SIGTERM kills only the launcher's owned
+descendants using pidfds and verified parent relationships. Consumers must reserve
+it for explicit force-quit intent, never viewer detach or cancelled save dialogs.
+Child subreaping is enabled before GIO spawns the application;
+there is one wait owner. Applications that delegate to unrelated pre-existing
+processes or an external system service are outside this child-tree contract.
+A host must not infer process exit from a missing window, or revoke sharing merely
+by deleting a route while its upgraded connections remain open.
