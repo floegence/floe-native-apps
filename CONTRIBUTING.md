@@ -174,7 +174,8 @@ Every fixture gets its own display, authenticated loopback WebSocket, bus,
 process group, browser profile and receipts. Acceptance compares actual app
 contents after 40 Unicode/Enter pairs and one 15,000-byte Unicode commit. Editors
 also verify selection replacement, deletion, and 12 alternating pointer focus
-changes against the exact contents of each field. XIM fixtures use a UTF-8
+changes against the exact contents of each field, then native paste, copy and
+cut against the exact Unicode selection and resulting document. XIM fixtures use a UTF-8
 locale; the bridge advertises only UTF-8 locales to prevent Xlib from silently
 choosing a non-Unicode conversion context. Sending
 requests or receiving protocol acknowledgements cannot pass alone. Screenshots

@@ -31,13 +31,20 @@ class Client(GObjectXpraClient):
         self.failure = False
         self.editing = False
         self.fields = False
+        self.pasting = False
+        self.copying = False
+        self.cutting = False
+        self.clipboard = None
 
     def make_hello(self):
         caps = super().make_hello()
         caps.update({'ui_client': True, 'windows': True, 'mouse': True, 'keyboard': True, 'floe-input': 1,
                      'keyboard_sync': True, 'key_repeat': (0, 0),
+                     'clipboard': {'enabled': True, 'greedy': True, 'want_targets': True,
+                                   'selections': ['CLIPBOARD'], 'preferred-targets': ['UTF8_STRING']},
                      'keymap': {'layout': 'us', 'keycodes': [(65293, 'Return', 13, 0, 0),
-                         (97, 'a', 65, 0, 0), (65288, 'BackSpace', 8, 0, 0),
+                         (97, 'a', 65, 0, 0), (99, 'c', 67, 0, 0), (120, 'x', 88, 0, 0),
+                         (118, 'v', 86, 0, 0), (65288, 'BackSpace', 8, 0, 0),
                          (65507, 'Control_L', 17, 0, 0), (65367, 'End', 35, 0, 0)]},
                      'desktop_size': (1024, 768), 'encodings': ('png',),
                      'encodings.core': ('png',), 'encoding': 'png',
@@ -49,6 +56,7 @@ class Client(GObjectXpraClient):
         for name, handler in (('new-window', self.new_window), ('draw', self.draw),
                               ('configure-window', self.configure_window),
                               ('floe-input-result', self.result), ('encodings', lambda _: None),
+                              ('clipboard-token', self.clipboard_token), ('clipboard-pending-requests', lambda _: None),
                               ('raise-window', lambda _: None)):
             self.add_packet_handler(name, handler, True)
 
@@ -122,6 +130,16 @@ class Client(GObjectXpraClient):
             return
         self.acknowledged += 1
 
+    def clipboard_token(self, packet):
+        if len(packet) >= 8 and packet[1] == 'CLIPBOARD' and packet[3] == 'UTF8_STRING':
+            self.clipboard = packet[7].decode('utf-8') if isinstance(packet[7], bytes) else packet[7]
+
+    def shortcut(self, name, code):
+        self.send('key-action', self.wid, 'Control_L', True, ['control'], 65507, '', 17, 0)
+        self.send('key-action', self.wid, name, True, ['control'], ord(name), name, code, 0)
+        self.send('key-action', self.wid, name, False, ['control'], ord(name), name, code, 0)
+        self.send('key-action', self.wid, 'Control_L', False, [], 65507, '', 17, 0)
+
     def check(self):
         try:
             actual = json.loads(receipt.read_text())
@@ -159,8 +177,26 @@ class Client(GObjectXpraClient):
             return True
         fields = ['完成🙂' + ''.join('[' + str(n) + ']🙂' for n in range(43, 55, 2)),
                   ''.join('[' + str(n) + ']🙂' for n in range(44, 55, 2))]
-        if not self.failure and self.fields and self.acknowledged == 54 and actual == fields:
+        if not self.failure and self.fields and not self.pasting and self.acknowledged == 54 and actual == fields:
             print('PASS', kind, '12 pointer focus changes preserve exact per-field order', flush=True)
+            self.pasting = True
+            self.send('clipboard-token', 'CLIPBOARD', ['UTF8_STRING'], 'UTF8_STRING', 'UTF8_STRING',
+                      8, 'bytes', '粘贴🙂'.encode('utf-8'), True, True, True)
+            self.shortcut('v', 86)
+            return True
+        if self.pasting and not self.copying and actual == [fields[0], fields[1] + '粘贴🙂']:
+            print('PASS', kind, 'clipboard claim precedes one native paste shortcut', flush=True)
+            self.copying = True
+            self.shortcut('a', 65)
+            self.shortcut('c', 67)
+            return True
+        if self.copying and not self.cutting and self.clipboard == fields[1] + '粘贴🙂':
+            print('PASS', kind, 'native copy returns the exact selected Unicode', flush=True)
+            self.cutting = True
+            self.shortcut('x', 88)
+            return True
+        if self.cutting and actual == [fields[0], ''] and self.clipboard == fields[1] + '粘贴🙂':
+            print('PASS', kind, 'native cut removes the selection once', flush=True)
             self.quit(0)
             return False
         return True
