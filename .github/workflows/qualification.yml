@@ -96,8 +96,8 @@ jobs:
             | sudo tee /etc/apt/sources.list.d/xpra.list
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            xpra-server=6.5.3-r0-1 xpra-common=6.5.3-r0-1 xpra-x11=6.5.3-r0-1 xpra-codecs=6.5.3-r0-1 \
-            libxcb-imdkit1 libxcb-util1 dbus xauth
+            xpra=6.5.3-r0-1 xpra-x11=6.5.3-r0-1 \
+            libx264-164 libxcb-imdkit1 libxcb-util1 dbus xauth
       - name: Qualify the same input contract with system Xpra
         env:
           FLOE_TEST_INPUT_SYSTEM: '1'
