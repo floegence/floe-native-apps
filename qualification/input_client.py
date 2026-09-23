@@ -197,6 +197,7 @@ class Client(GObjectXpraClient):
             for sequence in range(43, 55):
                 x = self.canvas.width * (1 if sequence % 2 else 3) // 4
                 coords = [self.origin[0] + x, self.origin[1] + 80]
+                self.send('pointer-position', self.wid, coords, [])
                 self.send('button-action', self.wid, 1, True, coords, [])
                 self.send('button-action', self.wid, 1, False, coords, [])
                 self.send('key-action', self.wid, 'Control_L', True, ['control'], 65507, '', 17, 0)

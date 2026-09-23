@@ -22,13 +22,14 @@ class DisplayTest(unittest.TestCase):
     def fixture(self):
         events=[]
         class Server:
+            change_settings=True
             def set_xsettings(self,value):events.append(('settings',value))
             def parse_hello(self,source,caps,*args):
-                self.set_xsettings((2,[(1,b'Net/ThemeName','Adwaita',0)]))
+                if self.change_settings:self.set_xsettings((2,[(1,b'Net/ThemeName','Adwaita',0)]))
                 return args
             def init_packet_handlers(self):
                 self._authenticated_ui_packet_handlers={}
-                self._authenticated_packet_handlers={'configure-display':lambda p,data:self.set_xsettings((3,[]))}
+                self._authenticated_packet_handlers={'configure-display':lambda p,data:self.set_xsettings((3,[])) if self.change_settings else None}
             def get_server_features(self,source=None):return {'existing':True}
             def get_server_source(self,protocol):return object() if protocol=='owned' else None
             def add_packet_handler(self,name,handler,ui):
@@ -56,5 +57,17 @@ class DisplayTest(unittest.TestCase):
     def test_client_without_density_contract_preserves_original_settings(self):
         server,events=self.fixture();server.parse_hello(None,{})
         self.assertEqual(events,[('settings',(2,[(1,b'Net/ThemeName','Adwaita',0)]))])
+
+    def test_reattachment_resets_density_when_xpra_deduplicates_base_settings(self):
+        server,events=self.fixture();server.parse_hello(None,{'floe-display':1})
+        server.change_settings=False
+        configure=server._authenticated_ui_packet_handlers['configure-display']
+        configure('owned',['configure-display',{'floe-display-density':2}])
+        self.assertEqual(dict((n,v) for _,n,v,_ in events[-1][1][1])[b'Gdk/WindowScalingFactor'],2)
+        server.parse_hello(None,{'floe-display':1})
+        configure('owned',['configure-display',{'floe-display-density':1}])
+        values={n:v for _,n,v,_ in events[-1][1][1]}
+        self.assertEqual(values[b'Gdk/WindowScalingFactor'],1)
+        self.assertEqual(values[b'Net/ThemeName'],'Adwaita')
 
 if __name__=='__main__':unittest.main()

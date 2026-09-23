@@ -28,8 +28,10 @@ func prepareDisplayHTML(index, client, window []byte) ([]byte, []byte, []byte, e
       this.container.style.transformOrigin = "top left";
     }`, `    this.floeDisplay?.dispose();
     this.floeDisplay = new FloeXpraDisplay(this);`)
-	c = replace(c, "  _screen_resized(event) {", "  _screen_resized(event) {\n    const densityChanged = this.floeDisplay?.sync();")
-	c = replace(c, "    if (this.container.clientWidth === this.desktop_width && this.container.clientHeight === this.desktop_height) {", "    if (!densityChanged && this.container.clientWidth === this.desktop_width && this.container.clientHeight === this.desktop_height) {")
+	c = replace(c, "  _screen_resized(event) {", "  _screen_resized(event, force = false) {\n    const densityChanged = this.floeDisplay?.sync();")
+	c = replace(c, "    if (this.container.clientWidth === this.desktop_width && this.container.clientHeight === this.desktop_height) {", "    if (!force && !densityChanged && this.container.clientWidth === this.desktop_width && this.container.clientHeight === this.desktop_height) {")
+	// A retained application can still have the previous viewer's toolkit scale.
+	c = replace(c, "  _process_startup_complete(packet) {", "  _process_startup_complete(packet) {\n    this._screen_resized(null, true);")
 	c = replace(c, `      "desktop-size": [this.desktop_width, this.desktop_height],`, `      "desktop-size": [this.desktop_width, this.desktop_height],
       "floe-display-density": this.scale,`)
 	start, end := strings.Index(c, "  _get_DPI() {"), strings.Index(c, "  _get_screen_sizes() {")

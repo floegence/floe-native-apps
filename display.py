@@ -27,9 +27,13 @@ def install_display(server):
     original_features = server.get_server_features
     server.floe_display_density = None
     serial = 0
+    current_settings = (0, [])
+    applied_density = None
 
     def settings(value):
-        nonlocal serial
+        nonlocal serial, current_settings, applied_density
+        current_settings = value
+        applied_density = server.floe_display_density
         if server.floe_display_density is None:
             original_settings(value)
             return
@@ -57,6 +61,10 @@ def install_display(server):
             if value is not None:
                 server.floe_display_density = density(value)
             original(protocol, packet)
+            # Xpra can deduplicate its unchanged base settings even though our
+            # negotiated toolkit density changed (notably on viewer reattach).
+            if applied_density != server.floe_display_density:
+                settings(current_settings)
 
         server._authenticated_packet_handlers.pop('configure-display', None)
         server.add_packet_handler('configure-display', configure, True)

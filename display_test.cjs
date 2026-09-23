@@ -48,6 +48,16 @@ test('unsupported server cannot silently claim native density',()=>{
  assert.throws(()=>c.set_display_density('unexpected'),/Invalid display density policy/);
 });
 
+test('attachment resets retained remote density even when logical dimensions are unchanged',()=>{
+ const {client:c,packets}=setup();
+ c.log=()=>{};c.emit_connection_established=()=>assert.equal(packets.length,1);
+ c._process_startup_complete([]);
+ assert.equal(packets.length,1);
+ assert.equal(packets[0][1]['floe-display-density'],1);
+ assert.equal(packets[0][1].dpi.x,96);
+ c._screen_resized();assert.equal(packets.length,1);
+});
+
 
 test('server display bounds cap backing density and are reconsidered on resize',()=>{
  const {client:c}=setup(4);
