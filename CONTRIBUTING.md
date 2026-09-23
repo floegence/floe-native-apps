@@ -184,6 +184,14 @@ a focused development subset; releases must leave it unset and run every fixture
 on both architectures. These tests do not certify real client IMEs or mobile
 keyboards.
 
+Client-resource regression tests execute the prepared v20/v21 protocol and both
+decoder worker creation paths with asynchronous document loading. They cover
+content-version invalidation, conditional/compressed HTTP responses, excluded
+private files, and escaping assets. Native input qualification additionally opens
+the real installed prepared client as a resource snapshot. Consumers must verify
+their actual authenticated route, browser cache reuse and rendered input after
+integration; serving cached resources must not bypass application admission.
+
 The same test also runs with `FLOE_TEST_INPUT_SYSTEM=1` against system Xpra
 6.5.3 from its publisher's signed Ubuntu repository. This selects the installed
 Xpra interpreter, Xvfb and D-Bus while retaining the managed protocol client as

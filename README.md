@@ -355,6 +355,26 @@ keyboard controls and errors. The adapter registers no DOM input. Xpra's old
 keyboard/tablet/virtual keyboard listeners and focus-stealing clipboard handlers
 are removed; graphics, windows, pointer and clipboard transport stay with Xpra.
 
+`OpenClientAssets(preparedDirectory)` creates an immutable public-resource
+snapshot of that prepared client. It precompresses assets, supplies a digest of
+their exact names and bytes, and implements `http.Handler` for resource paths
+such as `/js/Client.js`. Mount it behind host authorization at a stable path
+containing `assets.Digest()`, stripping that prefix before serving. Use
+`assets.RewriteHTML(document, "/client/"+assets.Digest()+"/")` on each uncached,
+authenticated session document. Resources can then be reused across session URLs;
+the original graphics and protocol workers resolve their imports from the same
+resource version. Source directories and installed vendor files remain unchanged.
+
+Only recognized public scripts, styles, images and fonts are included. HTML,
+configuration, credentials and session data are never served by this handler.
+The version includes the prepared input adapter and worker changes, not only the
+native package identity. Successful GET/HEAD responses use private immutable
+caching, representation-specific ETags and negotiated gzip; errors are uncached.
+Hosts own snapshot lifetime, permission checks and exact digest routing. A cached
+script grants no authority to view or control an application. Normal HTTPS/client
+trust and browser capability checks still govern video decoding; resource caching
+does not enable secure-context capabilities over an insecure connection.
+
 Both authenticated hellos advertise `floe-input: 1`. Old clients cannot enter
 this input flow. Old sessions must be reopened explicitly without terminating
 unsaved applications. `floe-input(sequence, window, text)` accepts one nonempty,

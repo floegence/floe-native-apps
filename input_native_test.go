@@ -61,6 +61,18 @@ func TestNativeClientInput(t *testing.T) {
 	if err := PrepareInputClient(tools.HTML, filepath.Join(state, "www")); err != nil {
 		t.Fatal(err)
 	}
+	assets, err := OpenClientAssets(filepath.Join(state, "www"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	index, err := os.ReadFile(filepath.Join(state, "www", "index.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := assets.RewriteHTML(index, "/client/"+assets.Digest()+"/"); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("Prepared client resource version: %s", assets.Digest())
 	config := filepath.Join(state, "config.json")
 	data, err := json.Marshal(map[string]any{"root": root, "state": state, "python": python,
 		"xvfb": xvfb, "dbus": dbus, "client_python": tools.Python, "client_environment": environment,

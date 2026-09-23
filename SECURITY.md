@@ -39,6 +39,14 @@ owner identifiers bind admitted operations to callers; they do not authenticate
 a request. Local code running as the same user or an administrator can modify
 that user's state and is outside the private-directory trust boundary.
 
+Client resource snapshots read only recognized static files from a prepared
+private HTML directory, reject asset symlinks and bound file count/size. Their
+digest covers the actual transformed bytes. Documents, configuration and session
+data are excluded. A host must authorize requests before selecting the exact
+resource digest and must keep session documents and control traffic authenticated
+and uncached, including after a viewer reuses cached scripts. The SDK never
+installs certificate trust or bypasses browser security to enable video decoding.
+
 Prepared tools and user applications run with host user permissions. This is
 not an application sandbox. Applications must receive their original library
 and interpreter environment, with only the private session's display and bus
