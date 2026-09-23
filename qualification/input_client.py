@@ -32,7 +32,6 @@ class Client(GObjectXpraClient):
         self.failure = False
         self.editing = False
         self.fields = False
-        self.field_sequence = 43
         self.pasting = False
         self.copying = False
         self.cutting = False
@@ -113,8 +112,16 @@ class Client(GObjectXpraClient):
             return True
         if not self.display_configured:
             self.display_configured = True
-            self.send('configure-display', {'desktop-size':(1024*density,768*density),
+            width, height = 1024*density, 768*density
+            self.send('configure-display', {'desktop-size':(width,height),
                       'floe-display-density':density,'dpi':{'x':96*density,'y':96*density}})
+            # The viewer owns normal-window geometry and resizes it along with
+            # the desktop. Qt 6 also needs the resulting ConfigureNotify to
+            # reconcile its logical layout with a changed backing density.
+            self.origin = (0, 0)
+            self.canvas = Image.new('RGB', (width,height))
+            self.painted = False
+            self.send('configure-window', self.wid, 0, 0, width, height, {})
             return True
         if kind == 'chromium':
             if not receipt.with_suffix('.ready').exists():
@@ -195,26 +202,20 @@ class Client(GObjectXpraClient):
         if not self.failure and self.editing and not self.fields and self.acknowledged == 42 and actual == ['完成🙂', '']:
             print('PASS', kind, 'selection replacement and deletion preserve exact Unicode', flush=True)
             self.fields = True
+            for sequence in range(43, 55):
+                x = self.canvas.width * (1 if sequence % 2 else 3) // 4
+                coords = [self.origin[0] + x, self.origin[1] + 80]
+                self.send('pointer-position', self.wid, coords, [])
+                self.send('button-action', self.wid, 1, True, coords, [])
+                self.send('button-action', self.wid, 1, False, coords, [])
+                self.send('key-action', self.wid, 'Control_L', True, ['control'], 65507, '', 17, 0)
+                self.send('key-action', self.wid, 'End', True, ['control'], 65367, '', 35, 0)
+                self.send('key-action', self.wid, 'End', False, ['control'], 65367, '', 35, 0)
+                self.send('key-action', self.wid, 'Control_L', False, [], 65507, '', 17, 0)
+                self.send('floe-input', sequence, self.wid, '[' + str(sequence) + ']🙂')
             return True
         fields = ['完成🙂' + ''.join('[' + str(n) + ']🙂' for n in range(43, 55, 2)),
                   ''.join('[' + str(n) + ']🙂' for n in range(44, 55, 2))]
-        if not self.failure and self.fields and not self.pasting and self.field_sequence < 55:
-            sequence = self.field_sequence
-            self.field_sequence += 1
-            x = self.canvas.width * (1 if sequence % 2 else 3) // 4
-            # Xpra window packets remain logical dimensions while the private
-            # X11 display is native-density pixels. Pointer packets therefore
-            # use the negotiated physical coordinate space.
-            coords = [self.origin[0] + x * density, self.origin[1] + 80 * density]
-            self.send('pointer-position', self.wid, coords, [])
-            self.send('button-action', self.wid, 1, True, coords, [])
-            self.send('button-action', self.wid, 1, False, coords, [])
-            self.send('key-action', self.wid, 'Control_L', True, ['control'], 65507, '', 17, 0)
-            self.send('key-action', self.wid, 'End', True, ['control'], 65367, '', 35, 0)
-            self.send('key-action', self.wid, 'End', False, ['control'], 65367, '', 35, 0)
-            self.send('key-action', self.wid, 'Control_L', False, [], 65507, '', 17, 0)
-            self.send('floe-input', sequence, self.wid, '[' + str(sequence) + ']🙂')
-            return True
         if not self.failure and self.fields and not self.pasting and self.acknowledged == 54 and actual == fields:
             print('PASS', kind, '12 pointer focus changes preserve exact per-field order', flush=True)
             self.pasting = True
