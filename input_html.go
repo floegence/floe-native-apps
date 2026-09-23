@@ -13,8 +13,8 @@ import (
 var inputClientSource embed.FS
 
 // PrepareInputClient prepares an Xpra HTML5 v20/v21 distribution with exactly
-// one external keyboard owner. It retains the original graphics, pointer and
-// clipboard protocol implementations. The destination must not exist. Neither
+// one external keyboard owner and one external pointer owner. It retains the
+// graphics, clipboard and pointer transport. The destination must not exist. Neither
 // a failed preparation nor an unsupported source is usable as a client.
 // Consumers serve this directory through the same authenticated Xpra endpoint.
 func PrepareInputClient(source, destination string) error {
@@ -50,6 +50,10 @@ func PrepareInputClient(source, destination string) error {
 		return err
 	}
 	index, client, window, err = prepareDisplayHTML(index, client, window)
+	if err != nil {
+		return err
+	}
+	index, client, window, err = preparePointerHTML(index, client, window)
 	if err != nil {
 		return err
 	}
@@ -107,7 +111,7 @@ func PrepareInputClient(source, destination string) error {
 		return err
 	}
 	adapter, _ := inputClientSource.ReadFile("input_client.js")
-	for name, data := range map[string][]byte{"index.html": index, "js/Client.js": client, "js/FloeInput.js": adapter, "js/Protocol.js": protocol, "js/Window.js": window, "js/FloeCursor.js": cursorSource, "js/FloeDisplay.js": displaySource} {
+	for name, data := range map[string][]byte{"index.html": index, "js/Client.js": client, "js/FloeInput.js": adapter, "js/Protocol.js": protocol, "js/Window.js": window, "js/FloeCursor.js": cursorSource, "js/FloeDisplay.js": displaySource, "js/FloePointer.js": pointerSource} {
 		if err = os.WriteFile(filepath.Join(destination, name), data, 0600); err != nil {
 			return err
 		}

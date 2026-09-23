@@ -16,6 +16,7 @@ import time
 config = json.loads(Path(sys.argv[1]).read_text())
 source = Path(__file__).resolve().parent
 state = Path(config['state'])
+pointer_mode = os.environ.get('FLOE_TEST_POINTER_NATIVE') == '1'
 native_env = dict(item.split('=', 1) for item in config['environment'] if '=' in item)
 for key in ('DISPLAY', 'WAYLAND_DISPLAY', 'XAUTHORITY', 'DBUS_SESSION_BUS_ADDRESS',
             'IBUS_ADDRESS', 'IBUS_ADDRESS_FILE'):
@@ -64,7 +65,7 @@ def qualify(kind):
             application += ['-u', key]
         if kind == 'terminal':
             application += ['xterm', '-u8', '-geometry', '80x20', '-xrm', 'XTerm*inputMethod:floe-client',
-                            '-e', '/usr/bin/python3', str(source / 'input_fixture.py'), kind, str(receipt)]
+                            '-e', '/usr/bin/python3', str(source / ('pointer_fixture.py' if pointer_mode else 'input_fixture.py')), kind, str(receipt)]
         elif kind == 'chromium':
             class Handler(BaseHTTPRequestHandler):
                 def log_message(self, *_args):
@@ -74,6 +75,9 @@ def qualify(kind):
                     self.send_response(200)
                     self.send_header('Content-Type', 'text/html; charset=utf-8')
                     self.end_headers()
+                    if pointer_mode:
+                        self.wfile.write((source / 'pointer_fixture.html').read_bytes())
+                        return
                     self.wfile.write(b'''<!doctype html><style>html,body{background:#13579b;min-height:100vh}</style>
 <textarea autofocus rows="10" style="width:45%"></textarea><textarea rows="10" style="width:45%"></textarea><script>
 const editors=[...document.querySelectorAll('textarea')],t=editors[0];let pending=Promise.resolve();
@@ -107,13 +111,13 @@ for(const editor of editors)editor.addEventListener('input',()=>{const body=JSON
                             '--no-first-run', '--no-default-browser-check', '--ozone-platform=x11',
                             '--app=http://127.0.0.1:' + str(http.server_port) + '/']
         else:
-            application += ['/usr/bin/python3', str(source / 'input_fixture.py'), kind, str(receipt)]
+            application += ['/usr/bin/python3', str(source / ('pointer_fixture.py' if pointer_mode else 'input_fixture.py')), kind, str(receipt)]
         listener = socket.socket()
         listener.bind(('127.0.0.1', 0))
         port = listener.getsockname()[1]
         listener.close()
         args = [config['python'], config['launcher'], 'start', '--daemon=no', '--systemd-run=no',
-                '--attach=no', '--use-display=no', '--html=no', '--source=', '--source-start=',
+                '--attach=no', '--use-display=no', '--html=' + (str(state / 'www') if pointer_mode else 'no'), '--source=', '--source-start=',
                 '--socket-dir=' + str(directory), '--socket-dirs=' + str(directory),
                 '--sessions-dir=' + str(directory / 'sessions'), '--bind-ws=127.0.0.1:' + str(port),
                 '--ws-auth=file:filename=' + str(password),
@@ -138,9 +142,14 @@ for(const editor of editors)editor.addEventListener('input',()=>{const body=JSON
                     raise RuntimeError('Private Xpra server did not become ready') from None
                 time.sleep(.05)
         client_environment = dict(item.split('=', 1) for item in config['client_environment'] if '=' in item)
-        client = subprocess.run([config['client_python'], str(source / 'input_client.py'), str(receipt),
-                                 'ws://127.0.0.1:' + str(port), kind, str(config['density'])], env=client_environment,
-                                capture_output=True, text=True, timeout=40)
+        if pointer_mode:
+            client = subprocess.run(['node', str(source / 'pointer_native.mjs'), str(receipt),
+                                     'http://127.0.0.1:' + str(port), kind],
+                                    capture_output=True, text=True, timeout=80)
+        else:
+            client = subprocess.run([config['client_python'], str(source / 'input_client.py'), str(receipt),
+                                     'ws://127.0.0.1:' + str(port), kind, str(config['density'])], env=client_environment,
+                                    capture_output=True, text=True, timeout=40)
         if client.returncode or 'PASS ' + kind + ' ' not in client.stdout:
             raise RuntimeError('Application receipt assertion failed: ' + client.stdout + client.stderr)
         print(client.stdout.strip(), flush=True)
@@ -160,7 +169,7 @@ for(const editor of editors)editor.addEventListener('input',()=>{const body=JSON
         if evidence:
             target = Path(evidence) / ('density-' + str(config['density'])) / kind
             target.mkdir(parents=True, exist_ok=True)
-            for name in ('process.json', 'received.json', 'received.unicode.json', 'received.density.json', 'received.json.png', 'received.ready', 'received.hover', 'received.clicked', 'server.log'):
+            for name in ('process.json', 'received.json', 'received.unicode.json', 'received.density.json', 'received.json.png', 'received.ready', 'received.hover', 'received.clicked', 'received.pointer.json', 'server.log'):
                 if (directory / name).exists():
                     shutil.copy2(directory / name, target / name)
                 elif (target / name).exists():

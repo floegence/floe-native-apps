@@ -97,6 +97,23 @@ jobs:
             | tee "$RUNNER_TEMP/qualification/application-versions.log"
           go test -count=1 -run '^TestNative(ClientInput|DisplayInput)$' -v . \
             2>&1 | tee "$RUNNER_TEMP/qualification/client-input.log"
+      - name: Qualify shared pointer ownership and native receipts
+        env:
+          FLOE_TEST_POINTER_BROWSERS: chromium,firefox,webkit
+          FLOE_TEST_POINTER_EVIDENCE: ${{ runner.temp }}/qualification/pointers
+          FLOE_TEST_POINTER_NATIVE: '1'
+          FLOE_TEST_INPUT_FIXTURES: ${{ matrix.arch == 'amd64' && 'gtk,chromium' || 'gtk' }}
+          FLOE_TEST_INPUT_EVIDENCE: ${{ runner.temp }}/qualification/native-pointers
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/input-browsers
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test -count=1 -run '^TestBrowserPointer$' -v .
+          FLOE_TEST_INPUT_ROOT=$(find "$RUNNER_TEMP/native-state/packages" -mindepth 1 -maxdepth 1 -type d)
+          export FLOE_TEST_INPUT_ROOT
+          FLOE_TEST_CHROMIUM_BIN=$(node -e 'console.log(require("./qualification/node_modules/playwright").chromium.executablePath())')
+          export FLOE_TEST_CHROMIUM_BIN
+          go test -count=1 -run '^TestNativeClientInput$' -v .
       - name: Install signed system Xpra fixture
         run: |
           curl --fail --silent --show-error --location https://xpra.org/xpra.asc -o "$RUNNER_TEMP/xpra.asc"

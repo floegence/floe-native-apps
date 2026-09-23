@@ -3,6 +3,8 @@
   "private": true,
   "type": "module",
   "devDependencies": {
-    "playwright": "1.58.2"
+    "@floegence/floe-webapp-core": "0.77.1",
+    "playwright": "1.58.2",
+    "solid-js": "1.9.15"
   }
 }

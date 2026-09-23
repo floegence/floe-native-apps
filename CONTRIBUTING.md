@@ -251,6 +251,17 @@ the receipt driver. Both server installations use the same input adapter and
 application assertions on both architectures. Installation of system fixture
 packages belongs only to disposable test hosts, never production preparation.
 
+The prepared v20/v21 client also exposes the versioned external `floePointer`
+adapter. Content canvases have no Xpra mouse, touch, compatibility-mouse, or wheel
+owner; the shared client controller delivers movement, buttons, and CSS-pixel
+scrolling through the adapter. It retains connection/window/canvas identities and
+the first-frame gate, preserves decoration move/resize handoff, and clears wheel
+remainder on cancellation or target replacement. Pointer qualification consumes
+the published `@floegence/floe-webapp-core` package. Native fixtures assert actual
+GTK and Chromium scroll positions, nested scrolling, taps, double taps, right
+clicks and slider dragging. Browser event tests do not certify physical iOS,
+iPadOS or Android devices.
+
 Hosted qualification installs the downloaded Chromium build's own setuid
 sandbox helper in the disposable runner, following Chromium's documented test
 bot setup. It never disables the browser sandbox or the host's AppArmor policy.
