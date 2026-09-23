@@ -102,7 +102,7 @@ jobs:
           FLOE_TEST_POINTER_BROWSERS: chromium,firefox,webkit
           FLOE_TEST_POINTER_EVIDENCE: ${{ runner.temp }}/qualification/pointers
           FLOE_TEST_POINTER_NATIVE: '1'
-          FLOE_TEST_INPUT_FIXTURES: ${{ matrix.arch == 'amd64' && 'gtk,chromium' || 'gtk' }}
+          FLOE_TEST_INPUT_FIXTURES: gtk,chromium
           FLOE_TEST_INPUT_EVIDENCE: ${{ runner.temp }}/qualification/native-pointers
           PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/input-browsers
         shell: bash

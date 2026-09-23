@@ -1,13 +1,16 @@
 <!doctype html><meta charset="utf-8"><style>
 body{margin:0;background:#eef2f8;font:16px sans-serif}#outer{position:absolute;inset:0;overflow:auto}#content{width:2000px;height:3000px;background:linear-gradient(#eef2f8,#6b8bad)}
-button{position:absolute;top:260px}input{position:absolute;top:320px}#drag{top:100px}button,input{font:inherit;margin:20px;padding:15px}#inner{position:absolute;left:340px;top:70px;width:240px;height:240px;overflow:auto;border:2px solid #345}#inner>div{width:1400px;height:1800px;background:repeating-linear-gradient(#abc 0 40px,#def 40px 80px)}
+button{position:absolute;top:220px}input{position:absolute;top:280px}#drag{top:100px}button,input{font:inherit;margin:20px;padding:15px}#inner{position:absolute;left:340px;top:70px;width:240px;height:240px;overflow:auto;border:2px solid #345}#inner>div{width:1400px;height:1800px;background:repeating-linear-gradient(#abc 0 40px,#def 40px 80px)}
 </style><div id="outer"><div id="content"><button id="tap">Tap target</button><input id="field" value="Select this text"><input type="range" id="drag" style="display:block;width:240px" value="20"></div></div><div id="inner"><div>Nested scrolling</div></div>
 <script>
 const outer=document.querySelector('#outer'),inner=document.querySelector('#inner'),drag=document.querySelector('#drag');
 const state={clicks:0,doubles:0,rights:0,drag:20,outer:[0,0],inner:[0,0]};let pending=Promise.resolve();
-function save(){state.outer=[outer.scrollLeft,outer.scrollTop];state.inner=[inner.scrollLeft,inner.scrollTop];const body=JSON.stringify(state);pending=pending.then(()=>fetch('/received',{method:'POST',body}));}
+state.events=[];
+function save(){state.inset=outerHeight-innerHeight;state.outer=[outer.scrollLeft,outer.scrollTop];state.inner=[inner.scrollLeft,inner.scrollTop];const body=JSON.stringify(state);pending=pending.then(()=>fetch('/received',{method:'POST',body}));}
+for(const type of ['pointerdown','pointerup','click'])document.addEventListener(type,e=>{state.events.push({type,x:e.clientX,y:e.clientY,target:e.target.id});state.events=state.events.slice(-12);save();},true);
 for(const el of [outer,inner])el.addEventListener('scroll',save);
 document.querySelector('#tap').onclick=()=>{state.clicks++;save();};document.querySelector('#tap').ondblclick=()=>{state.doubles++;save();};
 document.addEventListener('contextmenu',e=>{e.preventDefault();state.rights++;save();});drag.oninput=()=>{state.drag=Number(drag.value);save();};
 window.addEventListener('load',()=>{state.inset=outerHeight-innerHeight;save();fetch('/ready',{method:'POST'});});
+window.addEventListener('resize',save);
 </script>

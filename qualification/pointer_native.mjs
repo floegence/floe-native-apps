@@ -26,6 +26,7 @@ try {
  async function wait(check,label){
   const end=Date.now()+5000;let last;
   while(Date.now()<end){last=await read();if(check(last)){evidence.push({label,result:last});return last;}await new Promise(r=>setTimeout(r,30));}
+  await page.screenshot({path:receipt+'.png'});
   throw Error(label+' failed: '+JSON.stringify(last));
  }
  const initial=await wait(r=>Array.isArray(r.outer),'fixture ready');
@@ -46,9 +47,9 @@ try {
  await page.mouse.move(point(80,220).x,point(80,220).y);await page.mouse.wheel(0,-2400);await wait(r=>r.outer[1]===0,'hardware wheel returns to top');
  await touch(460,260,-240,-160);
  await wait(r=>r.inner[0]>0&&r.inner[1]>0&&r.outer[1]===0,'diagonal nested scroll stays at initial hit point');
- await touch(80,310);await wait(r=>r.clicks===1,'single tap reaches actual button');
- await touch(80,310);await touch(80,310);await wait(r=>r.clicks>=3&&r.doubles>=1,'double tap reaches actual application');
- await touch(80,220,0,0,500);await wait(r=>r.rights>=1,'hold release delivers right click');
+ await touch(80,250);await wait(r=>r.clicks===1,'single tap reaches actual button');
+ await touch(80,250);await touch(80,250);await wait(r=>r.clicks>=3&&r.doubles>=1,'double tap reaches actual application');
+ await touch(80,200,0,0,500);await wait(r=>r.rights>=1,'hold release delivers right click');
  await touch(80,125,120,0,500);await wait(r=>r.drag>30,'hold drag changes native slider');
  assert.deepEqual(errors,[]);
  await page.screenshot({path:receipt+'.png'});
