@@ -32,6 +32,7 @@ class Client(GObjectXpraClient):
         self.failure = False
         self.editing = False
         self.fields = False
+        self.field_sequence = 43
         self.pasting = False
         self.copying = False
         self.cutting = False
@@ -194,20 +195,23 @@ class Client(GObjectXpraClient):
         if not self.failure and self.editing and not self.fields and self.acknowledged == 42 and actual == ['完成🙂', '']:
             print('PASS', kind, 'selection replacement and deletion preserve exact Unicode', flush=True)
             self.fields = True
-            for sequence in range(43, 55):
-                x = self.canvas.width * (1 if sequence % 2 else 3) // 4
-                coords = [self.origin[0] + x, self.origin[1] + 80]
-                self.send('pointer-position', self.wid, coords, [])
-                self.send('button-action', self.wid, 1, True, coords, [])
-                self.send('button-action', self.wid, 1, False, coords, [])
-                self.send('key-action', self.wid, 'Control_L', True, ['control'], 65507, '', 17, 0)
-                self.send('key-action', self.wid, 'End', True, ['control'], 65367, '', 35, 0)
-                self.send('key-action', self.wid, 'End', False, ['control'], 65367, '', 35, 0)
-                self.send('key-action', self.wid, 'Control_L', False, [], 65507, '', 17, 0)
-                self.send('floe-input', sequence, self.wid, '[' + str(sequence) + ']🙂')
             return True
         fields = ['完成🙂' + ''.join('[' + str(n) + ']🙂' for n in range(43, 55, 2)),
                   ''.join('[' + str(n) + ']🙂' for n in range(44, 55, 2))]
+        if not self.failure and self.fields and not self.pasting and self.field_sequence < 55:
+            sequence = self.field_sequence
+            self.field_sequence += 1
+            x = self.canvas.width * (1 if sequence % 2 else 3) // 4
+            coords = [self.origin[0] + x, self.origin[1] + 80]
+            self.send('pointer-position', self.wid, coords, [])
+            self.send('button-action', self.wid, 1, True, coords, [])
+            self.send('button-action', self.wid, 1, False, coords, [])
+            self.send('key-action', self.wid, 'Control_L', True, ['control'], 65507, '', 17, 0)
+            self.send('key-action', self.wid, 'End', True, ['control'], 65367, '', 35, 0)
+            self.send('key-action', self.wid, 'End', False, ['control'], 65367, '', 35, 0)
+            self.send('key-action', self.wid, 'Control_L', False, [], 65507, '', 17, 0)
+            self.send('floe-input', sequence, self.wid, '[' + str(sequence) + ']🙂')
+            return True
         if not self.failure and self.fields and not self.pasting and self.acknowledged == 54 and actual == fields:
             print('PASS', kind, '12 pointer focus changes preserve exact per-field order', flush=True)
             self.pasting = True
