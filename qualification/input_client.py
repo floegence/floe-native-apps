@@ -202,7 +202,10 @@ class Client(GObjectXpraClient):
             sequence = self.field_sequence
             self.field_sequence += 1
             x = self.canvas.width * (1 if sequence % 2 else 3) // 4
-            coords = [self.origin[0] + x, self.origin[1] + 80]
+            # Xpra window packets remain logical dimensions while the private
+            # X11 display is native-density pixels. Pointer packets therefore
+            # use the negotiated physical coordinate space.
+            coords = [self.origin[0] + x * density, self.origin[1] + 80 * density]
             self.send('pointer-position', self.wid, coords, [])
             self.send('button-action', self.wid, 1, True, coords, [])
             self.send('button-action', self.wid, 1, False, coords, [])
