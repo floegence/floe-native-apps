@@ -124,16 +124,18 @@ class Client(GObjectXpraClient):
             self.send('configure-window', self.wid, 0, 0, width, height, {})
             return True
         if kind == 'chromium':
+            pointer_x = 80 * density
+            pointer_y = 80 * density
             if not receipt.with_suffix('.ready').exists():
                 return True
             if not receipt.with_suffix('.hover').exists():
                 self.hover_moves += 1
                 self.send('pointer-position', self.wid,
-                          [self.origin[0] + 80 + self.hover_moves % 2, self.origin[1] + 80], [])
+                          [self.origin[0] + pointer_x + self.hover_moves % 2, self.origin[1] + pointer_y], [])
                 return True
             if not self.clicked:
                 self.clicked = True
-                coords = [self.origin[0] + 80, self.origin[1] + 80]
+                coords = [self.origin[0] + pointer_x, self.origin[1] + pointer_y]
                 self.send('pointer-position', self.wid, coords, [])
                 self.send('button-action', self.wid, 1, True, coords, [])
                 self.send('button-action', self.wid, 1, False, coords, [])
