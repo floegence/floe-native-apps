@@ -328,9 +328,11 @@ toolkit context or the commit-only xcb-imdkit bridge, without clipboard injectio
 Probe the interpreter owning Xpra with `ProbeClientInput`. Managed tools expose
 `Tools.Python`; `SystemClientInputPython` resolves a supported installed script's
 interpreter. Both use the same launcher and scheduler. The current contract
-requires Xpra 6.2.x, GIO and xcb-imdkit/xcb libraries; managed r3 supplies that
+requires the Xpra 6 server API, GIO and xcb-imdkit/xcb libraries; managed r3 supplies that
 closure. Existing r1/r2 installations remain identifiable for surviving apps
 but do not acquire this capability merely by upgrading the SDK.
+The same aggregate server adapter is qualified with managed Xpra 6.2.2 and
+system Xpra 6.5.3; it does not depend on their different internal input mixins.
 
 `PrepareClientInput` installs adapters in a new private session directory. Run
 its `Launcher` with that interpreter, normal Xpra arguments and `XpraArgs`.

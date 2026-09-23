@@ -88,6 +88,32 @@ jobs:
             | tee "$RUNNER_TEMP/qualification/application-versions.log"
           go test -count=1 -run '^TestNativeClientInput$' -v . \
             2>&1 | tee "$RUNNER_TEMP/qualification/client-input.log"
+      - name: Install signed system Xpra fixture
+        run: |
+          curl --fail --silent --show-error --location https://xpra.org/xpra.asc -o "$RUNNER_TEMP/xpra.asc"
+          sudo install -m 644 "$RUNNER_TEMP/xpra.asc" /usr/share/keyrings/xpra.asc
+          printf '%s\n' 'deb [signed-by=/usr/share/keyrings/xpra.asc] https://xpra.org noble main' \
+            | sudo tee /etc/apt/sources.list.d/xpra.list
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            xpra-server=6.5.3-r0-1 xpra-common=6.5.3-r0-1 xpra-x11=6.5.3-r0-1 xpra-codecs=6.5.3-r0-1 \
+            libxcb-imdkit1 libxcb-util1 dbus xauth
+      - name: Qualify the same input contract with system Xpra
+        env:
+          FLOE_TEST_INPUT_SYSTEM: '1'
+          FLOE_TEST_INPUT_EVIDENCE: ${{ runner.temp }}/qualification/system-client-input
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/input-browsers
+        shell: bash
+        run: |
+          set -euo pipefail
+          FLOE_TEST_INPUT_ROOT=$(find "$RUNNER_TEMP/native-state/packages" -mindepth 1 -maxdepth 1 -type d)
+          export FLOE_TEST_INPUT_ROOT
+          FLOE_TEST_CHROMIUM_BIN=$(python3 -c 'import os,pathlib; p=list(pathlib.Path(os.environ["PLAYWRIGHT_BROWSERS_PATH"]).rglob("chrome")); assert len(p)==1; print(p[0])')
+          export FLOE_TEST_CHROMIUM_BIN
+          dpkg-query -W xpra-server xpra-common xpra-x11 xpra-codecs libxcb-imdkit1 \
+            | tee "$RUNNER_TEMP/qualification/system-input-versions.log"
+          go test -count=1 -run '^TestNativeClientInput$' -v . \
+            2>&1 | tee "$RUNNER_TEMP/qualification/system-client-input.log"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:

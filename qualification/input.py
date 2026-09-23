@@ -137,8 +137,9 @@ for(const editor of editors)editor.addEventListener('input',()=>{const body=JSON
                 if time.monotonic() >= deadline:
                     raise RuntimeError('Private Xpra server did not become ready') from None
                 time.sleep(.05)
-        client = subprocess.run([config['python'], str(source / 'input_client.py'), str(receipt),
-                                 'ws://127.0.0.1:' + str(port), kind], env=environment,
+        client_environment = dict(item.split('=', 1) for item in config['client_environment'] if '=' in item)
+        client = subprocess.run([config['client_python'], str(source / 'input_client.py'), str(receipt),
+                                 'ws://127.0.0.1:' + str(port), kind], env=client_environment,
                                 capture_output=True, text=True, timeout=40)
         if client.returncode or 'PASS ' + kind + ' ' not in client.stdout:
             raise RuntimeError('Application receipt assertion failed: ' + client.stdout + client.stderr)

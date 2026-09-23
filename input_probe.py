@@ -3,19 +3,12 @@ import ctypes
 import json
 import xpra
 from xpra.scripts import server
-from xpra.server.mixins.input import InputServer
-from xpra.server.mixins.window import WindowServer
-from xpra.server.mixins.clipboard import ClipboardServer
 from xpra.os_util import gi_import
 
-if not xpra.__version__.startswith('6.2.'):
-    raise RuntimeError('Client input requires the qualified Xpra 6.2 API')
-for owner, methods in ((server, ('make_seamless_server',)),
-                       (InputServer, ('setup', 'cleanup', 'get_server_features', 'init_packet_handlers')),
-                       (WindowServer, ('init_packet_handlers',)),
-                       (ClipboardServer, ('init_packet_handlers', '_process_clipboard_packet'))):
-    if not all(callable(getattr(owner, method, None)) for method in methods):
-        raise RuntimeError('Installed Xpra input API is unsupported')
+if not xpra.__version__.startswith('6.'):
+    raise RuntimeError('Client input requires the qualified Xpra 6 API')
+if not callable(getattr(server, 'make_seamless_server', None)):
+    raise RuntimeError('Installed Xpra input API is unsupported')
 gi_import('Gio')
 for name, symbols in (
         ('libxcb.so.1', ('xcb_connect', 'xcb_send_event', 'xcb_get_keyboard_mapping',

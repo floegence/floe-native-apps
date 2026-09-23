@@ -18,9 +18,6 @@ def private_logging(previous):
 
 
 def install_server_input(address):
-    from xpra.server.mixins.input import InputServer
-    from xpra.server.mixins.window import WindowServer
-    from xpra.server.mixins.clipboard import ClipboardServer
     from xpra.server.base import ServerBase
     from xpra.x11.bindings.core import X11CoreBindings
     from xpra.os_util import gi_import
@@ -28,13 +25,11 @@ def install_server_input(address):
     from input_xim import XIM
     from input_context import Contexts
     GLib = gi_import('GLib')
-    original_setup = InputServer.setup
-    original_cleanup = InputServer.cleanup
-    original_features = InputServer.get_server_features
-    original_hello = InputServer.parse_hello
-    original_input_handlers = InputServer.init_packet_handlers
-    original_window_handlers = WindowServer.init_packet_handlers
-    original_clipboard_handlers = ClipboardServer.init_packet_handlers
+    original_setup = ServerBase.setup
+    original_cleanup = ServerBase.do_cleanup
+    original_features = ServerBase.get_server_features
+    original_hello = ServerBase.parse_hello
+    original_handlers = ServerBase.init_packet_handlers
     original_process_packet = ServerBase.process_packet
     original_cleanup_protocol = ServerBase.cleanup_protocol
 
@@ -57,13 +52,14 @@ def install_server_input(address):
     def features(self, source=None):
         return {**original_features(self, source), 'floe-input': 1, 'floe-input-text-limit': 16000}
 
-    def parse_hello(self, source, caps, send_ui):
+    def parse_hello(self, source, caps, *args):
         source.floe_input_version = caps.intget('floe-input', 0)
-        original_hello(self, source, caps, send_ui)
+        return original_hello(self, source, caps, *args)
 
     def wrap(self, names):
         for name in names:
-            original = self._authenticated_ui_packet_handlers.get(name)
+            original = (self._authenticated_ui_packet_handlers.get(name) or
+                        self._authenticated_packet_handlers.get(name))
             if original:
                 def ordered(protocol, packet, handler=original):
                     def apply(active, data):
@@ -72,17 +68,18 @@ def install_server_input(address):
                         # prior input before asking the X server to deliver it.
                         X11CoreBindings().XSync()
                     self.floe_input.enqueue(protocol, packet, apply)
-                self._authenticated_ui_packet_handlers[name] = ordered
+                # Older Xpra registration does not remove a handler from the
+                # other queue. Keep exactly one authoritative dispatch entry.
+                self._authenticated_packet_handlers.pop(name, None)
+                self.add_packet_handler(name, ordered, True)
 
-    def input_handlers(self):
-        original_input_handlers(self)
+    def handlers(self):
+        original_handlers(self)
         wrap(self, ('key-action', 'key-repeat', 'pointer-button', 'button-action',
-                    'pointer', 'pointer-position', 'wheel-motion', 'layout-changed', 'keymap-changed'))
-        self.add_packet_handler('floe-input', lambda protocol, packet: self.floe_input.enqueue(protocol, packet))
-
-    def window_handlers(self):
-        original_window_handlers(self)
-        wrap(self, ('focus', 'close-window', 'configure-window', 'map-window', 'unmap-window'))
+                    'pointer', 'pointer-position', 'wheel-motion', 'layout-changed', 'keymap-changed',
+                    'focus', 'close-window', 'configure-window', 'map-window', 'unmap-window',
+                    'clipboard-token'))
+        self.add_packet_handler('floe-input', lambda protocol, packet: self.floe_input.enqueue(protocol, packet), True)
 
     def clipboard_packet(self, protocol, packet):
         # Already running on Xpra's authenticated UI queue. Do not defer the
@@ -94,12 +91,6 @@ def install_server_input(address):
             self._process_clipboard_status(protocol, packet)
         elif source is self._clipboard_client and source.clipboard_enabled and self._clipboard_helper:
             self._clipboard_helper.process_clipboard_packet(packet)
-
-    def clipboard_handlers(self):
-        original_clipboard_handlers(self)
-        # A clipboard response must remain able to complete a selection request
-        # from an application. Only a new selection claim is ordered with input.
-        wrap(self, ('clipboard-token',))
 
     def process_packet(self, protocol, packet):
         if packet and packet[0] in ('floe-input', b'floe-input'):
@@ -130,14 +121,14 @@ def install_server_input(address):
             dispatcher.drain()
         return result
 
-    InputServer.setup = setup
-    InputServer.cleanup = cleanup
-    InputServer.get_server_features = features
-    InputServer.parse_hello = parse_hello
-    InputServer.init_packet_handlers = input_handlers
-    WindowServer.init_packet_handlers = window_handlers
-    ClipboardServer._process_clipboard_packet = clipboard_packet
-    ClipboardServer.init_packet_handlers = clipboard_handlers
+    # The aggregate server boundary is stable across Xpra 6's internal mixin
+    # and subsystem reorganization. There is one input adapter and scheduler.
+    ServerBase.setup = setup
+    ServerBase.do_cleanup = cleanup
+    ServerBase.get_server_features = features
+    ServerBase.parse_hello = parse_hello
+    ServerBase.init_packet_handlers = handlers
+    ServerBase._process_clipboard_packet = clipboard_packet
     ServerBase.process_packet = process_packet
     ServerBase.cleanup_protocol = cleanup_protocol
 

@@ -183,6 +183,13 @@ a focused development subset; releases must leave it unset and run every fixture
 on both architectures. These tests do not certify real client IMEs or mobile
 keyboards.
 
+The same test also runs with `FLOE_TEST_INPUT_SYSTEM=1` against system Xpra
+6.5.3 from its publisher's signed Ubuntu repository. This selects the installed
+Xpra interpreter, Xvfb and D-Bus while retaining the managed protocol client as
+the receipt driver. Both server installations use the same input adapter and
+application assertions on both architectures. Installation of system fixture
+packages belongs only to disposable test hosts, never production preparation.
+
 Hosted qualification installs the downloaded Chromium build's own setuid
 sandbox helper in the disposable runner, following Chromium's documented test
 bot setup. It never disables the browser sandbox or the host's AppArmor policy.

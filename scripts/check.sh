@@ -19,7 +19,7 @@ go mod verify
 go vet ./...
 go test -race -count=1 ./...
 go tool actionlint -shellcheck= -pyflakes=
-python3 -m unittest input_context_test input_dispatch_test input_logging_test input_xim_test
+python3 -m unittest input_context_test input_dispatch_test input_logging_test input_xim_test input_xpra_test
 python3 - <<'PY'
 import ast
 from pathlib import Path

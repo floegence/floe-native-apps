@@ -28,7 +28,28 @@ func TestNativeClientInput(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 	environment := tools.Environment(os.Environ())
-	capability, err := ProbeClientInput(ctx, tools.Python, environment)
+	python, xvfb, dbus := tools.Python, tools.Xvfb, filepath.Join(root, "floe", "bin", "dbus-daemon")
+	serverEnvironment := environment
+	if os.Getenv("FLOE_TEST_INPUT_SYSTEM") == "1" {
+		xpra, err := exec.LookPath("xpra")
+		if err != nil {
+			t.Fatal(err)
+		}
+		serverEnvironment = os.Environ()
+		python, err = SystemClientInputPython(ctx, xpra, serverEnvironment)
+		if err != nil {
+			t.Fatal(err)
+		}
+		xvfb, err = exec.LookPath("Xvfb")
+		if err != nil {
+			t.Fatal(err)
+		}
+		dbus, err = exec.LookPath("dbus-daemon")
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	capability, err := ProbeClientInput(ctx, python, serverEnvironment)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,9 +62,9 @@ func TestNativeClientInput(t *testing.T) {
 		t.Fatal(err)
 	}
 	config := filepath.Join(state, "config.json")
-	data, err := json.Marshal(map[string]any{"root": root, "state": state, "python": tools.Python,
-		"xvfb": tools.Xvfb, "dbus": filepath.Join(root, "floe", "bin", "dbus-daemon"),
-		"launcher": input.Launcher, "args": input.XpraArgs(os.Environ()), "environment": environment,
+	data, err := json.Marshal(map[string]any{"root": root, "state": state, "python": python,
+		"xvfb": xvfb, "dbus": dbus, "client_python": tools.Python, "client_environment": environment,
+		"launcher": input.Launcher, "args": input.XpraArgs(os.Environ()), "environment": serverEnvironment,
 		"capability": capability})
 	if err != nil {
 		t.Fatal(err)
