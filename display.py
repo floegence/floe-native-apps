@@ -49,8 +49,22 @@ def install_display(server):
 
     def handlers():
         original_handlers()
-        original = (server._authenticated_ui_packet_handlers.get('configure-display') or
-                    server._authenticated_packet_handlers.get('configure-display'))
+        # Xpra 6.2 keeps the packet name used by the HTML client, while Xpra
+        # 6.5 registers the renamed canonical packet and exposes the old name
+        # only through its legacy alias table. Wrap whichever reviewed name
+        # the installed server actually registered so both versions retain one
+        # authenticated dispatch boundary.
+        packet_name = None
+        original = None
+        for name in ('configure-display', 'display-configure'):
+            for registry in (server._authenticated_ui_packet_handlers,
+                             server._authenticated_packet_handlers):
+                if name in registry:
+                    packet_name = name
+                    original = registry[name]
+                    break
+            if original is not None:
+                break
         if original is None:
             raise RuntimeError('Authenticated display configuration is unavailable')
 
@@ -66,8 +80,8 @@ def install_display(server):
             if applied_density != server.floe_display_density:
                 settings(current_settings)
 
-        server._authenticated_packet_handlers.pop('configure-display', None)
-        server.add_packet_handler('configure-display', configure, True)
+        server._authenticated_packet_handlers.pop(packet_name, None)
+        server.add_packet_handler(packet_name, configure, True)
 
     def features(source=None):
         return {**original_features(source), 'floe-display': 1}

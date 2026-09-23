@@ -19,7 +19,7 @@ class DisplayTest(unittest.TestCase):
         for value in [True,False,0,5,1.5,'2',None,float('nan')]:
             with self.subTest(value=value), self.assertRaises(ValueError):density(value)
 
-    def fixture(self):
+    def fixture(self, packet_name='configure-display'):
         events=[]
         class Server:
             change_settings=True
@@ -29,7 +29,7 @@ class DisplayTest(unittest.TestCase):
                 return args
             def init_packet_handlers(self):
                 self._authenticated_ui_packet_handlers={}
-                self._authenticated_packet_handlers={'configure-display':lambda p,data:self.set_xsettings((3,[])) if self.change_settings else None}
+                self._authenticated_packet_handlers={packet_name:lambda p,data:self.set_xsettings((3,[])) if self.change_settings else None}
             def get_server_features(self,source=None):return {'existing':True}
             def get_server_source(self,protocol):return object() if protocol=='owned' else None
             def add_packet_handler(self,name,handler,ui):
@@ -69,5 +69,14 @@ class DisplayTest(unittest.TestCase):
         values={n:v for _,n,v,_ in events[-1][1][1]}
         self.assertEqual(values[b'Gdk/WindowScalingFactor'],1)
         self.assertEqual(values[b'Net/ThemeName'],'Adwaita')
+
+    def test_new_xpra_display_packet_name_keeps_one_authenticated_boundary(self):
+        server, events = self.fixture('display-configure')
+        server.parse_hello(None, {'floe-display': 1})
+        configure = server._authenticated_ui_packet_handlers['display-configure']
+        configure('owned', ['display-configure', {'floe-display-density': 2}])
+        self.assertEqual(server.floe_display_density, 2)
+        self.assertNotIn('display-configure', server._authenticated_packet_handlers)
+        self.assertEqual(len(events), 2)
 
 if __name__=='__main__':unittest.main()
