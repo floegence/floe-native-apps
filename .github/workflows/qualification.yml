@@ -67,6 +67,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y python3-gi gir1.2-gtk-3.0 python3-pyqt5 python3-pyqt6 xterm
           npx --yes playwright@1.58.2 install --with-deps chromium
+          # Install Chromium's supplied sandbox only in this disposable runner.
+          # Ubuntu's policy requires it for a browser outside a packaged profile.
+          sandbox=$(python3 -c 'import os,pathlib; p=list(pathlib.Path(os.environ["PLAYWRIGHT_BROWSERS_PATH"]).rglob("chrome_sandbox")); assert len(p)==1; print(p[0])')
+          sudo install -o root -g root -m 4755 "$sandbox" "$RUNNER_TEMP/chrome-devel-sandbox"
+          echo "CHROME_DEVEL_SANDBOX=$RUNNER_TEMP/chrome-devel-sandbox" >> "$GITHUB_ENV"
       - name: Qualify authenticated client input in native applications
         env:
           FLOE_TEST_INPUT_EVIDENCE: ${{ runner.temp }}/qualification/client-input

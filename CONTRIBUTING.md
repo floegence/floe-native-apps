@@ -183,6 +183,12 @@ a focused development subset; releases must leave it unset and run every fixture
 on both architectures. These tests do not certify real client IMEs or mobile
 keyboards.
 
+Hosted qualification installs the downloaded Chromium build's own setuid
+sandbox helper in the disposable runner, following Chromium's documented test
+bot setup. It never disables the browser sandbox or the host's AppArmor policy.
+This provisioning belongs only to the fixture; product runtime preparation does
+not install privileged components or modify application sandbox settings.
+
 Build first-party modules natively with `scripts/input_builder.Dockerfile`, using
 the original architecture-specific Debian digest in the existing build record
 and `QT_MAJOR=5` or `6`. Copy the fixture host's certificate bundle to the ignored
