@@ -41,6 +41,14 @@ func PrepareInputClient(source, destination string) error {
 	if err != nil {
 		return err
 	}
+	window, err := os.ReadFile(filepath.Join(source, "js", "Window.js"))
+	if err != nil {
+		return err
+	}
+	index, client, window, err = prepareCursorHTML(index, client, window)
+	if err != nil {
+		return err
+	}
 	if err = os.Mkdir(destination, 0700); err != nil {
 		return err
 	}
@@ -95,7 +103,7 @@ func PrepareInputClient(source, destination string) error {
 		return err
 	}
 	adapter, _ := inputClientSource.ReadFile("input_client.js")
-	for name, data := range map[string][]byte{"index.html": index, "js/Client.js": client, "js/FloeInput.js": adapter, "js/Protocol.js": protocol} {
+	for name, data := range map[string][]byte{"index.html": index, "js/Client.js": client, "js/FloeInput.js": adapter, "js/Protocol.js": protocol, "js/Window.js": window, "js/FloeCursor.js": cursorSource} {
 		if err = os.WriteFile(filepath.Join(destination, name), data, 0600); err != nil {
 			return err
 		}

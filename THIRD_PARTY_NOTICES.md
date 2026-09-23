@@ -12,12 +12,14 @@ redistributed by this module.
 [v21](https://github.com/Xpra-org/xpra-html5/tree/v21/html5), compressed only to
 reduce fixture size. These files retain their original copyright notices and
 are licensed under the [Mozilla Public License 2.0](licenses/xpra-html5-MPL-2.0.txt).
-`Client-v20.js`, `index-v20.html`, `Keycodes-v20.js` and `Protocol.js` come from
+`Client-v20.js`, `Window-v20.js`, `index-v20.html`, `Keycodes-v20.js` and `Protocol.js` come from
 v20; files with `v21` in their names come from v21.
 
 `PrepareInputClient` modifies a caller's installed Xpra distribution locally.
 Prepared Xpra files retain the publisher's notices and MPL license. The adapter
-in `input_client.js` and the preparation implementation are first-party source.
+in `input_client.js`, the cursor owner in `cursor.js`, and the preparation
+implementation are first-party source. The unmodified `Window.js` fixture from
+both tags has SHA-256 `8381c5b10502bf738cfb1c31a9f68cbe84db89aa644667e8095eacd57fe2d65d`.
 
 ## XIM protocol library and toolkit adapters
 

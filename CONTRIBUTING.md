@@ -158,6 +158,32 @@ architectures using the published v0.2.1 installer to construct the old state.
 
 ## Client input qualification
 
+`PrepareInputClient` also prepares one connection-owned cursor path for reviewed
+HTML v20/v21. Remote PNGs preserve their shape and alpha, with a maximum longest
+edge of 24 CSS pixels and no enlargement of smaller images. Hotspots scale with
+the image. Integral backing density (ceil DPR, bounded to 1 through 4) is declared
+through CSS image-set; it changes resolution, never logical geometry. Malformed
+metadata, images over 1024 pixels per edge or 4 MiB encoded, and failed decodes
+reset to the system cursor. Reset, disconnect and newer packets revoke unfinished
+decodes. Existing application instances retain their prepared resources; consumers
+must not rewrite a live application's assets to upgrade its cursor.
+
+The source gate runs deterministic geometry, ordering and lifecycle tests against
+both original client fixtures without installing a browser. Release qualification
+additionally runs the real PNG decode, CSS image-set, alpha and DPR matrix:
+
+```sh
+npm ci --prefix qualification --ignore-scripts
+node qualification/node_modules/playwright/cli.js install chromium firefox webkit
+FLOE_TEST_CURSOR_BROWSERS=chromium,firefox,webkit \
+FLOE_TEST_CURSOR_EVIDENCE=/absolute/disposable/evidence \
+  go test -count=1 -run '^TestBrowserCursor$' -v .
+```
+
+These browser assertions do not claim to capture the operating system cursor.
+Consumer acceptance must also check actual pointer appearance, hotspot clicks,
+page zoom and monitor changes in the shipped viewer and Desktop.
+
 The source gate tests ordering/revocation and executes the prepared Xpra v20/v21
 JavaScript with its actual keymap tables. It installs no browser. Native
 qualification additionally requires GTK3, PyQt5, PyQt6, xterm, and a native

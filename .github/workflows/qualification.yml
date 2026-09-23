@@ -72,6 +72,15 @@ jobs:
           sandbox=$(python3 -c 'import os,pathlib; p=list(pathlib.Path(os.environ["PLAYWRIGHT_BROWSERS_PATH"]).rglob("chrome_sandbox")); assert len(p)==1; print(p[0])')
           sudo install -o root -g root -m 4755 "$sandbox" "$RUNNER_TEMP/chrome-devel-sandbox"
           echo "CHROME_DEVEL_SANDBOX=$RUNNER_TEMP/chrome-devel-sandbox" >> "$GITHUB_ENV"
+      - name: Qualify prepared browser cursors
+        env:
+          FLOE_TEST_CURSOR_BROWSERS: chromium,firefox,webkit
+          FLOE_TEST_CURSOR_EVIDENCE: ${{ runner.temp }}/qualification/cursors
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/input-browsers
+        run: |
+          npm ci --prefix qualification --ignore-scripts --no-audit --no-fund
+          node qualification/node_modules/playwright/cli.js install --with-deps firefox webkit
+          go test -count=1 -run '^TestBrowserCursor$' -v .
       - name: Qualify authenticated client input in native applications
         env:
           FLOE_TEST_INPUT_EVIDENCE: ${{ runner.temp }}/qualification/client-input
