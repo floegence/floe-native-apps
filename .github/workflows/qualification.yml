@@ -95,7 +95,7 @@ jobs:
           "$FLOE_TEST_CHROMIUM_BIN" --version | tee "$RUNNER_TEMP/qualification/chromium-version.log"
           dpkg-query -W python3-pyqt5 python3-pyqt6 libgtk-3-0t64 xterm \
             | tee "$RUNNER_TEMP/qualification/application-versions.log"
-          go test -count=1 -run '^TestNativeClientInput$' -v . \
+          go test -count=1 -run '^TestNative(ClientInput|DisplayInput)$' -v . \
             2>&1 | tee "$RUNNER_TEMP/qualification/client-input.log"
       - name: Install signed system Xpra fixture
         run: |
@@ -121,7 +121,7 @@ jobs:
           export FLOE_TEST_CHROMIUM_BIN
           dpkg-query -W xpra-server xpra-common xpra-x11 xpra-codecs libxcb-imdkit1 \
             | tee "$RUNNER_TEMP/qualification/system-input-versions.log"
-          go test -count=1 -run '^TestNativeClientInput$' -v . \
+          go test -count=1 -run '^TestNative(ClientInput|DisplayInput)$' -v . \
             2>&1 | tee "$RUNNER_TEMP/qualification/system-client-input.log"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()

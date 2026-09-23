@@ -13,6 +13,7 @@ from xpra.net.websockets.common import client_upgrade
 from xpra.scripts.config import make_defaults_struct, fixup_options
 
 receipt, address, kind = Path(sys.argv[1]), sys.argv[2], sys.argv[3]
+density = int(sys.argv[4])
 text = '你好日本語한글🙂👩🏽‍💻e\u0301𠮷\n第二行'
 long_text = '你🙂e\u0301' * 1500
 expected = (text + ('\r' if kind == 'terminal' else '\n')) * 40 + long_text
@@ -35,10 +36,12 @@ class Client(GObjectXpraClient):
         self.copying = False
         self.cutting = False
         self.clipboard = None
+        self.display_configured = False
 
     def make_hello(self):
         caps = super().make_hello()
         caps.update({'ui_client': True, 'windows': True, 'mouse': True, 'keyboard': True, 'floe-input': 1,
+                     'floe-display': 1, 'dpi': {'x':96, 'y':96},
                      'keyboard_sync': True, 'key_repeat': (0, 0),
                      'clipboard': {'enabled': True, 'greedy': True, 'want_targets': True,
                                    'selections': ['CLIPBOARD'], 'preferred-targets': ['UTF8_STRING']},
@@ -55,6 +58,8 @@ class Client(GObjectXpraClient):
         super().init_packet_handlers()
         for name, handler in (('new-window', self.new_window), ('draw', self.draw),
                               ('configure-window', self.configure_window),
+                              ('window-resized', self.window_resized),
+                              ('window-move-resize', self.window_move_resize),
                               ('floe-input-result', self.result), ('encodings', lambda _: None),
                               ('clipboard-token', self.clipboard_token), ('clipboard-pending-requests', lambda _: None),
                               ('raise-window', lambda _: None)):
@@ -70,6 +75,17 @@ class Client(GObjectXpraClient):
     def configure_window(self, packet):
         if packet[1] == self.wid:
             self.origin = tuple(packet[2:4])
+
+    def window_resized(self, packet):
+        if packet[1] == self.wid:
+            canvas = Image.new('RGB', tuple(packet[2:4]))
+            canvas.paste(self.canvas, (0, 0))
+            self.canvas = canvas
+
+    def window_move_resize(self, packet):
+        if packet[1] == self.wid:
+            self.origin = tuple(packet[2:4])
+            self.window_resized(['window-resized', self.wid, *packet[4:6]])
 
     def draw(self, packet):
         encoding, data = packet[6:8]
@@ -94,6 +110,11 @@ class Client(GObjectXpraClient):
     def ready(self):
         if not self.painted or self.started:
             return True
+        if not self.display_configured:
+            self.display_configured = True
+            self.send('configure-display', {'desktop-size':(1024*density,768*density),
+                      'floe-display-density':density,'dpi':{'x':96*density,'y':96*density}})
+            return True
         if kind == 'chromium':
             if not receipt.with_suffix('.ready').exists():
                 return True
@@ -114,6 +135,15 @@ class Client(GObjectXpraClient):
             return True
         elif kind != 'terminal' and not receipt.exists():
             return True
+        if kind == 'gtk':
+            try:
+                actual_density = json.loads(receipt.with_suffix('.density.json').read_text())
+            except (OSError, ValueError):
+                return True
+            if actual_density['scale'] != density:
+                return True
+            if actual_density['dpi'] != 96:
+                raise RuntimeError('GTK logical text DPI changed with backing density')
         self.started = True
         for sequence in range(1, 41):
             self.send('floe-input', sequence, self.wid, text)

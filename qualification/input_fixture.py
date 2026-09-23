@@ -17,7 +17,7 @@ def save(value):
 if kind == 'gtk':
     import gi
     gi.require_version('Gtk', '3.0')
-    from gi.repository import Gtk
+    from gi.repository import Gtk, GLib
     window = Gtk.Window(title='Floe client input qualification')
     editors = [Gtk.TextView(), Gtk.TextView()]
     row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, homogeneous=True)
@@ -31,6 +31,12 @@ if kind == 'gtk':
     window.set_default_size(640, 320)
     window.connect('destroy', Gtk.main_quit)
     window.show_all()
+    def save_density():
+        receipt.with_suffix('.density.json').write_text(json.dumps({
+            'scale':window.get_scale_factor(),
+            'dpi':Gtk.Settings.get_default().get_property('gtk-xft-dpi') / 1024}))
+        return True
+    GLib.timeout_add(100, save_density)
     editors[0].grab_focus()
     save(['', ''])
     Gtk.main()

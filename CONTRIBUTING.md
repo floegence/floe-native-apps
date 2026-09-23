@@ -158,6 +158,32 @@ architectures using the published v0.2.1 installer to construct the old state.
 
 ## Client input qualification
 
+### Display density
+
+Prepared HTML v20/v21 clients expose `set_display_density("logical" | "native")`.
+Consumers select a policy after connection startup; `false` means the server did
+not negotiate the display contract. Every connection starts at logical density.
+Native density uses integral ceil DPR, bounded to 1 through 4 and to the server's
+advertised maximum desktop dimensions. Resizing or moving between display densities
+recomputes the backing resolution without reconnecting. The private display's DPI
+and GTK scale change together; logical window geometry, dialog headers, cursor
+hotspots and pointer targets remain stable. Applications retain their own support
+or limitations for live DPI changes. No host desktop settings are modified.
+
+The SDK owns this rendering and input coordinate contract, not a picture-quality
+policy. Consumers must explain that extra pixels cost bandwidth and encoding time;
+native density is not a guarantee of low latency during continuous motion. Existing
+applications retain their prepared assets until they exit and are launched again.
+
+Source tests execute both prepared clients, including DPR changes, server size
+bounds, shadow cursor geometry and disconnect disposal. Native release qualification
+runs `TestNativeClientInput` at density 1 and `TestNativeDisplayInput` at density 2
+with managed and system Xpra on both architectures. GTK receipts also assert its
+actual backing scale and unchanged logical text DPI. Both runs retain the complete
+Unicode, focus and clipboard assertions below.
+
+### Cursor and input
+
 `PrepareInputClient` also prepares one connection-owned cursor path for reviewed
 HTML v20/v21. Remote PNGs preserve their shape and alpha, with a maximum longest
 edge of 24 CSS pixels and no enlargement of smaller images. Hotspots scale with

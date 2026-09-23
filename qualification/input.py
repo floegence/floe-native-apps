@@ -118,7 +118,7 @@ for(const editor of editors)editor.addEventListener('input',()=>{const body=JSON
                 '--sessions-dir=' + str(directory / 'sessions'), '--bind-ws=127.0.0.1:' + str(port),
                 '--ws-auth=file:filename=' + str(password),
                 '--exit-with-client=no', '--exit-with-children=yes', '--start-child=' + shlex.join(application),
-                '--xvfb=' + shlex.quote(config['xvfb']) + ' -screen 0 1024x768x24 -nolisten tcp -noreset +extension Composite -auth $XAUTHORITY',
+                '--xvfb=' + shlex.quote(config['xvfb']) + ' -screen 0 3840x2160x24 -nolisten tcp -noreset +extension Composite -auth $XAUTHORITY',
                 '--audio=no', '--pulseaudio=no', '--speaker=disabled', '--microphone=disabled',
                 '--notifications=no', '--mdns=no', '--webcam=no', '--printing=no', '--dbus-launch=',
                 '--dbus=no', '--dbus-control=no', '--start-new-commands=no', '--opengl=no',
@@ -139,7 +139,7 @@ for(const editor of editors)editor.addEventListener('input',()=>{const body=JSON
                 time.sleep(.05)
         client_environment = dict(item.split('=', 1) for item in config['client_environment'] if '=' in item)
         client = subprocess.run([config['client_python'], str(source / 'input_client.py'), str(receipt),
-                                 'ws://127.0.0.1:' + str(port), kind], env=client_environment,
+                                 'ws://127.0.0.1:' + str(port), kind, str(config['density'])], env=client_environment,
                                 capture_output=True, text=True, timeout=40)
         if client.returncode or 'PASS ' + kind + ' ' not in client.stdout:
             raise RuntimeError('Application receipt assertion failed: ' + client.stdout + client.stderr)
@@ -158,9 +158,9 @@ for(const editor of editors)editor.addEventListener('input',()=>{const body=JSON
             http.server_close()
         evidence = os.environ.get('FLOE_TEST_INPUT_EVIDENCE')
         if evidence:
-            target = Path(evidence) / kind
+            target = Path(evidence) / ('density-' + str(config['density'])) / kind
             target.mkdir(parents=True, exist_ok=True)
-            for name in ('process.json', 'received.json', 'received.unicode.json', 'received.json.png', 'received.ready', 'received.hover', 'received.clicked', 'server.log'):
+            for name in ('process.json', 'received.json', 'received.unicode.json', 'received.density.json', 'received.json.png', 'received.ready', 'received.hover', 'received.clicked', 'server.log'):
                 if (directory / name).exists():
                     shutil.copy2(directory / name, target / name)
                 elif (target / name).exists():

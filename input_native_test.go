@@ -14,6 +14,14 @@ import (
 // Native qualification uses only task-owned displays, ports, profiles and state.
 // Real toolkits and the browser report their actual document/terminal contents.
 func TestNativeClientInput(t *testing.T) {
+	testNativeClientInput(t, 1)
+}
+
+func TestNativeDisplayInput(t *testing.T) {
+	testNativeClientInput(t, 2)
+}
+
+func testNativeClientInput(t *testing.T, density int) {
 	root := os.Getenv("FLOE_TEST_INPUT_ROOT")
 	if root == "" {
 		t.Skip("explicit native application qualification")
@@ -77,7 +85,7 @@ func TestNativeClientInput(t *testing.T) {
 	data, err := json.Marshal(map[string]any{"root": root, "state": state, "python": python,
 		"xvfb": xvfb, "dbus": dbus, "client_python": tools.Python, "client_environment": environment,
 		"launcher": input.Launcher, "args": input.XpraArgs(os.Environ()), "environment": serverEnvironment,
-		"capability": capability})
+		"capability": capability, "density": density})
 	if err != nil {
 		t.Fatal(err)
 	}

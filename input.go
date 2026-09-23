@@ -23,7 +23,7 @@ const ClientInputVersion = 1
 // must report rejected commits; truncation and automatic retry are forbidden.
 const ClientInputTextLimit = 16000
 
-//go:embed input_xpra.py input_dispatch.py input_xim.py input_context.py input_probe.py input_modules/dist
+//go:embed input_xpra.py input_dispatch.py input_xim.py input_context.py input_probe.py display.py input_modules/dist
 var inputSources embed.FS
 
 // ClientInput is prepared support for one private X11 application session. Launch
@@ -51,7 +51,7 @@ func PrepareClientInput(directory, architecture string) (ClientInput, error) {
 			_ = os.RemoveAll(directory)
 		}
 	}()
-	for _, name := range []string{"input_xpra.py", "input_dispatch.py", "input_xim.py", "input_context.py"} {
+	for _, name := range []string{"input_xpra.py", "input_dispatch.py", "input_xim.py", "input_context.py", "display.py"} {
 		data, err := inputSources.ReadFile(name)
 		if err != nil {
 			return ClientInput{}, err

@@ -144,7 +144,8 @@ def install(address):
         # this factory. Importing ServerBase earlier re-enables disabled audio,
         # webcam and other optional components during their startup.
         install_server_input(address)
-        return original(*args, **kwargs)
+        from display import install_display
+        return install_display(original(*args, **kwargs))
 
     server.make_seamless_server = make_seamless_server
 
