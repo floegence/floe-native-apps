@@ -52,7 +52,7 @@ flowchart LR
 Use **Go 1.27.1**, aligned with Redeven. Install the released module:
 
 ```sh
-go get github.com/floegence/floe-native-apps@v0.4.0
+go get github.com/floegence/floe-native-apps@v0.5.0
 ```
 
 Select a supported package and create one long-lived manager for an absolute,
@@ -317,3 +317,58 @@ backend must also verify its private endpoint identity. Consumers continue to ow
 application inventory, authorization, instance persistence, sharing connections,
 resource limits and explicit termination policy. These primitives do not create a
 background service or recover applications whose display server was destroyed.
+
+## Client-owned input
+
+Input protocol version 1 gives the client sole ownership of composition and
+candidate selection. The host has no composition engine or candidate window.
+It delivers keys through Xpra and confirmed Unicode through the application's
+toolkit context or the commit-only xcb-imdkit bridge, without clipboard injection.
+
+Probe the interpreter owning Xpra with `ProbeClientInput`. Managed tools expose
+`Tools.Python`; `SystemClientInputPython` resolves a supported installed script's
+interpreter. Both use the same launcher and scheduler. The current contract
+requires Xpra 6.2.x, GIO and xcb-imdkit/xcb libraries; managed r3 supplies that
+closure. Existing r1/r2 installations remain identifiable for surviving apps
+but do not acquire this capability merely by upgrading the SDK.
+
+`PrepareClientInput` installs adapters in a new private session directory. Run
+its `Launcher` with that interpreter, normal Xpra arguments and `XpraArgs`.
+Start the private application bus first and pass its address explicitly to the
+application environment. The bridge starts before applications. These input
+settings are confined to that session; host desktop IBus/Fcitx and global input
+sources are untouched. GTK3 adapters require glibc 2.31 or later; Qt5 requires
+5.15 or later, and Qt6 requires 6.4 with glibc 2.36 or later. Other XIM-aware apps
+use the protocol bridge with a UTF-8 locale; non-Unicode XIM contexts are rejected
+before delivery. GTK4 and incompatible/private toolkit loaders are not
+claimed as supported adapters.
+
+`PrepareInputClient` prepares Xpra HTML5 v20/v21 with external input ownership.
+The host obtains the client with `window.floeXpraInput.getClient()` and uses
+`client.floeInput`. `bindTarget(wid)` returns an immutable connection/window
+token; `sendKey`, `commitText`, `release`, `clipboard` and `paste` consume it.
+Wire these to the published floe-webapp `remote-input` controller and attach
+`paste` to its textarea. The host owns permissions, first-frame gating, labels,
+keyboard controls and errors. The adapter registers no DOM input. Xpra's old
+keyboard/tablet/virtual keyboard listeners and focus-stealing clipboard handlers
+are removed; graphics, windows, pointer and clipboard transport stay with Xpra.
+
+Both authenticated hellos advertise `floe-input: 1`. Old clients cannot enter
+this input flow. Old sessions must be reopened explicitly without terminating
+unsaved applications. `floe-input(sequence, window, text)` accepts one nonempty,
+NUL-free commit up to 16,000 UTF-8 bytes. No commit is truncated or retried.
+XIM delivers bounded UTF-8 fragments to the same input context because legacy
+consumers have fixed lookup buffers. The scheduler holds later input until every
+fragment is acknowledged; cancellation discards unsent fragments and never
+replays a partially delivered operation. GTK/Qt receive one native text commit.
+Text, following keys, pointer/focus changes and clipboard claims share one
+scheduler. Toolkit acknowledgement occurs after committing in its native input
+filter; a D-Bus transport reply is not application delivery. XIM uses protocol
+synchronization. Invalid or timed-out contexts return an explicit error, revoke
+the attachment's pending input and release its held keys. Reattachment does not
+replay input.
+
+Input bodies and document histories are not logged. Pending text exists only
+until delivery or revocation. `onError(code)` exposes stable error codes without
+user text. See [CONTRIBUTING.md](CONTRIBUTING.md) for native qualification and
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for licenses and module provenance.

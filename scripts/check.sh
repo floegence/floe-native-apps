@@ -19,10 +19,11 @@ go mod verify
 go vet ./...
 go test -race -count=1 ./...
 go tool actionlint -shellcheck= -pyflakes=
+python3 -m unittest input_context_test input_dispatch_test input_logging_test input_xim_test
 python3 - <<'PY'
 import ast
 from pathlib import Path
-for path in [*Path('.').glob('*.py'), *Path('scripts').glob('*.py'), *Path('selfcheck').glob('*.py')]:
+for path in [*Path('.').glob('*.py'), *Path('scripts').glob('*.py'), *Path('selfcheck').glob('*.py'), *Path('qualification').glob('*.py')]:
     ast.parse(path.read_text(), filename=str(path))
 PY
 for script in scripts/*.sh .githooks/pre-push; do sh -n "$script"; done

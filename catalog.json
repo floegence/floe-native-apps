@@ -1,9 +1,9 @@
 [
   {
-    "id": "alpine-3.23-xpra-6.2.2-amd64-r2",
+    "id": "alpine-3.23-xpra-6.2.2-amd64-r3",
     "architecture": "amd64",
-    "size_bytes": 176668991,
-    "installed_bytes": 509133955,
+    "size_bytes": 177082430,
+    "installed_bytes": 509673386,
     "artifacts": [
       {
         "name": "at-spi2-core-2.58.3-r0.apk",
@@ -1626,6 +1626,24 @@
         "source": "https://gitlab.alpinelinux.org/alpine/aports/-/tree/3.23-stable/main/zstd"
       },
       {
+        "name": "xcb-imdkit-1.0.9-r0.apk",
+        "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/community/x86_64/xcb-imdkit-1.0.9-r0.apk",
+        "sha256": "4b51ef82cada7e0ba62b0e6648ca16a1be3d6eda2cb1f2eeb780c7e30d4decf0",
+        "size_bytes": 406071,
+        "format": "apk",
+        "license": "LGPL-2.1-only",
+        "source": "https://gitlab.alpinelinux.org/alpine/aports/-/tree/3.23-stable/community/xcb-imdkit"
+      },
+      {
+        "name": "xcb-util-0.4.1-r3.apk",
+        "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/xcb-util-0.4.1-r3.apk",
+        "sha256": "778a60a1efa77ea8d949a5277824ea6228ee9303f8de7f24a928b5163a0c2880",
+        "size_bytes": 7368,
+        "format": "apk",
+        "license": "MIT",
+        "source": "https://gitlab.alpinelinux.org/alpine/aports/-/tree/3.23-stable/main/xcb-util"
+      },
+      {
         "name": "html5-v20.tar.gz",
         "url": "https://github.com/Xpra-org/xpra-html5/archive/refs/tags/v20.tar.gz",
         "sha256": "fe710c3df84c34a55fdde21f8eda82437ef9fe457fcc0bf1ff6f138ab6b4ab3d",
@@ -1637,10 +1655,10 @@
     ]
   },
   {
-    "id": "alpine-3.23-xpra-6.2.2-arm64-r2",
+    "id": "alpine-3.23-xpra-6.2.2-arm64-r3",
     "architecture": "arm64",
-    "size_bytes": 161894731,
-    "installed_bytes": 461678078,
+    "size_bytes": 162305247,
+    "installed_bytes": 462274843,
     "artifacts": [
       {
         "name": "at-spi2-core-2.58.3-r0.apk",
@@ -3252,6 +3270,24 @@
         "format": "apk",
         "license": "BSD-3-Clause OR GPL-2.0-or-later",
         "source": "https://gitlab.alpinelinux.org/alpine/aports/-/tree/3.23-stable/main/zstd"
+      },
+      {
+        "name": "xcb-imdkit-1.0.9-r0.apk",
+        "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/community/aarch64/xcb-imdkit-1.0.9-r0.apk",
+        "sha256": "b2d29d9657a45ff2bd8aeec5e17adc3099c6889600e658f650769131937f4a7c",
+        "size_bytes": 402693,
+        "format": "apk",
+        "license": "LGPL-2.1-only",
+        "source": "https://gitlab.alpinelinux.org/alpine/aports/-/tree/3.23-stable/community/xcb-imdkit"
+      },
+      {
+        "name": "xcb-util-0.4.1-r3.apk",
+        "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/aarch64/xcb-util-0.4.1-r3.apk",
+        "sha256": "ce34399087afbd48ae0de53bbbfc04c64d01ca43b0366ed6630e0ffe4b49c29d",
+        "size_bytes": 7823,
+        "format": "apk",
+        "license": "MIT",
+        "source": "https://gitlab.alpinelinux.org/alpine/aports/-/tree/3.23-stable/main/xcb-util"
       },
       {
         "name": "html5-v20.tar.gz",

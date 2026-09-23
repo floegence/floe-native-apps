@@ -6,7 +6,7 @@ Read [AGENTS.md](AGENTS.md) for the implementation and repository boundaries.
 
 ## Development
 
-Use Go **1.27.1**, Python 3, Git, and a POSIX shell. The Go version in `go.mod`
+Use Go **1.27.1**, Python 3, Node.js 20 or later, Git, and a POSIX shell. The Go version in `go.mod`
 is authoritative and must remain aligned with Redeven. CI reads that file;
 workflow YAML must not carry an independent Go version.
 
@@ -155,3 +155,40 @@ TestNativeLegacyComponentUpdate -v` exercises a real r1-to-r2 local update and
 rejects every network request. Supply only a disposable state with original
 verified archive cache entries. The release workflow runs this on both native
 architectures using the published v0.2.1 installer to construct the old state.
+
+## Client input qualification
+
+The source gate tests ordering/revocation and executes the prepared Xpra v20/v21
+JavaScript with its actual keymap tables. It installs no browser. Native
+qualification additionally requires GTK3, PyQt5, PyQt6, xterm, and a native
+Chromium executable with its normal sandbox available:
+
+```sh
+FLOE_TEST_INPUT_ROOT=/absolute/private/components \
+FLOE_TEST_CHROMIUM_BIN=/absolute/native/chromium \
+FLOE_TEST_INPUT_EVIDENCE=/absolute/disposable/evidence \
+  go test -count=1 -run '^TestNativeClientInput$' -v .
+```
+
+Every fixture gets its own display, authenticated loopback WebSocket, bus,
+process group, browser profile and receipts. Acceptance compares actual app
+contents after 40 Unicode/Enter pairs and one 15,000-byte Unicode commit. Editors
+also verify selection replacement, deletion, and 12 alternating pointer focus
+changes against the exact contents of each field. XIM fixtures use a UTF-8
+locale; the bridge advertises only UTF-8 locales to prevent Xlib from silently
+choosing a non-Unicode conversion context. Sending
+requests or receiving protocol acknowledgements cannot pass alone. Screenshots
+and process/version records accompany receipts. `FLOE_TEST_INPUT_FIXTURES` selects
+a focused development subset; releases must leave it unset and run every fixture
+on both architectures. These tests do not certify real client IMEs or mobile
+keyboards.
+
+Build first-party modules natively with `scripts/input_builder.Dockerfile`, using
+the original architecture-specific Debian digest in the existing build record
+and `QT_MAJOR=5` or `6`. Copy the fixture host's certificate bundle to the ignored
+`input_modules/certificates/` directory. The image uses the signed 2025-02-24
+Debian snapshot. Mount this repository at `/src` and run
+`scripts/build_input_modules.sh /absolute/output 5` (or `6`) in that image with
+`FLOE_INPUT_BUILDER_IMAGE` set to its original pinned Debian digest. Commit the
+binaries and provenance together; source hash drift fails the gate. No toolkit
+binaries are copied into these modules. Containers are build/test fixtures only.

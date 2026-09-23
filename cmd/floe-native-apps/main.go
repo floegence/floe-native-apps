@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	"time"
 
@@ -19,9 +20,28 @@ func main() {
 	architecture := flag.String("arch", runtime.GOARCH, "Linux target architecture")
 	bundle := flag.String("bundle", "", "write a verified offline ZIP for the target architecture")
 	check := flag.String("check", "", "self-check an installed native root")
+	input := flag.String("prepare-input", "", "prepare client input support in a new private directory")
+	html := flag.String("input-html", "", "installed Xpra HTML distribution for client input preparation")
 	flag.Parse()
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
+	if *input != "" {
+		support, err := nativeapps.PrepareClientInput(*input, *architecture)
+		if err != nil {
+			fail(err)
+		}
+		www := ""
+		if *html != "" {
+			www = filepath.Join(*input, "www")
+			if err := nativeapps.PrepareInputClient(*html, www); err != nil {
+				fail(err)
+			}
+		}
+		if err := json.NewEncoder(os.Stdout).Encode(map[string]any{"launcher": support.Launcher, "args": support.XpraArgs(os.Environ()), "html": www}); err != nil {
+			fail(err)
+		}
+		return
+	}
 	if *check != "" {
 		if err := nativeapps.SelfTest(ctx, *check); err != nil {
 			fail(err)

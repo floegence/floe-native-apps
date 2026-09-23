@@ -29,7 +29,13 @@ func compatibleInstallations(pkg Package) []Installation {
 		"amd64": "0a30ff8f725be97588b1f69714fb9487b3235c62c21fafe338cbbeae16bbb9e6",
 		"arm64": "98010db370ba2ebda4c5c6c9c90d100fc29acca319f293de458680235a47595b",
 	}
-	return append(result, Installation{ID: "alpine-3.23-xpra-6.2.2-" + pkg.Architecture + "-r1", Digest: legacy[pkg.Architecture], Architecture: pkg.Architecture, Contract: current.Contract})
+	previous := map[string]string{
+		"amd64": "1005a76b31941a66417759f4932ac5355b179bcff4125c0d19b6ff1fe0e8352b",
+		"arm64": "4379638ec87588ad81e96cd3fc8d91a0cd3189b779f9962cece9e568a48276fa",
+	}
+	return append(result,
+		Installation{ID: "alpine-3.23-xpra-6.2.2-" + pkg.Architecture + "-r2", Digest: previous[pkg.Architecture], Architecture: pkg.Architecture, Contract: current.Contract},
+		Installation{ID: "alpine-3.23-xpra-6.2.2-" + pkg.Architecture + "-r1", Digest: legacy[pkg.Architecture], Architecture: pkg.Architecture, Contract: current.Contract})
 }
 
 func (m *Manager) installation(digest string) (Installation, bool) {
