@@ -206,6 +206,8 @@ class Client(GObjectXpraClient):
             self.fields = True
             for sequence in range(43, 55):
                 x = self.canvas.width * (1 if sequence % 2 else 3) // 4
+                # Window pixels are already physical after density negotiation;
+                # the fixed vertical focus point still needs the negotiated scale.
                 coords = [self.origin[0] + x, self.origin[1] + 80 * density]
                 self.send('pointer-position', self.wid, coords, [])
                 self.send('button-action', self.wid, 1, True, coords, [])
