@@ -77,3 +77,29 @@ test('shadow pointer keeps logical size and hotspot inside the scaled surface',(
  c.set_display_density('logical');c._process_pointer_position(['pointer-position',1,123,234]);
  assert.equal(shadow.style.left,'118px');assert.equal(shadow.style.width,'24px');
 });
+
+test('display subscribers see resolved limits and recover on resize without polling',()=>{
+ const {client:c,surface,browser,listeners,packets}=setup(2),states=[];
+ c.floeDisplay.accept({'floe-display':1,max_desktop_size:[1200,900]});
+ const stop=c.subscribe_display(state=>states.push(state));
+ c.set_display_density('native');
+ assert.deepEqual(JSON.parse(JSON.stringify(states.at(-1))),{available:true,policy:'native',density:1,width:800,height:600,limit:'display'});
+ assert(Object.isFrozen(states.at(-1)));
+ Object.defineProperties(surface,{clientWidth:{get(){return Math.round(500*parseFloat(this.style.width)/100)}},clientHeight:{get(){return Math.round(400*parseFloat(this.style.height)/100)}}});
+ c._screen_resized();
+ assert.deepEqual(JSON.parse(JSON.stringify(states.at(-1))),{available:true,policy:'native',density:2,width:1000,height:800,limit:null});
+ const count=states.length, sent=packets.length;
+ for(let i=0;i<200;i++)c._screen_resized();
+ assert.equal(states.length,count);assert.equal(packets.length,sent);
+ browser.devicePixelRatio=1;[...listeners][0]();assert.equal(states.at(-1).density,1);
+ stop();c.set_display_density('logical');assert.equal(states.length,count+1);
+});
+
+test('density limit is distinct from display bounds and disconnect revokes subscribers',()=>{
+ const {client:c}=setup(8),states=[];
+ c.subscribe_display(state=>states.push(state));c.set_display_density('native');
+ assert.equal(states.at(-1).limit,'density');assert.equal(states.at(-1).density,4);
+ c.floeDisplay.dispose();const count=states.length;
+ c.subscribe_display(()=>assert.fail('disposed subscription'));c.floeDisplay.sync();
+ assert.equal(states.length,count);assert.equal(c.set_display_density('native'),false);
+});

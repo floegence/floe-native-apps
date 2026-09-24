@@ -170,6 +170,18 @@ and GTK scale change together; logical window geometry, dialog headers, cursor
 hotspots and pointer targets remain stable. Applications retain their own support
 or limitations for live DPI changes. No host desktop settings are modified.
 
+`subscribe_display(listener)` immediately supplies an immutable snapshot and
+returns an unsubscribe function. Subsequent notifications occur only when the
+resolved display configuration changes, including viewport and monitor changes.
+The snapshot contains `available`, `policy`, `density`, `width`, `height`, and
+`limit` (`null`, `display`, or `density`). Dimensions describe the configured
+client backing surface, not a remote application's paint acknowledgement or
+toolkit support. Consumers must not describe this as measured frame resolution.
+`display` means the advertised remote dimensions reduced native density;
+`density` means the four-times safety limit did. Disconnect revokes subscriptions.
+Reading or subscribing sends no packets, starts no polling, and never requests
+a quality refresh. Consumers select localized presentation, not scaling rules.
+
 The SDK owns this rendering and input coordinate contract, not a picture-quality
 policy. Consumers must explain that extra pixels cost bandwidth and encoding time;
 native density is not a guarantee of low latency during continuous motion. Existing

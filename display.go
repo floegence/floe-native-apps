@@ -42,6 +42,10 @@ func prepareDisplayHTML(index, client, window []byte) ([]byte, []byte, []byte, e
     return this.floeDisplay.setPolicy(policy);
   }
 
+  subscribe_display(listener) {
+    return this.floeDisplay.subscribe(listener);
+  }
+
   _get_DPI() {
     return 96 * this.scale;
   }
