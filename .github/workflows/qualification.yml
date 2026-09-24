@@ -65,7 +65,7 @@ jobs:
           PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/input-browsers
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3-gi gir1.2-gtk-3.0 gir1.2-gtk-4.0 python3-pyqt5 python3-pyqt6 xterm
+          sudo apt-get install -y python3-gi gir1.2-gtk-3.0 gir1.2-gtk-4.0 gnome-text-editor python3-pyqt5 python3-pyqt6 xterm
           npx --yes playwright@1.58.2 install --with-deps chromium
           # Install Chromium's supplied sandbox only in this disposable runner.
           # Ubuntu's policy requires it for a browser outside a packaged profile.
@@ -93,7 +93,7 @@ jobs:
           FLOE_TEST_CHROMIUM_BIN=$(node -e 'console.log(require("./qualification/node_modules/playwright").chromium.executablePath())')
           export FLOE_TEST_CHROMIUM_BIN
           "$FLOE_TEST_CHROMIUM_BIN" --version | tee "$RUNNER_TEMP/qualification/chromium-version.log"
-          dpkg-query -W python3-pyqt5 python3-pyqt6 libgtk-3-0t64 libgtk-4-1 xterm \
+          dpkg-query -W python3-pyqt5 python3-pyqt6 libgtk-3-0t64 libgtk-4-1 gnome-text-editor xterm \
             | tee "$RUNNER_TEMP/qualification/application-versions.log"
           go test -count=1 -run '^TestNative(ClientInput|DisplayInput)$' -v . \
             2>&1 | tee "$RUNNER_TEMP/qualification/client-input.log"
@@ -128,7 +128,7 @@ jobs:
             -f scripts/input_builder.Dockerfile -t floe-input-baseline .
           docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/src:ro" \
             -v "$RUNNER_TEMP/baseline:/out" -w /src floe-input-baseline sh -c \
-            'export PKG_CONFIG_PATH=/opt/gtk4/lib/pkgconfig; cc qualification/gtk4_baseline.c $(pkg-config --cflags --libs gtk4) -Wl,-rpath-link,/opt/gtk4/lib -o /out/gtk4-baseline'
+            'export PKG_CONFIG_PATH=/opt/gtk4/lib/pkgconfig; for fixture in baseline context; do cc qualification/gtk4_$fixture.c $(pkg-config --cflags --libs gtk4) -Wl,-rpath-link,/opt/gtk4/lib -o /out/gtk4-$fixture; done'
           CGO_ENABLED=0 go test -c -o "$RUNNER_TEMP/baseline/native-input.test" .
           root=$(find "$RUNNER_TEMP/native-state/packages" -mindepth 1 -maxdepth 1 -type d)
           mkdir -p "$RUNNER_TEMP/qualification/gtk4-baseline"
@@ -142,8 +142,13 @@ jobs:
             -v "$RUNNER_TEMP/qualification/gtk4-baseline:/evidence" -w /src \
             -e FLOE_TEST_INPUT_ROOT=/components -e FLOE_TEST_INPUT_FIXTURES=gtk4 \
             -e FLOE_TEST_GTK4_BASELINE=/out/gtk4-baseline -e FLOE_TEST_INPUT_EVIDENCE=/evidence \
+            -e FLOE_TEST_GTK4_CONTEXT=/out/gtk4-context \
             floe-input-baseline /out/native-input.test -test.run '^TestNativeClientInput$' -test.v \
             2>&1 | tee "$RUNNER_TEMP/qualification/gtk4-baseline.log"
+          FLOE_TEST_INPUT_ROOT="$root" FLOE_TEST_INPUT_FIXTURES=gtk4,gtk4-entry \
+            FLOE_TEST_GTK4_CONTEXT="$RUNNER_TEMP/baseline/gtk4-context" \
+            go test -count=1 -run '^TestNativeClientInput$' -v . \
+            2>&1 | tee "$RUNNER_TEMP/qualification/gtk4-current-context.log"
       - name: Install signed system Xpra fixture
         run: |
           curl --fail --silent --show-error --location https://xpra.org/xpra.asc -o "$RUNNER_TEMP/xpra.asc"

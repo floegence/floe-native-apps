@@ -56,8 +56,11 @@ static gboolean key(GtkIMContext *context, GdkEvent *event) {
     return gtk_im_context_filter_keypress(state(context)->simple, event);
 }
 static void client_widget(GtkIMContext *context, GtkWidget *widget) {
-    disconnect_marker(context);
     FloeState *self = state(context);
+    /* GtkTextView may reassert the same widget without a focus transition.
+       Preserve its current native subscription; a new widget still revokes it. */
+    if (widget && self->widget == widget) return;
+    disconnect_marker(context);
     if (self->widget) g_object_remove_weak_pointer(G_OBJECT(self->widget), (gpointer *)&self->widget);
     self->widget = widget;
     if (widget) g_object_add_weak_pointer(G_OBJECT(widget), (gpointer *)&self->widget);

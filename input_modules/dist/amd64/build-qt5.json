@@ -2,7 +2,7 @@
   "architecture": "x86_64",
   "artifacts": {
     "libfloe-gtk3.so": "3eae3b5e4c838dc97c1ab213cec4e1d5024e16cc00aa83d1e9b446f3f31042bb",
-    "libfloe-gtk4.so": "e7a6dbed83ec4bc84fca77d315b937626fb26064ae99639724b0d92e182d671e",
+    "libfloe-gtk4.so": "ae4a303c274efbe24b8a8457b7ca7b4c993d282424d7450bae1c182143d659a4",
     "libfloe-qt5.so": "a2de379c5a0b353486469d2ecdaa948abf1e782315f8b1ae84c7e27b685d464f"
   },
   "builder_image": "public.ecr.aws/docker/library/debian@sha256:032c9cd584e6c6d7a98e7edb50ce9233b2c585f4f7e2a5cd093521af779886df",
@@ -473,7 +473,7 @@
   "snapshot": "20250224T000000Z",
   "source_sha256": {
     "input_modules/gtk3.c": "ff4af6eb0325e56a434903e54e30899f0fb9483fc8acdd12427fee0c140715cc",
-    "input_modules/gtk4.c": "251d806bb1ace27592e400b8e7372ea3049e4ce4b54fc43cdaed8eeb64608e10",
+    "input_modules/gtk4.c": "0c692f28e14f9434a256733d3401f58d1ed9b42e71ac064bc3d693b56e2fd793",
     "input_modules/gtk_commit.h": "1039f55b0389094e11cdb1c3682c7202b03b834608d8f95921ebce0853573d7e",
     "input_modules/qt.cpp": "cfd4559da08261f03e4fff1f4789d5f2289009005504253d77c347689f83582a",
     "input_modules/qt.json": "76e0c59d36a8a828e299558f7103544517fba0e2446b5f188c675fa5d74a945f",

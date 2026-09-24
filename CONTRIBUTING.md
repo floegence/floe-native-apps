@@ -224,7 +224,7 @@ page zoom and monitor changes in the shipped viewer and Desktop.
 
 The source gate tests ordering/revocation and executes the prepared Xpra v20/v21
 JavaScript with its actual keymap tables. It installs no browser. Native
-qualification additionally requires GTK3, GTK4, PyQt5, PyQt6, xterm, and a native
+qualification additionally requires GTK3, GTK4, GNOME Text Editor, PyQt5, PyQt6, xterm, and a native
 Chromium executable with its normal sandbox available:
 
 ```sh
@@ -331,3 +331,12 @@ against `/opt/gtk4` inside that same native fixture and set
 `gtk4` native input fixture. This runs the same actual document, focus and clipboard
 assertions with GTK 4.0.3 and glibc 2.31. GTK4's normal system-library qualification
 must also run on both native release runners. Neither run certifies real client IMEs.
+
+Focused GTK4 contexts retain their native marker subscription when GtkTextView or
+GtkSourceView reasserts the same client widget. A different widget, focus loss or
+disposal still revokes it. The native `qualification/gtk4_context.c` fixture covers
+same-widget rebinding and revocation on both the GTK 4.0 baseline and current GTK.
+The standalone GNOME editor qualification uses private XDG directories and verifies
+save followed by repeated Unicode, selection replacement, multiline text and Enter
+against bytes saved through the application. Both managed and system Xpra run it;
+no user editor is reused. Browser composition remains simulated.

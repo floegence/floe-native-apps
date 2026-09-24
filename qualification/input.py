@@ -58,6 +58,14 @@ def qualify(kind):
         application = []
         if kind == 'gtk4' and os.environ.get('FLOE_TEST_GTK4_BASELINE'):
             application += ['env', 'LD_LIBRARY_PATH=/opt/gtk4/lib', os.environ['FLOE_TEST_GTK4_BASELINE'], str(receipt)]
+        elif kind == 'gnome':
+            document = receipt.with_suffix('.txt')
+            document.write_bytes(b'')
+            application += ['env', 'XDG_DATA_HOME=' + str(directory / 'data'),
+                            'XDG_CONFIG_HOME=' + str(directory / 'config'),
+                            'XDG_CACHE_HOME=' + str(directory / 'cache'),
+                            'XDG_STATE_HOME=' + str(directory / 'history'), 'GSETTINGS_BACKEND=memory',
+                            '/usr/bin/gnome-text-editor', '--standalone', str(document)]
         elif kind == 'terminal':
             application += ['xterm', '-u8', '-geometry', '80x20', '-xrm', 'XTerm*inputMethod:floe-client',
                             '-e', '/usr/bin/python3', str(source / ('pointer_fixture.py' if pointer_mode else 'input_fixture.py')), kind, str(receipt)]
@@ -123,7 +131,7 @@ for(const editor of editors)editor.addEventListener('input',()=>{const body=JSON
         port = listener.getsockname()[1]
         listener.close()
         args = [config['python'], config['launcher'], 'start', '--daemon=no', '--systemd-run=no',
-                '--attach=no', '--use-display=no', '--html=' + (str(state / 'www') if pointer_mode else 'no'), '--source=', '--source-start=',
+                '--attach=no', '--use-display=no', '--html=' + (str(state / 'www') if pointer_mode or kind == 'gnome' else 'no'), '--source=', '--source-start=',
                 '--socket-dir=' + str(directory), '--socket-dirs=' + str(directory),
                 '--sessions-dir=' + str(directory / 'sessions'), '--bind-ws=127.0.0.1:' + str(port),
                 '--ws-auth=file:filename=' + str(password),
@@ -148,7 +156,11 @@ for(const editor of editors)editor.addEventListener('input',()=>{const body=JSON
                     raise RuntimeError('Private Xpra server did not become ready') from None
                 time.sleep(.05)
         client_environment = dict(item.split('=', 1) for item in config['client_environment'] if '=' in item)
-        if pointer_mode:
+        if kind == 'gnome':
+            client = subprocess.run(['node', str(source / 'gnome_input.mjs'), str(receipt),
+                                     'http://127.0.0.1:' + str(port)],
+                                    capture_output=True, text=True, timeout=80)
+        elif pointer_mode:
             client = subprocess.run(['node', str(source / 'pointer_native.mjs'), str(receipt),
                                      'http://127.0.0.1:' + str(port), kind],
                                     capture_output=True, text=True, timeout=80)
@@ -175,14 +187,47 @@ for(const editor of editors)editor.addEventListener('input',()=>{const body=JSON
         if evidence:
             target = Path(evidence) / ('density-' + str(config['density'])) / kind
             target.mkdir(parents=True, exist_ok=True)
-            for name in ('process.json', 'application.json', 'received.json', 'received.unicode.json', 'received.density.json', 'received.json.png', 'received.ready', 'received.hover', 'received.clicked', 'received.pointer.json', 'server.log'):
+            for name in ('process.json', 'application.json', 'received.json', 'received.txt', 'received.unicode.json', 'received.density.json', 'received.json.png', 'received.ready', 'received.hover', 'received.clicked', 'received.pointer.json', 'server.log'):
                 if (directory / name).exists():
                     shutil.copy2(directory / name, target / name)
                 elif (target / name).exists():
                     (target / name).unlink()
 
 
-for fixture in os.environ.get('FLOE_TEST_INPUT_FIXTURES', 'gtk,gtk4,gtk4-entry,qt5,qt6,chromium,terminal').split(','):
-    if fixture not in ('gtk', 'gtk4', 'gtk4-entry', 'qt5', 'qt6', 'chromium', 'terminal'):
+def qualify_gtk4_context():
+    executable = os.environ.get('FLOE_TEST_GTK4_CONTEXT')
+    if not executable:
+        return
+    bus = display = None
+    read, write = os.pipe()
+    try:
+        bus = subprocess.Popen([config['dbus'], '--session', '--nofork', '--print-address=1'],
+                               stdout=subprocess.PIPE, text=True, start_new_session=True)
+        address = bus.stdout.readline().strip()
+        display = subprocess.Popen([config['xvfb'], '-displayfd', str(write), '-screen', '0',
+                                    '640x480x24', '-nolisten', 'tcp', '-ac'],
+                                   pass_fds=(write,), env=native_env, start_new_session=True)
+        os.close(write)
+        write = -1
+        number = os.read(read, 100).decode().strip()
+        environment = {**os.environ, 'DISPLAY': ':' + number, 'GDK_BACKEND': 'x11',
+                       'DBUS_SESSION_BUS_ADDRESS': address, 'GTK_A11Y': 'none',
+                       'GTK_IM_MODULE': 'simple', 'GIO_USE_VFS': 'local'}
+        # Only the explicit minimum-runtime fixture carries these test libraries.
+        if os.environ.get('FLOE_TEST_GTK4_BASELINE'):
+            environment['LD_LIBRARY_PATH'] = '/opt/gtk4/lib'
+        subprocess.run([executable, str(state / 'input/gtk/4.0.0/immodules')],
+                       env=environment, check=True, timeout=15)
+    finally:
+        os.close(read)
+        if write >= 0:
+            os.close(write)
+        stop(display)
+        stop(bus)
+
+
+qualify_gtk4_context()
+for fixture in os.environ.get('FLOE_TEST_INPUT_FIXTURES', 'gtk,gtk4,gtk4-entry,gnome,qt5,qt6,chromium,terminal').split(','):
+    if fixture not in ('gtk', 'gtk4', 'gtk4-entry', 'gnome', 'qt5', 'qt6', 'chromium', 'terminal'):
         raise RuntimeError('Unknown native fixture')
     qualify(fixture)
