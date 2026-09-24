@@ -17,7 +17,7 @@ const css = (await Promise.all(['remote-input', 'remote-pointer'].map(name =>
 const html = `<!doctype html><style>${css}
 html,body{margin:0}#screen{position:relative;width:780px;height:550px}
 .window{position:absolute;border:1px solid #333;box-sizing:content-box}
-.windowhead{height:28px;background:#bbb}.window canvas{display:block;background:#eee}
+.windowhead{height:28px;background:#bbb}.windowbuttons{float:right;display:flex;gap:4px}.windowbuttons img{width:16px;height:16px}.windowicon{display:none}.window canvas{display:block;background:#eee}
 .spinneroverlay{display:none}#local{position:absolute;top:570px;left:20px}
 </style><div id="screen"><div id="1"></div></div><button id="local">Local control</button>
 <script src="/jquery.js"></script><script src="/jquery-ui.js"></script>
@@ -83,7 +83,7 @@ try {
    assert(moved.x>before.x&&moved.y>before.y,'decoration drag must move the window');
    assert.equal(moved.grabbed,false);assert(moved.invalidations>0);
    await canvas.click({position:{x:120,y:120}});await page.keyboard.press('Shift');
-   assert.equal(await frame.evaluate(()=>keys.length),8,'click after decoration must reactivate input');
+   assert.equal(await frame.evaluate(()=>keys.length),8,`${name}, iframe=${iframe}: click after decoration must reactivate input`);
    assert.deepEqual(errors,[]);
    results.push({browser:name,version:browser.version(),iframe,receipt,moved});await page.close();
   }} finally {await browser.close();}

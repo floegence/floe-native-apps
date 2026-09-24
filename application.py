@@ -94,6 +94,14 @@ def launch(app, receipt):
                 context.setenv(key, value)
         context.unsetenv("FLOE_NATIVE_APPLICATION_ENV")
         context.unsetenv("FLOE_NATIVE_ROOT")
+        # Support-tool Python clears GTK_PATH and the saved host map restores it.
+        # Apply the input launcher's explicit private path only to the final app.
+        gtk_path = os.environ.get("FLOE_NATIVE_INPUT_GTK_PATH")
+        if gtk_path:
+            if not Path(gtk_path).is_absolute():
+                raise ValueError("The private GTK input path must be absolute.")
+            context.setenv("GTK_PATH", gtk_path)
+        context.unsetenv("FLOE_NATIVE_INPUT_GTK_PATH")
         pids = []
         def started(_app, pid, _data):
             pids.append(pid)

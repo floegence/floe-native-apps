@@ -22,7 +22,8 @@ for adopted in (0, 1, 2):
     with tempfile.TemporaryDirectory(prefix="floe-application-check-") as directory:
         root = Path(directory)
         script = root / "app.sh"
-        body = 'test -z "$FLOE_NATIVE_APPLICATION_ENV" && test -z "$FLOE_NATIVE_ROOT" || exit 2\n'
+        body = 'test -z "$FLOE_NATIVE_APPLICATION_ENV" && test -z "$FLOE_NATIVE_ROOT" && test -z "$FLOE_NATIVE_INPUT_GTK_PATH" || exit 2\n'
+        body += f'test "$GTK_PATH" = "{root}/gtk" || exit 3\n'
         body += f'touch "{root}/started"\nwhile test ! -f "{root}/exit"; do sleep 0.05; done\n'
         for _ in range(adopted):
             body = "(\n" + body + ") &\nexit 0\n"
@@ -30,7 +31,8 @@ for adopted in (0, 1, 2):
         desktop = root / "fixture.desktop"
         desktop.write_text(f'[Desktop Entry]\nType=Application\nName=Lifetime fixture\nExec=/bin/sh "{script}"\nDBusActivatable=true\n')
         receipt = root / "launch.json"
-        child = subprocess.Popen([python, launcher, str(desktop), str(receipt)])
+        child = subprocess.Popen([python, launcher, str(desktop), str(receipt)],
+                                 env={**os.environ, "FLOE_NATIVE_INPUT_GTK_PATH": str(root / "gtk")})
         try:
             await_file(root / "started", child)
             await_file(receipt, child)

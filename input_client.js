@@ -152,4 +152,4 @@ class FloeXpraInput {
 
 // The host supplies product permissions, first-frame gating, window binding and
 // the published remote-input controller. This adapter registers no DOM input.
-window.floeXpraInput = {version:1, getClient:() => window.floeXpraClient || null};
+window.floeXpraInput = {version:2, getClient:() => window.floeXpraClient || null};

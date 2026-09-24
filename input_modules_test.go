@@ -33,6 +33,13 @@ func TestInputModuleProvenance(t *testing.T) {
 				if !strings.HasPrefix(record.Builder, "public.ecr.aws/docker/library/debian@sha256:") || len(record.Packages) < 20 || len(record.Sources) < 3 {
 					t.Fatal("incomplete native build provenance")
 				}
+				if major == "5" {
+					for _, name := range []string{"libfloe-gtk3.so", "libfloe-gtk4.so", "libfloe-qt5.so"} {
+						if record.Artifacts[name] == "" {
+							t.Fatalf("missing native build artifact: %s", name)
+						}
+					}
+				}
 				for path, expected := range record.Sources {
 					contents, err := os.ReadFile(path)
 					if err != nil {
@@ -59,6 +66,18 @@ func TestInputModuleProvenance(t *testing.T) {
 					machine := elf.EM_X86_64
 					if arch == "arm64" {
 						machine = elf.EM_AARCH64
+					}
+					for _, tag := range []elf.DynTag{elf.DT_RPATH, elf.DT_RUNPATH} {
+						paths, err := binary.DynString(tag)
+						if err != nil || len(paths) != 0 {
+							t.Fatalf("%s leaks a build-time loader path: %v, %v", name, paths, err)
+						}
+					}
+					if name == "libfloe-gtk4.so" {
+						libraries, err := binary.ImportedLibraries()
+						if err != nil || !strings.Contains(strings.Join(libraries, "\n"), "libgtk-4.so.1") || strings.Contains(strings.Join(libraries, "\n"), "libgtk-3") {
+							t.Fatalf("GTK4 adapter has the wrong toolkit ABI: %v, %v", libraries, err)
+						}
 					}
 					if binary.Machine != machine || binary.Type != elf.ET_DYN {
 						t.Fatal("incorrect native module target")

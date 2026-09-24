@@ -358,13 +358,19 @@ its `Launcher` with that interpreter, normal Xpra arguments and `XpraArgs`.
 Start the private application bus first and pass its address explicitly to the
 application environment. The bridge starts before applications. These input
 settings are confined to that session; host desktop IBus/Fcitx and global input
-sources are untouched. GTK3 adapters require glibc 2.31 or later; Qt5 requires
+sources are untouched. GTK3 and GTK4 adapters require glibc 2.31 or later (GTK4 4.0 or later); Qt5 requires
 5.15 or later, and Qt6 requires 6.4 with glibc 2.36 or later. Other XIM-aware apps
 use the protocol bridge with a UTF-8 locale; non-Unicode XIM contexts are rejected
-before delivery. GTK4 and incompatible/private toolkit loaders are not
-claimed as supported adapters.
+before delivery. Incompatible/private toolkit loaders are not claimed as supported
+adapters. GTK4 modules use a private, ABI-specific `GTK_PATH`; GTK3 retains its
+module cache. No GTK4 library is injected into GTK3 or generic GIO processes.
 
 `PrepareInputClient` prepares Xpra HTML5 v20/v21 with external input ownership.
+The bootstrap `window.floeXpraInput.version` is **2**, independently of the unchanged
+version 1 text and pointer protocols. It identifies the prepared focus contract
+and GTK4-capable release. Consumers must reject older prepared sessions before
+creating input controllers; preserve their processes and ask users to save, quit
+and reopen. Reconnecting alone does not replace a running application's assets.
 The host obtains the client with `window.floeXpraInput.getClient()` and uses
 `client.floeInput`. `bindTarget(wid)` returns an immutable connection/window
 token; `sendKey`, `commitText`, `release`, `clipboard` and `paste` consume it.

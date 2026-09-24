@@ -66,6 +66,10 @@ func testNativeClientInput(t *testing.T, density int) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	applicationLauncher, err := WriteApplicationLauncher(state)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := PrepareInputClient(tools.HTML, filepath.Join(state, "www")); err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +88,8 @@ func testNativeClientInput(t *testing.T, density int) {
 	config := filepath.Join(state, "config.json")
 	data, err := json.Marshal(map[string]any{"root": root, "state": state, "python": python,
 		"xvfb": xvfb, "dbus": dbus, "client_python": tools.Python, "client_environment": environment,
-		"launcher": input.Launcher, "args": input.XpraArgs(os.Environ()), "environment": serverEnvironment,
+		"launcher": input.Launcher, "application_launcher": applicationLauncher,
+		"args": input.XpraArgs(os.Environ()), "environment": serverEnvironment,
 		"capability": capability, "density": density})
 	if err != nil {
 		t.Fatal(err)

@@ -31,7 +31,12 @@ var inputSources embed.FS
 // XpraArgs. Start a private session bus first and pass its address explicitly to
 // the application's start environment. These paths contain first-party adapters,
 // never a copied host toolkit or a second input method engine.
-type ClientInput struct{ Launcher, GTKModules, QtPlugins string }
+type ClientInput struct {
+	Launcher, GTKModules, QtPlugins string
+	// GTKPath is a private module root. Only GTK4 scans its 4.0.0 ABI directory;
+	// GTK3 uses GTKModules and must never load the GTK4 shared object.
+	GTKPath string
+}
 
 // PrepareClientInput installs the complete input contract into a new absolute
 // private directory. The architecture is the application host's Go architecture.
@@ -64,7 +69,12 @@ func PrepareClientInput(directory, architecture string) (ClientInput, error) {
 	if err := os.MkdirAll(plugins, 0700); err != nil {
 		return ClientInput{}, err
 	}
-	for _, name := range []string{"libfloe-gtk3.so", "libfloe-qt5.so", "libfloe-qt6.so"} {
+	gtkPath := filepath.Join(directory, "gtk")
+	gtk4 := filepath.Join(gtkPath, "4.0.0", "immodules")
+	if err := os.MkdirAll(gtk4, 0700); err != nil {
+		return ClientInput{}, err
+	}
+	for _, name := range []string{"libfloe-gtk3.so", "libfloe-gtk4.so", "libfloe-qt5.so", "libfloe-qt6.so"} {
 		data, err := inputSources.ReadFile("input_modules/dist/" + architecture + "/" + name)
 		if err != nil {
 			return ClientInput{}, fmt.Errorf("client input module unavailable: %w", err)
@@ -72,6 +82,9 @@ func PrepareClientInput(directory, architecture string) (ClientInput, error) {
 		path := filepath.Join(plugins, name)
 		if name == "libfloe-gtk3.so" {
 			path = filepath.Join(directory, name)
+		}
+		if name == "libfloe-gtk4.so" {
+			path = filepath.Join(gtk4, name)
 		}
 		if err := os.WriteFile(path, data, 0600); err != nil {
 			return ClientInput{}, err
@@ -82,7 +95,7 @@ func PrepareClientInput(directory, architecture string) (ClientInput, error) {
 		return ClientInput{}, err
 	}
 	complete = true
-	return ClientInput{filepath.Join(directory, "input_xpra.py"), cache, filepath.Dir(plugins)}, nil
+	return ClientInput{Launcher: filepath.Join(directory, "input_xpra.py"), GTKModules: cache, GTKPath: gtkPath, QtPlugins: filepath.Dir(plugins)}, nil
 }
 
 // XpraArgs selects client-owned composition in the private application
@@ -94,7 +107,7 @@ func (input ClientInput) XpraArgs(baseEnvironment []string) []string {
 			qtPlugins += ":" + value
 		}
 	}
-	return []string{"--input-method=keep", "--start-env=GTK_IM_MODULE=floe-client", "--start-env=QT_IM_MODULE=floe-client", "--start-env=IBUS_ADDRESS=", "--start-env=IBUS_ADDRESS_FILE=", "--start-env=XMODIFIERS=@im=floe-client", "--start-env=GDK_BACKEND=x11", "--start-env=QT_QPA_PLATFORM=xcb", "--start-env=GDK_CORE_DEVICE_EVENTS=1", "--start-env=QT_XCB_NO_XI2=1", "--start-env=GTK_IM_MODULE_FILE=" + input.GTKModules, "--start-env=QT_PLUGIN_PATH=" + qtPlugins}
+	return []string{"--input-method=keep", "--start-env=GTK_IM_MODULE=floe-client", "--start-env=QT_IM_MODULE=floe-client", "--start-env=IBUS_ADDRESS=", "--start-env=IBUS_ADDRESS_FILE=", "--start-env=XMODIFIERS=@im=floe-client", "--start-env=GDK_BACKEND=x11", "--start-env=QT_QPA_PLATFORM=xcb", "--start-env=GDK_CORE_DEVICE_EVENTS=1", "--start-env=QT_XCB_NO_XI2=1", "--start-env=GTK_IM_MODULE_FILE=" + input.GTKModules, "--start-env=GTK_PATH=" + input.GTKPath, "--start-env=FLOE_NATIVE_INPUT_GTK_PATH=" + input.GTKPath, "--start-env=QT_PLUGIN_PATH=" + qtPlugins}
 }
 
 type ClientInputCapability struct {

@@ -17,6 +17,31 @@ class ContextTests(unittest.TestCase):
         self.completed = []
         self.token = self.contexts.context_for(42, 12)
 
+    def test_gtk4_registration_uses_authenticated_sender_and_rejects_second_owner(self):
+        self.contexts.contexts.clear()
+        self.contexts.Gio = SimpleNamespace(DBusCallFlags=SimpleNamespace(NONE=0))
+        self.contexts.GLib = SimpleNamespace(Variant=lambda _type, value: value, VariantType=SimpleNamespace(new=lambda value: value))
+        looked_up = []
+        def call_sync(_name, _path, _interface, method, sender, *_args):
+            self.assertEqual(method, 'GetConnectionUnixProcessID')
+            looked_up.append(sender)
+            return SimpleNamespace(unpack=lambda: (12,))
+        connection = SimpleNamespace(call_sync=call_sync)
+        replies, errors = [], []
+        invocation = SimpleNamespace(return_value=replies.append, return_dbus_error=lambda *args: errors.append(args))
+        parameters = SimpleNamespace(unpack=lambda: (1, 'gtk4'))
+        self.contexts._call(connection, ':1.5', None, None, 'Register', parameters, invocation)
+        self.assertEqual(replies, [None])
+        self.assertEqual(self.contexts.context_for(42, 12), (12, 42, ':1.5'))
+        self.contexts._call(connection, ':1.6', None, None, 'Register', parameters, invocation)
+        self.assertEqual(errors[0][0], 'org.floegence.ClientInput.DuplicateOwner')
+        self.assertEqual(self.contexts.context_for(42, 12), (12, 42, ':1.5'))
+        self.assertEqual(looked_up, [(':1.5',), (':1.6',)])
+        parameters = SimpleNamespace(unpack=lambda: (2, 'gtk4'))
+        self.contexts._call(connection, ':1.5', None, None, 'Register', parameters, invocation)
+        self.assertEqual(errors[-1][0], 'org.floegence.ClientInput.InvalidVersion')
+        self.assertEqual(len(looked_up), 2)
+
     def begin(self):
         self.contexts.commit(self.token, '你好🙂', self.completed.append)
 

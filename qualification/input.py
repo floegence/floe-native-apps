@@ -55,15 +55,10 @@ def qualify(kind):
         environment['DBUS_SESSION_BUS_ADDRESS'] = bus.stdout.readline().strip()
         if not environment['DBUS_SESSION_BUS_ADDRESS'].startswith('unix:'):
             raise RuntimeError('Private fixture bus did not start')
-        # Restore only the support wrapper's overrides for these system fixtures.
-        # User applications in production use WriteApplicationLauncher instead.
-        application = ['env']
-        for key in ('PYTHONHOME', 'PYTHONPATH', 'PYTHONNOUSERSITE', 'GI_TYPELIB_PATH',
-                    'GIO_MODULE_DIR', 'GIO_EXTRA_MODULES', 'GDK_PIXBUF_MODULE_FILE',
-                    'GDK_PIXBUF_MODULEDIR', 'FONTCONFIG_PATH', 'FONTCONFIG_FILE',
-                    'GIO_LAUNCH_DESKTOP'):
-            application += ['-u', key]
-        if kind == 'terminal':
+        application = []
+        if kind == 'gtk4' and os.environ.get('FLOE_TEST_GTK4_BASELINE'):
+            application += ['env', 'LD_LIBRARY_PATH=/opt/gtk4/lib', os.environ['FLOE_TEST_GTK4_BASELINE'], str(receipt)]
+        elif kind == 'terminal':
             application += ['xterm', '-u8', '-geometry', '80x20', '-xrm', 'XTerm*inputMethod:floe-client',
                             '-e', '/usr/bin/python3', str(source / ('pointer_fixture.py' if pointer_mode else 'input_fixture.py')), kind, str(receipt)]
         elif kind == 'chromium':
@@ -112,6 +107,17 @@ for(const editor of editors)editor.addEventListener('input',()=>{const body=JSON
                             '--app=http://127.0.0.1:' + str(http.server_port) + '/']
         else:
             application += ['/usr/bin/python3', str(source / ('pointer_fixture.py' if pointer_mode else 'input_fixture.py')), kind, str(receipt)]
+        # Exercise the same GIO launch and final host environment restoration as
+        # consumers. Direct child fixtures can hide a lost private GTK_PATH.
+        def desktop_quote(value):
+            for char in ('\\', '"', '`', '$', '%'):
+                value = value.replace(char, '%%' if char == '%' else '\\' + char)
+            return '"' + value + '"'
+        desktop = directory / 'application.desktop'
+        desktop.write_text('[Desktop Entry]\nType=Application\nName=Input qualification\nExec=' +
+                           ' '.join(desktop_quote(arg) for arg in application) + '\n')
+        application = [config['python'], config['application_launcher'], str(desktop),
+                       str(directory / 'application.json')]
         listener = socket.socket()
         listener.bind(('127.0.0.1', 0))
         port = listener.getsockname()[1]
@@ -169,14 +175,14 @@ for(const editor of editors)editor.addEventListener('input',()=>{const body=JSON
         if evidence:
             target = Path(evidence) / ('density-' + str(config['density'])) / kind
             target.mkdir(parents=True, exist_ok=True)
-            for name in ('process.json', 'received.json', 'received.unicode.json', 'received.density.json', 'received.json.png', 'received.ready', 'received.hover', 'received.clicked', 'received.pointer.json', 'server.log'):
+            for name in ('process.json', 'application.json', 'received.json', 'received.unicode.json', 'received.density.json', 'received.json.png', 'received.ready', 'received.hover', 'received.clicked', 'received.pointer.json', 'server.log'):
                 if (directory / name).exists():
                     shutil.copy2(directory / name, target / name)
                 elif (target / name).exists():
                     (target / name).unlink()
 
 
-for fixture in os.environ.get('FLOE_TEST_INPUT_FIXTURES', 'gtk,qt5,qt6,chromium,terminal').split(','):
-    if fixture not in ('gtk', 'qt5', 'qt6', 'chromium', 'terminal'):
+for fixture in os.environ.get('FLOE_TEST_INPUT_FIXTURES', 'gtk,gtk4,gtk4-entry,qt5,qt6,chromium,terminal').split(','):
+    if fixture not in ('gtk', 'gtk4', 'gtk4-entry', 'qt5', 'qt6', 'chromium', 'terminal'):
         raise RuntimeError('Unknown native fixture')
     qualify(fixture)

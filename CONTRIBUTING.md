@@ -224,7 +224,7 @@ page zoom and monitor changes in the shipped viewer and Desktop.
 
 The source gate tests ordering/revocation and executes the prepared Xpra v20/v21
 JavaScript with its actual keymap tables. It installs no browser. Native
-qualification additionally requires GTK3, PyQt5, PyQt6, xterm, and a native
+qualification additionally requires GTK3, GTK4, PyQt5, PyQt6, xterm, and a native
 Chromium executable with its normal sandbox available:
 
 ```sh
@@ -283,9 +283,51 @@ not install privileged components or modify application sandbox settings.
 Build first-party modules natively with `scripts/input_builder.Dockerfile`, using
 the original architecture-specific Debian digest in the existing build record
 and `QT_MAJOR=5` or `6`. Copy the fixture host's certificate bundle to the ignored
-`input_modules/certificates/` directory. The image uses the signed 2025-02-24
+`input_modules/certificates/` directory. Run `python3 scripts/fetch_input_toolkits.py` to acquire and verify the original
+GTK/Pango archives into ignored `input_modules/sources/` before building. The
+image verifies those bytes again before extraction and uses the signed 2025-02-24
 Debian snapshot. Mount this repository at `/src` and run
 `scripts/build_input_modules.sh /absolute/output 5` (or `6`) in that image with
 `FLOE_INPUT_BUILDER_IMAGE` set to its original pinned Debian digest. Commit the
 binaries and provenance together; source hash drift fails the gate. No toolkit
 binaries are copied into these modules. Containers are build/test fixtures only.
+
+### GTK4 and click-to-keyboard qualification
+
+Prepared client bootstrap version 2 removes the intermediate window mousedown
+interceptor. `TestBrowserInputFocus` constructs both reviewed Xpra windows with
+real jQuery UI, clicks pixels and types without test-forced focus. It runs in
+ordinary documents and iframes in Chromium, Firefox and WebKit, including local
+control focus and decoration drag. Run it with `FLOE_TEST_POINTER_BROWSERS` and
+retain receipts through `FLOE_TEST_POINTER_EVIDENCE`. A prototype-only fixture
+cannot exercise constructor event ownership and is not equivalent evidence.
+
+Native input qualification includes GTK4 TextView and Entry contexts. Entry
+assertions omit line breaks because it is a single-line widget; all other Unicode,
+ordering, focus, editing and clipboard assertions remain. The GTK4 module is a
+GIO `gtk-im-module` extension in the private `gtk/4.0.0/immodules` directory, not a
+generic GIO extension and not a GTK3 cache entry. Text wire protocol version 1,
+marker ordering, private-bus ownership and application acknowledgements are unchanged.
+GTK4 selects XI2 only: its focused input context consumes the same core marker
+through GDK’s native `xevent` signal. The sender addresses the native window owner
+without requiring core event selection. The context verifies the marker belongs
+to its surface, including the private focus child used by older GDK versions.
+No second injection path or changed
+keyboard mapping is introduced. GTK4 type registration uses the actual runtime
+parent sizes because newer GtkIMContext classes exceed the original 4.0 layout.
+`XpraArgs` also carries the private GTK path through `FLOE_NATIVE_INPUT_GTK_PATH`
+for `WriteApplicationLauncher`: support Python clears ordinary GTK search paths,
+so the launcher applies this explicit input setting after restoring the host map
+and removes the handoff variable before executing the application. Installed
+lifetime checks assert this final child environment. Native application fixtures
+use this same GIO launcher, including the minimum GTK runtime qualification.
+
+The Qt5/GTK build fixture compiles pinned GTK 4.0.3 and Pango 1.48.10 on Debian 11 because the
+snapshot has no GTK4 development package. The original GTK archive is verified
+before extraction and retained in provenance; its libraries are never shipped
+with adapters. For minimum-runtime acceptance, compile `qualification/gtk4_baseline.c`
+against `/opt/gtk4` inside that same native fixture and set
+`FLOE_TEST_GTK4_BASELINE` to its absolute executable path while selecting the
+`gtk4` native input fixture. This runs the same actual document, focus and clipboard
+assertions with GTK 4.0.3 and glibc 2.31. GTK4's normal system-library qualification
+must also run on both native release runners. Neither run certifies real client IMEs.

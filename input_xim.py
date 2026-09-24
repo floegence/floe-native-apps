@@ -260,7 +260,9 @@ class XIM:
 
     def marker(self, sequence, xid):
         # Core events preserve an operation ID without changing keyboard state.
-        # The private application environment selects core input in GTK and Qt.
+        # Event mask zero addresses the window's owning client even when GTK4
+        # selects XI2 only. Its input module consumes this via GDK's xevent signal;
+        # GTK3 and Qt consume the same marker in their ordinary key filter.
         # Never steal a keycode that an application has explicitly mapped.
         reply = self.keymap_reply(self.connection, self.keymap(self.connection, 8, 1), None)
         if not reply:
@@ -279,7 +281,7 @@ class XIM:
             return False
         event = Key(type=2, detail=8, time=sequence, root=self.root,
                     window=focus, same_screen=1)
-        self.send_event(self.connection, 1, focus, 1, c.byref(event))
+        self.send_event(self.connection, 0, focus, 0, c.byref(event))
         return self.flush(self.connection) > 0
 
     def cancel(self, token):

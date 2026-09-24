@@ -38,7 +38,7 @@ func TestPreparedPointerHasOneOwner(t *testing.T) {
 			}
 			window, _ := os.ReadFile(filepath.Join(root, "js/Window.js"))
 			for _, source := range []string{string(client), string(window)} {
-				for _, retired := range []string{"on_mousedown(", "on_mousescroll(", "register_canvas_pointer_events", "pointer_down", "wheel_delta_x", "20 * window.devicePixelRatio"} {
+				for _, retired := range []string{"on_mousedown(", "on_mousescroll(", "register_canvas_pointer_events", "pointer_down", "wheel_delta_x", "20 * window.devicePixelRatio", "jQuery(this.div).mousedown("} {
 					if strings.Contains(source, retired) {
 						t.Fatalf("retired pointer owner: %s", retired)
 					}

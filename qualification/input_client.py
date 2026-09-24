@@ -16,7 +16,10 @@ receipt, address, kind = Path(sys.argv[1]), sys.argv[2], sys.argv[3]
 density = int(sys.argv[4])
 text = '你好日本語한글🙂👩🏽‍💻e\u0301𠮷\n第二行'
 long_text = '你🙂e\u0301' * 1500
-expected = (text + ('\r' if kind == 'terminal' else '\n')) * 40 + long_text
+if kind == 'gtk4-entry':
+    text = text.replace('\n', '')
+separator = '' if kind == 'gtk4-entry' else ('\r' if kind == 'terminal' else '\n')
+expected = (text + separator) * 40 + long_text
 compression.init_all()
 packet_encoding.init_all()
 
@@ -145,7 +148,7 @@ class Client(GObjectXpraClient):
             return True
         elif kind != 'terminal' and not receipt.exists():
             return True
-        if kind == 'gtk':
+        if kind in ('gtk', 'gtk4', 'gtk4-entry'):
             try:
                 actual_density = json.loads(receipt.with_suffix('.density.json').read_text())
             except (OSError, ValueError):

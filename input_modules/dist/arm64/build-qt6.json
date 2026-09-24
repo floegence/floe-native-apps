@@ -322,6 +322,12 @@
   "source_sha256": {
     "input_modules/qt.cpp": "cfd4559da08261f03e4fff1f4789d5f2289009005504253d77c347689f83582a",
     "input_modules/qt.json": "76e0c59d36a8a828e299558f7103544517fba0e2446b5f188c675fa5d74a945f",
-    "scripts/build_input_modules.sh": "dcd2a1a32c6c25a72cd93c03cdbd74aec316da06d53e11f7eda5429d03110275"
-  }
+    "scripts/build_input_modules.sh": "d290e4563c27a3f956aae93c5e96c1be653d7d3b9e51fef4278e91150a610e3b",
+    "scripts/fetch_input_toolkits.py": "74a14692db3816793bdebb26d2076c23e0d25e33076ae57333cf6320fa2ab178",
+    "scripts/input_builder.Dockerfile": "363c8c05476eaea123d73f74edf69a1111809adde002aeedbc5de549da4382dc",
+    "scripts/input_builder.sh": "dd1adc5df50b6febbbac20df83b2fd32359aa3f4706f6e6e066f909a5a09cd22",
+    "scripts/input_gtk_builder.sh": "b552109421b02bd8c8dfbdd09c6d4f0ae5983ef0835f0b638c7c316ae405f567",
+    "scripts/input_toolkits.json": "890272378222632a1e94121943696918f7f5c108430dd9ea6090df288275a9ee"
+  },
+  "toolkit_sources": {}
 }

@@ -54,7 +54,7 @@ func TestInputLauncherOwnsPrivateEnvironment(t *testing.T) {
 	}
 	args := input.XpraArgs([]string{"GTK_IM_MODULE=ibus", "QT_PLUGIN_PATH=/application/plugins"})
 	joined := strings.Join(args, "\n")
-	for _, value := range []string{"--input-method=keep", "--start-env=GTK_IM_MODULE=floe-client", "--start-env=QT_IM_MODULE=floe-client", "--start-env=GDK_CORE_DEVICE_EVENTS=1", "--start-env=QT_XCB_NO_XI2=1", "--start-env=XMODIFIERS=@im=floe-client", "--start-env=QT_PLUGIN_PATH=" + input.QtPlugins + ":/application/plugins", "--start-env=GTK_IM_MODULE_FILE=" + input.GTKModules} {
+	for _, value := range []string{"--input-method=keep", "--start-env=GTK_IM_MODULE=floe-client", "--start-env=QT_IM_MODULE=floe-client", "--start-env=GDK_CORE_DEVICE_EVENTS=1", "--start-env=QT_XCB_NO_XI2=1", "--start-env=XMODIFIERS=@im=floe-client", "--start-env=QT_PLUGIN_PATH=" + input.QtPlugins + ":/application/plugins", "--start-env=GTK_IM_MODULE_FILE=" + input.GTKModules, "--start-env=FLOE_NATIVE_INPUT_GTK_PATH=" + input.GTKPath} {
 		if !strings.Contains(joined, value) {
 			t.Fatalf("missing private input setting %s", value)
 		}

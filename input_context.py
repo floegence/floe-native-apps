@@ -104,7 +104,7 @@ class Contexts:
         Gio, GLib = self.Gio, self.GLib
         if method == 'Register':
             version, toolkit = parameters.unpack()
-            if version != 1 or toolkit not in ('gtk3', 'qt5', 'qt6'):
+            if version != 1 or toolkit not in ('gtk3', 'gtk4', 'qt5', 'qt6'):
                 invocation.return_dbus_error(_NAME + '.InvalidVersion', 'Input module is unsupported')
                 return
             pid = connection.call_sync('org.freedesktop.DBus', '/org/freedesktop/DBus',

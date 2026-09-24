@@ -3,7 +3,7 @@
 set -eu
 test -f /.dockerenv || test -f /tmp/floe-input-build-fixture
 major=${1:-5}
-case "$major" in 5) suite=bullseye; packages='libgtk-3-dev qtbase5-private-dev' ;;
+case "$major" in 5) suite=bullseye; packages='libgtk-3-dev qtbase5-private-dev meson ninja-build curl libgraphene-1.0-dev libxkbcommon-dev' ;;
   6) suite=bookworm; packages='qt6-base-private-dev' ;; *) exit 2 ;; esac
 rm -f /etc/apt/sources.list.d/*
 cat > /etc/apt/sources.list <<EOF

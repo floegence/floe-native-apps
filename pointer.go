@@ -59,6 +59,7 @@ func preparePointerHTML(index, client, window []byte) ([]byte, []byte, []byte, e
 		w = replace(w, "    this.mouse_"+name+"_cb = mouse_"+name+"_callback || dummy;\n", "")
 	}
 	w = section(w, "  register_canvas_mouse_events(canvas) {", "  set_spinner(state) {", "")
+	w = replace(w, "    // stop propagation if we're over the window:\n    jQuery(this.div).mousedown((e) => e.stopPropagation());\n    //bug 2418: if we stop 'mouseup' propagation,\n    //jQuery can't ungrab the window with Firefox\n", "")
 	for _, line := range []string{"    this.pointer_down = -1;\n", "    this.pointer_last_x = 0;\n", "    this.pointer_last_y = 0;\n"} {
 		w = replace(w, line, "")
 	}

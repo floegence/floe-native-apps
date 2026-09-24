@@ -32,6 +32,15 @@ function setup(mac = false) {
 }
 const key = (name,code,pressed=true,extra={}) => ({key:name,code,pressed,repeat:false,shiftKey:false,ctrlKey:false,altKey:false,metaKey:false,location:0,...extra});
 
+test('prepared bootstrap revision is independent of negotiated input protocol',()=>{
+  const {context,adapter}=setup();
+  assert.equal(context.window.floeXpraInput.version,2);
+  assert.equal(adapter.version,1);
+  adapter.disconnect();
+  assert.equal(context.window.floeXpraInput.version,2);
+  assert.equal(adapter.version,0);
+});
+
 test('text and keys retain event order without registering DOM owners',()=>{
   const {adapter,sent} = setup();
   const target=adapter.bindTarget(1);

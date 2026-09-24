@@ -28,10 +28,24 @@ xcb-util 0.4.1 (MIT) packages. `input_xim.py` calls their public ABI; it does no
 copy or reimplement the XIM protocol. Those libraries run only in the private
 support process and are not exported as application loader paths.
 
-`input_modules/dist` contains first-party MIT-licensed GTK3 and Qt5/Qt6 input
-adapters built from `input_modules/gtk3.c` and `input_modules/qt.cpp`. They link
+`input_modules/dist` contains first-party MIT-licensed GTK3/GTK4 and Qt5/Qt6 input
+adapters built from `input_modules/gtk3.c`, `gtk4.c`, `gtk_commit.h` and `qt.cpp`. They link
 dynamically to the application's installed GTK/GLib or Qt libraries. This module
 does not redistribute GTK, GLib, Qt or glibc with those adapters. Their normal
 licenses and source obligations remain with the corresponding library
 distributors. Per-architecture build records retain the pinned Debian image,
 snapshot, compiler/package versions, source hashes and binary hashes.
+
+The GTK4 build fixture compiles the original GTK 4.0.3 source archive from
+https://download.gnome.org/sources/gtk/4.0/gtk-4.0.3.tar.xz (SHA-256
+`d7c9893725790b50bd9a3bb278856d9d543b44b6b9b951d7b60e7bdecc131890`), under
+LGPL-2.1-or-later. The fixture also builds original Pango 1.48.10 under
+LGPL-2.1-or-later; `scripts/input_toolkits.json` pins both original archive URLs
+and SHA-256 values. GTK and Pango remain inside the disposable build/test fixture; only the
+first-party dynamically linked adapter is distributed. Build records identify
+that original source and do not change the native component catalog.
+
+The focus browser fixture uses npm-published jQuery 3.7.1 and jQuery UI 1.13.3
+(MIT), pinned with package integrity in `qualification/package-lock.json`. It
+executes the original reviewed Xpra window constructors and their real jQuery UI
+listeners, including decoration drag, together with the published controllers.

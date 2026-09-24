@@ -1,0 +1,12 @@
+{
+  "gtk": {
+    "version": "4.0.3",
+    "url": "https://download.gnome.org/sources/gtk/4.0/gtk-4.0.3.tar.xz",
+    "sha256": "d7c9893725790b50bd9a3bb278856d9d543b44b6b9b951d7b60e7bdecc131890"
+  },
+  "pango": {
+    "version": "1.48.10",
+    "url": "https://download.gnome.org/sources/pango/1.48/pango-1.48.10.tar.xz",
+    "sha256": "21e1f5798bcdfda75eabc4280514b0896ab56f656d4e7e66030b9a2535ecdc98"
+  }
+}

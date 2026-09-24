@@ -42,6 +42,28 @@ class XIMTest(unittest.TestCase):
     def acknowledge(self, bridge):
         bridge._callback(1, None, 7, ctypes.pointer(xim.Header(major=62)), None, None, None)
 
+    def test_marker_addresses_owner_without_requiring_core_event_selection(self):
+        bridge = self.bridge()
+        bridge.keymap = lambda *_: 1
+        bridge.keymap_reply = lambda *_: 2
+        bridge.keysyms = lambda *_: [0]
+        bridge.keysyms_count = lambda *_: 1
+        bridge.get_focus = lambda *_: 3
+        bridge.focus_reply = lambda *_: [0, 0, 42]
+        bridge.descendant = lambda child, parent: child == parent == 42
+        bridge.root = 1
+        bridge.flush = lambda *_: 1
+        events = []
+        def send(connection, propagate, destination, mask, data):
+            event = ctypes.cast(data, ctypes.POINTER(xim.Key)).contents
+            events.append((propagate, destination, mask, event.type, event.detail, event.time))
+        bridge.send_event = send
+        self.assertTrue(bridge.marker(1234, 42))
+        self.assertEqual(events, [(0, 42, 0, 2, 8, 1234)])
+        bridge.keysyms = lambda *_: [97]
+        self.assertFalse(bridge.marker(1235, 42))
+        self.assertEqual(len(events), 1)
+
     def test_long_unicode_stays_one_operation_until_every_fragment_is_acknowledged(self):
         bridge = self.bridge()
         text = '你🙂e\u0301👩🏽‍💻𠮷\n' * 450

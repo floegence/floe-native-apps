@@ -20,7 +20,7 @@ jobs:
   native:
     name: Native (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 60
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
@@ -65,7 +65,7 @@ jobs:
           PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/input-browsers
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3-gi gir1.2-gtk-3.0 python3-pyqt5 python3-pyqt6 xterm
+          sudo apt-get install -y python3-gi gir1.2-gtk-3.0 gir1.2-gtk-4.0 python3-pyqt5 python3-pyqt6 xterm
           npx --yes playwright@1.58.2 install --with-deps chromium
           # Install Chromium's supplied sandbox only in this disposable runner.
           # Ubuntu's policy requires it for a browser outside a packaged profile.
@@ -93,7 +93,7 @@ jobs:
           FLOE_TEST_CHROMIUM_BIN=$(node -e 'console.log(require("./qualification/node_modules/playwright").chromium.executablePath())')
           export FLOE_TEST_CHROMIUM_BIN
           "$FLOE_TEST_CHROMIUM_BIN" --version | tee "$RUNNER_TEMP/qualification/chromium-version.log"
-          dpkg-query -W python3-pyqt5 python3-pyqt6 libgtk-3-0t64 xterm \
+          dpkg-query -W python3-pyqt5 python3-pyqt6 libgtk-3-0t64 libgtk-4-1 xterm \
             | tee "$RUNNER_TEMP/qualification/application-versions.log"
           go test -count=1 -run '^TestNative(ClientInput|DisplayInput)$' -v . \
             2>&1 | tee "$RUNNER_TEMP/qualification/client-input.log"
@@ -108,12 +108,41 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          go test -count=1 -run '^TestBrowserPointer$' -v .
+          go test -count=1 -run '^TestBrowser(Pointer|InputFocus)$' -v .
           FLOE_TEST_INPUT_ROOT=$(find "$RUNNER_TEMP/native-state/packages" -mindepth 1 -maxdepth 1 -type d)
           export FLOE_TEST_INPUT_ROOT
           FLOE_TEST_CHROMIUM_BIN=$(node -e 'console.log(require("./qualification/node_modules/playwright").chromium.executablePath())')
           export FLOE_TEST_CHROMIUM_BIN
           go test -count=1 -run '^TestNativeClientInput$' -v .
+      - name: Qualify GTK 4.0 and glibc 2.31 on the native architecture
+        env:
+          NATIVE_ARCH: ${{ matrix.arch }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p input_modules/certificates "$RUNNER_TEMP/baseline"
+          cp /etc/ssl/certs/ca-certificates.crt input_modules/certificates/
+          python3 scripts/fetch_input_toolkits.py
+          base=$(python3 -c 'import json,os; print(json.load(open("input_modules/dist/"+os.environ["NATIVE_ARCH"]+"/build-qt5.json"))["builder_image"])')
+          docker build --build-arg BASE_IMAGE="$base" --build-arg QT_MAJOR=5 \
+            -f scripts/input_builder.Dockerfile -t floe-input-baseline .
+          docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/src:ro" \
+            -v "$RUNNER_TEMP/baseline:/out" -w /src floe-input-baseline sh -c \
+            'export PKG_CONFIG_PATH=/opt/gtk4/lib/pkgconfig; cc qualification/gtk4_baseline.c $(pkg-config --cflags --libs gtk4) -Wl,-rpath-link,/opt/gtk4/lib -o /out/gtk4-baseline'
+          CGO_ENABLED=0 go test -c -o "$RUNNER_TEMP/baseline/native-input.test" .
+          root=$(find "$RUNNER_TEMP/native-state/packages" -mindepth 1 -maxdepth 1 -type d)
+          mkdir -p "$RUNNER_TEMP/qualification/gtk4-baseline"
+          # D-Bus authenticates against the fixture's user database. Use its
+          # existing unprivileged account, not the runner's unknown numeric UID.
+          chmod 777 "$RUNNER_TEMP/qualification/gtk4-baseline"
+          docker run --rm --user nobody -e HOME=/tmp -e XDG_CACHE_HOME=/tmp \
+            -v "$PWD:/src:ro" \
+            -v "$root:/components:ro" -v "$RUNNER_TEMP/baseline:/out:ro" \
+            -v "$RUNNER_TEMP/qualification/gtk4-baseline:/evidence" -w /src \
+            -e FLOE_TEST_INPUT_ROOT=/components -e FLOE_TEST_INPUT_FIXTURES=gtk4 \
+            -e FLOE_TEST_GTK4_BASELINE=/out/gtk4-baseline -e FLOE_TEST_INPUT_EVIDENCE=/evidence \
+            floe-input-baseline /out/native-input.test -test.run '^TestNativeClientInput$' -test.v \
+            2>&1 | tee "$RUNNER_TEMP/qualification/gtk4-baseline.log"
       - name: Install signed system Xpra fixture
         run: |
           curl --fail --silent --show-error --location https://xpra.org/xpra.asc -o "$RUNNER_TEMP/xpra.asc"
