@@ -89,7 +89,7 @@ func TestInvalidAcquisitionNeverPublishes(t *testing.T) {
 				t.Fatal("accepted failed acquisition")
 			}
 			entries, _ := os.ReadDir(root)
-			if len(entries) != 0 {
+			if len(entries) != 1 || entries[0].Name() != ".cache-lock" {
 				t.Fatal("left transfer or published file", entries)
 			}
 		})
@@ -97,7 +97,7 @@ func TestInvalidAcquisitionNeverPublishes(t *testing.T) {
 }
 
 func TestConcurrentAcquisitionAndCancellationKeepValidCache(t *testing.T) {
-	spec, client, _ := fixture(t)
+	spec, client, calls := fixture(t)
 	root := t.TempDir()
 	var workers sync.WaitGroup
 	for range 8 {
@@ -108,6 +108,9 @@ func TestConcurrentAcquisitionAndCancellationKeepValidCache(t *testing.T) {
 		})
 	}
 	workers.Wait()
+	if calls.Load() != 1 {
+		t.Fatalf("concurrent consumers downloaded %d times", calls.Load())
+	}
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	if _, err := Acquire(ctx, root, spec, Options{Client: client}); !errors.Is(err, context.Canceled) {
@@ -117,7 +120,7 @@ func TestConcurrentAcquisitionAndCancellationKeepValidCache(t *testing.T) {
 		t.Fatal(err)
 	}
 	entries, _ := os.ReadDir(root)
-	if len(entries) != 1 {
+	if len(entries) != 2 {
 		t.Fatal(entries)
 	}
 }

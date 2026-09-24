@@ -31,13 +31,25 @@ jobs:
           cache: true
       - run: ./scripts/check.sh
 
+  cache-windows:
+    name: Windows archive cache
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+      - run: go test -count=1 -timeout=2m ./artifactcache
+
   source-gate:
     name: Source checks
     if: always()
-    needs: source
+    needs: [source, cache-windows]
     runs-on: ubuntu-latest
     timeout-minutes: 1
     steps:
       - env:
           RESULT: ${{ needs.source.result }}
-        run: test "$RESULT" = success
+          WINDOWS: ${{ needs.cache-windows.result }}
+        run: test "$RESULT" = success && test "$WINDOWS" = success

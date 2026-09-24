@@ -47,6 +47,12 @@ func (m *Manager) Plan(ctx context.Context) (TransferPlan, error) {
 // Consumer adapters must resolve pkg from their compiled catalog, not a client.
 // An empty plan needs no bundle: use Manager.Start with source "cache" instead.
 func WriteTransferBundle(ctx context.Context, pkg Package, plan TransferPlan, cacheRoot string, output io.Writer, progress func(int64)) error {
+	return WriteTransferBundleWithOptions(ctx, pkg, plan, cacheRoot, output, legacyBundleOptions(progress))
+}
+
+// WriteTransferBundleWithOptions validates receiver identities before any cache
+// access, then uses the same leased acquisition path as a complete bundle.
+func WriteTransferBundleWithOptions(ctx context.Context, pkg Package, plan TransferPlan, cacheRoot string, output io.Writer, options BundleOptions) error {
 	if err := pkg.Validate(); err != nil {
 		return err
 	}
@@ -72,5 +78,5 @@ func WriteTransferBundle(ctx context.Context, pkg Package, plan TransferPlan, ca
 	if len(selected) != 0 || size != plan.MissingBytes {
 		return ErrInvalid
 	}
-	return writeBundle(ctx, artifacts, cacheRoot, output, progress)
+	return writeBundle(ctx, artifacts, cacheRoot, output, options)
 }

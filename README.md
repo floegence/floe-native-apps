@@ -198,10 +198,29 @@ length and digest without network access. `Verify` validates an existing regular
 file without modifying it; integrity errors match `artifactcache.ErrIntegrity`,
 while cancellation and filesystem errors retain their normal classifications.
 HTTP redirects cannot downgrade HTTPS. Invalid or incomplete downloads never
-replace a cache entry. Concurrent acquisitions use independent temporary files
-and may repeat a download; cancellation removes only the current call's staging
-file. The host owns cache retention and must not remove entries while readers use
-them. This API grants neither permission to install nor to execute an archive.
+replace a cache entry. Concurrent acquisitions serialize through an OS-backed cache lease, recheck
+verified files after waiting, and release ownership on cancellation or process
+exit. The returned path from `Acquire` must not race with maintenance. Consumers
+that read archives while maintenance is enabled use `OpenSession`, then its
+`Acquire`, `Verify`, and `Path` methods, retaining the session until the last read.
+
+`Session.Prune` and standalone `Maintain` accept an opt-in `artifactcache.Policy`
+with `MaxIdleAge` and `MaxBytes`. Zero disables each limit. Maintenance first
+removes expired archives, then evicts the least recently used archives to meet
+the byte budget. Successful acquisition or `Session.Touch` refreshes file mtime;
+existing files use their original mtime without an index migration. Only recognized
+regular archive and abandoned download files are removed. Symlinks, unknown
+files, subdirectories and the stable lease file are preserved. `Maintain` can
+return `ErrBusy` immediately instead of waiting for active readers.
+
+`WriteBundleWithOptions` and `WriteTransferBundleWithOptions` retain this lease
+through ZIP creation. `BundleOptions` supplies optional retention and structured
+progress: waiting, checking, downloading and packing. Cache/download totals remain
+absent until inspection completes; downloaded bytes count only network reads.
+Maintenance runs after packing or failure; its separate callback reports cleanup
+errors without replacing the acquisition result. Existing bundle methods delegate
+to the same path without enabling archive eviction. Products own consent, private
+placement, policy values and localized presentation. This API grants neither permission to install nor to execute an archive.
 
 Acquire original publisher archives on Linux, macOS, or Windows for a Linux
 target. Acquisition does not execute those components on the downloading machine.

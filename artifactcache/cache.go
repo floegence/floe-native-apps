@@ -110,9 +110,22 @@ func Verify(ctx context.Context, name string, spec Spec) error {
 
 // Acquire revalidates cached bytes or downloads and atomically publishes the
 // exact archive. root must be an absolute private directory owned by the host.
-// Concurrent calls use independent staging files; failures remove only their
-// own staging file. A verified cache entry is never deleted by cancellation.
+// Concurrent calls share an exclusive cache lease and recheck after waiting.
+// A verified cache entry is never deleted by cancellation. Returned paths must
+// not be used concurrently with maintenance; use Session for protected reads.
 func Acquire(ctx context.Context, root string, spec Spec, options Options) (Result, error) {
+	if err := spec.validate(); err != nil {
+		return Result{}, err
+	}
+	session, err := OpenSession(ctx, root, SessionOptions{})
+	if err != nil {
+		return Result{}, err
+	}
+	defer session.Close()
+	return session.Acquire(ctx, spec, options)
+}
+
+func acquire(ctx context.Context, root string, spec Spec, options Options) (Result, error) {
 	if err := spec.validate(); err != nil {
 		return Result{}, err
 	}
