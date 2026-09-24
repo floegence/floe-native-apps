@@ -134,7 +134,8 @@ jobs:
           mkdir -p "$RUNNER_TEMP/qualification/gtk4-baseline"
           # D-Bus authenticates against the fixture's user database. Use its
           # existing unprivileged account, not the runner's unknown numeric UID.
-          chmod 777 "$RUNNER_TEMP/qualification/gtk4-baseline"
+          sudo chown 65534:65534 "$RUNNER_TEMP/qualification/gtk4-baseline"
+          trap 'sudo chown -R "$(id -u):$(id -g)" "$RUNNER_TEMP/qualification/gtk4-baseline"' EXIT
           docker run --rm --user nobody -e HOME=/tmp -e XDG_CACHE_HOME=/tmp \
             -v "$PWD:/src:ro" \
             -v "$root:/components:ro" -v "$RUNNER_TEMP/baseline:/out:ro" \
