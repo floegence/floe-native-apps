@@ -66,3 +66,18 @@ func TestInputLauncherOwnsPrivateEnvironment(t *testing.T) {
 		t.Fatal("existing session was overwritten")
 	}
 }
+
+func TestGTK4PrivateModule(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "input")
+	input, err := PrepareClientInput(dir, "amd64")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "gtk", "4.0.0", "immodules", "libfloe-gtk4.so")); err != nil {
+		t.Fatal("GTK4 module missing", err)
+	}
+	args := strings.Join(input.XpraArgs([]string{"GTK_PATH=/desktop/modules"}), "\n")
+	if !strings.Contains(args, "--start-env=GTK_PATH="+filepath.Join(dir, "gtk")) || strings.Contains(args, "/desktop/modules") {
+		t.Fatal("private GTK4 loader missing", args)
+	}
+}

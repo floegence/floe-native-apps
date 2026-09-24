@@ -78,3 +78,20 @@ func TestBrowserPointer(t *testing.T) {
 		})
 	}
 }
+
+func TestBrowserInputFocus(t *testing.T) {
+	if os.Getenv("FLOE_TEST_POINTER_BROWSERS") == "" {
+		t.Skip("explicit browser input focus qualification")
+	}
+	for _, version := range []string{"v20", "v21"} {
+		t.Run(version, func(t *testing.T) {
+			info, _ := json.Marshal(map[string]string{"version": version, "directory": pointerFixture(t, version)})
+			cmd := exec.Command("node", "qualification/input_focus.mjs", string(info))
+			if out, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("browser input focus: %v\n%s", err, out)
+			} else {
+				t.Log(string(out))
+			}
+		})
+	}
+}
