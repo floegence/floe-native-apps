@@ -46,7 +46,7 @@ def main():
         processes.append((process, identity(process.pid)[1], name))
         return process
 
-    def capture(stage):
+    def capture_once(stage, expected=None):
         nonlocal frame_socket, frame_process, frame_sequence, pixels
         if frame_socket is None:
             frame_socket, child_socket = socket.socketpair()
@@ -70,6 +70,7 @@ def main():
                 total += len(chunk)
             return b"".join(chunks)
         frame_sequence += 1
+        damage_at_request = sum(line.startswith('damage ') for line in events)
         frame_socket.sendall(struct.pack("=I", frame_sequence))
         sequence, status, width, height, fmt, length = struct.unpack("=6I", read_bytes(24))
         assert sequence == frame_sequence and status == 1
@@ -79,8 +80,31 @@ def main():
         result.setdefault("frames", []).append({"stage": stage, "sequence": sequence, "width": width,
             "height": height, "format": fmt, "sha256": hashlib.sha256(pixels).hexdigest()})
         from PIL import Image
-        Image.frombytes("RGBA", (width, height), pixels, "raw", "BGRA").convert("RGB").save(evidence / (stage + ".png"))
-        return
+        image = Image.frombytes("RGBA", (width, height), pixels, "raw", "BGRA").convert("RGB")
+        image.save(evidence / (stage + '-' + str(frame_sequence) + ".png"))
+        if expected is not None:
+            sample = image.getpixel((200, 240))
+            result['frames'][-1]['selected_window_pixel'] = sample
+            other = (155, 49, 19) if expected == (19, 87, 155) else (19, 87, 155)
+            other_pixels = sum(count for count, color in image.getcolors(width * height) if color == other)
+            result['frames'][-1]['inactive_window_pixels'] = other_pixels
+            assert other_pixels == 0, 'Inactive native window pixels leaked into the selected frame'
+            return sample == expected, damage_at_request
+        return True, damage_at_request
+
+    def capture(stage, expected=None):
+        # Xwayland can map the server decoration before the application's first
+        # buffer. Consume subsequent native damage, exactly as a live viewer
+        # does; never request another frame merely because time has passed.
+        deadline = time.monotonic() + 15
+        while True:
+            painted, revision = capture_once(stage, expected)
+            if painted:
+                return
+            if time.monotonic() >= deadline:
+                raise RuntimeError('Application did not paint its selected native window')
+            wait(lambda: sum(line.startswith('damage ') for line in events) > revision,
+                 'Selected application has not committed new content')
 
     def controls():
         with left.makefile("r") as stream:
@@ -135,10 +159,10 @@ def main():
             result['x11_unauthenticated_client_rejected'] = True
         receipts = [evidence / "wayland.json", evidence / "xwayland.json"]
         wayland = start(["python3", str(root / "input_fixture.py"), "gtk4", str(receipts[0])],
-                        {**environment, "GDK_BACKEND": "wayland"}, "wayland")
+                        {**environment, "GDK_BACKEND": "wayland", 'FLOE_TEST_WINDOW_COLOR': '13579b'}, "wayland")
         wait(lambda: receipts[0].exists() and any(e.startswith("frame ") for e in events),
              "No mapped Wayland fixture frame")
-        capture("wayland")
+        capture("wayland", (19, 87, 155))
         from control_probe import ControlProbe
         control = ControlProbe(evidence, left, events)
         first = int(next(e.split()[1] for e in events if e.startswith('window-instance ')))
@@ -149,14 +173,24 @@ def main():
         control.send(first, b"motion 250 180\nbutton 272 1\nbutton 272 0\nkey 30 1\nkey 30 0\n")
         wait(lambda: json.loads(receipts[0].read_text()) == ["a", ""], "No actual Wayland seat input")
         xwayland = start(["python3", str(root / "input_fixture.py"), "gtk4", str(receipts[1])],
-                         {**environment, "GDK_BACKEND": "x11", "DISPLAY": display}, "xwayland")
+                         {**environment, "GDK_BACKEND": "x11", "DISPLAY": display,
+                          'FLOE_TEST_WINDOW_COLOR': '9b3113'}, "xwayland")
         wait(lambda: receipts[1].exists() and events.count("window-added") == 2 and
              sum(e.startswith("frame ") for e in events) == 2, "No distinct mapped Xwayland fixture")
-        capture("mixed")
+        capture("mixed", (155, 49, 19))
         second = int([e.split()[1] for e in events if e.startswith('window-instance ')][-1])
         control.paint(pixels)
         control.send(second, b"motion 250 180\nbutton 272 1\nbutton 272 0\nkey 48 1\nkey 48 0\n")
         wait(lambda: json.loads(receipts[1].read_text()) == ["b", ""], "No actual Xwayland seat input")
+        for window, stage in ((first, 'selected-wayland'), (second, 'selected-xwayland')):
+            previous_generation = control.native.generation
+            request = control.request('select_window', window=window)
+            assert control.response(request).get('result') == 'requested'
+            wait(lambda: control.native.target is not None and control.native.target.window == window and
+                 control.native.generation > previous_generation, 'Native window selection did not change the scene')
+            capture(stage, (19, 87, 155) if window == first else (155, 49, 19))
+            control.paint(pixels)
+        result['native_window_selection'] = [first, second]
         if frame_socket:
             for index in range(8):
                 capture("frame-" + str(index))
@@ -182,7 +216,7 @@ def main():
             result['authenticated_helper_reconnected'] = True
             before = control.send(second, b'key 45 1\nkey 45 0\n')
             assert control.response(before)['error'] == 'INPUT_TARGET_UNAVAILABLE'
-            capture("reattached")
+            capture("reattached", (155, 49, 19))
             control.paint(pixels)
             control.send(second, b"key 18 1\nkey 18 0\n")
             wait(lambda: json.loads(receipts[1].read_text()) == ["bde", ""],
@@ -210,7 +244,7 @@ def main():
         xwayland.wait(timeout=10)
         assert xwayland.returncode == 0 and wayland.poll() is None
         wait(lambda: "window-restored" in events, "Closing Xwayland did not restore Wayland")
-        capture("restored")
+        capture("restored", (19, 87, 155))
         control.paint(pixels)
         identities = [int(e.split()[1]) for e in events if e.startswith("window-instance ")]
         assert len(identities) == 2 and identities[0] != identities[1]

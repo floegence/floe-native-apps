@@ -50,6 +50,13 @@ elif kind in ('gtk4', 'gtk4-entry'):
                           flags=Gio.ApplicationFlags.NON_UNIQUE)
     def activate(application):
         window = Gtk.ApplicationWindow(application=application, title='Floe GTK4 input qualification')
+        color = os.environ.get('FLOE_TEST_WINDOW_COLOR')
+        if color:
+            import re
+            assert re.fullmatch('[0-9a-f]{6}', color)
+            css = Gtk.CssProvider()
+            css.load_from_data(('textview text { background-color: #' + color + '; }').encode())
+            Gtk.StyleContext.add_provider_for_display(window.get_display(), css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
         row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, homogeneous=True)
         editors = []
         def contents():

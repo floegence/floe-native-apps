@@ -8,6 +8,7 @@
 #include <libweston/libweston.h>
 #include <libweston/desktop.h>
 #include <libweston/xwayland-api.h>
+#include <libweston/shell-utils.h>
 #include <linux/input-event-codes.h>
 #include <inttypes.h>
 #include <stdio.h>
@@ -33,6 +34,14 @@ struct probe {
     struct weston_compositor *compositor;
     struct weston_desktop *desktop;
     struct weston_layer layer;
+    struct weston_layer hidden_layer;
+    struct weston_layer background_layer;
+    struct wl_list backgrounds;
+    struct wl_listener output_created;
+    struct wl_listener output_resized;
+    struct wl_listener surface_created;
+    struct wl_list surfaces;
+    uint64_t damage;
     struct weston_seat seat;
     struct wl_list contexts;
     struct wl_list windows;
@@ -56,6 +65,21 @@ struct probe_window {
     struct weston_desktop_surface *desktop;
     struct weston_view *view;
     uint64_t identity;
+    int32_t width, height;
+    struct weston_geometry geometry;
+};
+struct probe_background {
+    struct wl_list link;
+    struct probe *probe;
+    struct weston_output *output;
+    struct weston_curtain *curtain;
+    struct wl_listener destroy;
+};
+struct probe_surface {
+    struct wl_list link;
+    struct probe *probe;
+    struct weston_surface *surface;
+    struct wl_listener commit, destroy;
 };
 struct text_context {
     struct wl_list link;
@@ -180,6 +204,104 @@ static void manager_bind(struct wl_client *client, void *data, uint32_t version,
     wl_resource_set_implementation(r, &manager_api, data, NULL);
 }
 
+static bool ancestor(struct weston_desktop_surface *parent, struct weston_desktop_surface *child) {
+    for (unsigned int depth = 0; child && depth < 128; depth++) {
+        if (parent == child) return true;
+        child = weston_desktop_surface_get_parent(child);
+    }
+    return false;
+}
+static void background_paint(struct probe_background *background) {
+    struct weston_output *output = background->output;
+    if (background->curtain) weston_shell_utils_curtain_destroy(background->curtain);
+    struct weston_curtain_params params = {
+        .a = 1.0, .pos = output->pos, .width = output->width, .height = output->height,
+        .capture_input = false,
+    };
+    background->curtain = weston_shell_utils_curtain_create(background->probe->compositor, &params);
+    struct weston_view *view = background->curtain->view;
+    weston_surface_set_role(view->surface, "floe-background", NULL, 0);
+    view->surface->output = output;
+    weston_view_move_to_layer(view, &background->probe->background_layer.view_list);
+    weston_view_set_output(view, output);
+}
+static void background_destroy(struct wl_listener *listener, void *data) {
+    (void)data;
+    struct probe_background *background = wl_container_of(listener, background, destroy);
+    wl_list_remove(&background->destroy.link);
+    wl_list_remove(&background->link);
+    weston_shell_utils_curtain_destroy(background->curtain);
+    free(background);
+}
+static void output_created(struct wl_listener *listener, void *data) {
+    struct probe *p = wl_container_of(listener, p, output_created);
+    struct weston_output *output = data;
+    struct probe_background *background = calloc(1, sizeof *background);
+    background->probe = p; background->output = output;
+    background->destroy.notify = background_destroy;
+    wl_signal_add(&output->destroy_signal, &background->destroy);
+    wl_list_insert(&p->backgrounds, &background->link);
+    background_paint(background);
+}
+static void output_resized(struct wl_listener *listener, void *data) {
+    struct probe *p = wl_container_of(listener, p, output_resized);
+    struct probe_background *background;
+    wl_list_for_each(background, &p->backgrounds, link)
+        if (background->output == data) background_paint(background);
+}
+static void content_committed(struct wl_listener *listener, void *data) {
+    (void)data;
+    struct probe_surface *content = wl_container_of(listener, content, commit);
+    struct probe *p = content->probe;
+    struct weston_surface *root = weston_surface_get_main_surface(content->surface);
+    struct probe_window *window;
+    wl_list_for_each(window, &p->windows, link) {
+        if (weston_desktop_surface_get_surface(window->desktop) != root ||
+                window->view->layer_link.layer != &p->layer) continue;
+        dprintf(p->control, "damage %" PRIu64 " %" PRIu64 "\n", ++p->damage, p->scene);
+        break;
+    }
+}
+static void content_destroyed(struct wl_listener *listener, void *data) {
+    (void)data;
+    struct probe_surface *content = wl_container_of(listener, content, destroy);
+    wl_list_remove(&content->commit.link);
+    wl_list_remove(&content->destroy.link);
+    wl_list_remove(&content->link);
+    free(content);
+}
+static void surface_created(struct wl_listener *listener, void *data) {
+    struct probe *p = wl_container_of(listener, p, surface_created);
+    struct probe_surface *content = calloc(1, sizeof *content);
+    content->probe = p; content->surface = data;
+    content->commit.notify = content_committed;
+    content->destroy.notify = content_destroyed;
+    wl_signal_add(&content->surface->commit_signal, &content->commit);
+    wl_signal_add(&content->surface->destroy_signal, &content->destroy);
+    wl_list_insert(&p->surfaces, &content->link);
+}
+static void apply_selection(struct probe *p, struct probe_window *selected) {
+    struct weston_surface *surface = selected ? weston_desktop_surface_get_surface(selected->desktop) : NULL;
+    if (p->current != surface) {
+        release_input(p);
+        weston_seat_break_desktop_grabs(&p->seat);
+    }
+    p->current = surface;
+    struct probe_window *window;
+    /* Map parents first so later transient children remain above them. Hidden
+     * windows keep their native lifetime; they never contribute pixels/input. */
+    wl_list_for_each_reverse(window, &p->windows, link) {
+        if (!weston_view_is_mapped(window->view)) continue;
+        bool visible = selected && (ancestor(window->desktop, selected->desktop) ||
+                                    ancestor(selected->desktop, window->desktop));
+        weston_view_move_to_layer(window->view, visible ? &p->layer.view_list : &p->hidden_layer.view_list);
+        weston_desktop_surface_propagate_layer(window->desktop);
+        weston_desktop_surface_set_activated(window->desktop, window == selected);
+    }
+    weston_seat_set_keyboard_focus(&p->seat, surface);
+    weston_compositor_damage_all(p->compositor);
+}
+
 static void surface_added(struct weston_desktop_surface *desktop, void *data) {
     struct probe *p = data;
     struct probe_window *window = calloc(1, sizeof *window);
@@ -210,8 +332,7 @@ static void surface_removed(struct weston_desktop_surface *desktop, void *data) 
     if (!p->current) {
         wl_list_for_each(window, &p->windows, link) {
             if (!weston_view_is_mapped(window->view)) continue;
-            p->current = weston_desktop_surface_get_surface(window->desktop);
-            weston_seat_set_keyboard_focus(&p->seat, p->current);
+            apply_selection(p, window);
             dprintf(p->control, "window-restored\n");
             break;
         }
@@ -226,17 +347,30 @@ static void surface_committed(struct weston_desktop_surface *desktop,
     struct weston_surface *surface = weston_desktop_surface_get_surface(desktop);
     struct probe_window *window = weston_desktop_surface_get_user_data(desktop);
     struct weston_view *view = window->view;
-    if (surface->width == 0 || weston_surface_is_mapped(surface)) return;
+    if (surface->width == 0) return;
     struct weston_geometry geometry = weston_desktop_surface_get_geometry(desktop);
+    bool mapped = weston_surface_is_mapped(surface);
+    bool changed = window->width != surface->width || window->height != surface->height ||
+        window->geometry.x != geometry.x || window->geometry.y != geometry.y ||
+        window->geometry.width != geometry.width || window->geometry.height != geometry.height;
+    if (mapped && !changed) return;
+    window->width = surface->width; window->height = surface->height; window->geometry = geometry;
     weston_view_set_position(view, (struct weston_coord_global){ .c = { -geometry.x, -geometry.y } });
+    if (mapped) {
+        weston_view_update_transform(view);
+        if (p->current == surface) {
+            release_input(p);
+            scene_changed(p);
+        }
+        weston_surface_damage(surface);
+        return;
+    }
     weston_view_move_to_layer(view, &p->layer.view_list);
     weston_desktop_surface_propagate_layer(desktop);
     weston_view_update_transform(view);
     view->is_mapped = true;
     weston_surface_map(surface);
-    if (p->current != surface) release_input(p);
-    p->current = surface;
-    weston_seat_set_keyboard_focus(&p->seat, surface);
+    apply_selection(p, window);
     weston_surface_damage(surface);
     dprintf(p->control, "frame %d %d\n", surface->width, surface->height);
     dprintf(p->control, "window-mapped %" PRIu64 "\n", window->identity);
@@ -276,6 +410,19 @@ static void command(struct probe *p, char *line) {
     }
     if (sscanf(line, "release %" SCNu64, &connection) == 1) {
         if (connection == p->connection) release_input(p);
+        return;
+    }
+    if (sscanf(line, "select %" SCNu64 " %" SCNu64, &connection, &identity) == 2) {
+        struct probe_window *window;
+        if (connection && connection == p->connection) {
+            wl_list_for_each(window, &p->windows, link) {
+                if (window->identity != identity || !weston_view_is_mapped(window->view)) continue;
+                apply_selection(p, window);
+                scene_changed(p);
+                return;
+            }
+        }
+        dprintf(p->control, "selection-unavailable %" PRIu64 "\n", identity);
         return;
     }
     if (sscanf(line, "input %" SCNu64 " %" SCNu64 " %" SCNu64 " %n", &connection, &identity, &generation, &prefix) == 3 && prefix > 0) {
@@ -360,8 +507,19 @@ static void destroy_probe(struct wl_listener *listener, void *data) {
     wl_list_remove(&p->destroy.link);
     wl_list_remove(&p->capture_authority.link);
     wl_list_remove(&p->focus.link);
+    wl_list_remove(&p->output_created.link);
+    wl_list_remove(&p->output_resized.link);
+    wl_list_remove(&p->surface_created.link);
+    struct probe_surface *content, *content_next;
+    wl_list_for_each_safe(content, content_next, &p->surfaces, link)
+        content_destroyed(&content->destroy, NULL);
+    struct probe_background *background, *next;
+    wl_list_for_each_safe(background, next, &p->backgrounds, link)
+        background_destroy(&background->destroy, NULL);
     weston_desktop_destroy(p->desktop);
     weston_layer_fini(&p->layer);
+    weston_layer_fini(&p->hidden_layer);
+    weston_layer_fini(&p->background_layer);
     weston_seat_release(&p->seat);
 }
 
@@ -374,8 +532,24 @@ WL_EXPORT int wet_shell_init(struct weston_compositor *compositor, int *argc, ch
     p->compositor = compositor; p->control = atoi(descriptor);
     wl_list_init(&p->contexts);
     wl_list_init(&p->windows);
+    wl_list_init(&p->backgrounds);
+    wl_list_init(&p->surfaces);
+    p->surface_created.notify = surface_created;
+    wl_signal_add(&compositor->create_surface_signal, &p->surface_created);
     weston_layer_init(&p->layer, compositor);
     weston_layer_set_position(&p->layer, WESTON_LAYER_POSITION_NORMAL);
+    weston_layer_init(&p->hidden_layer, compositor);
+    /* Retain native frame callbacks for inactive applications. HIDDEN is
+     * rendered, so an opaque background must cover it and clear prior pixels. */
+    weston_layer_set_position(&p->hidden_layer, WESTON_LAYER_POSITION_HIDDEN);
+    weston_layer_init(&p->background_layer, compositor);
+    weston_layer_set_position(&p->background_layer, WESTON_LAYER_POSITION_BACKGROUND);
+    p->output_created.notify = output_created;
+    p->output_resized.notify = output_resized;
+    wl_signal_add(&compositor->output_created_signal, &p->output_created);
+    wl_signal_add(&compositor->output_resized_signal, &p->output_resized);
+    struct weston_output *output;
+    wl_list_for_each(output, &compositor->output_list, link) output_created(&p->output_created, output);
     weston_seat_init(&p->seat, compositor, "floe-prototype");
     weston_seat_init_pointer(&p->seat);
     struct xkb_context *xkb = xkb_context_new(XKB_CONTEXT_NO_FLAGS);

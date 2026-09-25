@@ -136,6 +136,11 @@
       "case": "Helper decoded-frame admission on amd64 and arm64",
       "result": "Actual captured mixed Wayland/Xwayland pixels traverse authenticated bounded helper transport. Input before first decode/ack and after reconnection is rejected; acknowledged native targets accept actual widget input. Blocked frames preserve input, reconnection releases modifiers, old connection/window generations fail.",
       "limits": "Pixel decoding is performed by the native fixture client, not browser automation. The fixture supplies captures to the reusable attachment implementation; production native scene/capture backend, browser renderer and complete launch realization remain incomplete."
+    },
+    {
+      "case": "Selected native window pixels on amd64 and arm64",
+      "result": "Actual Wayland and Xwayland frames retain only the selected window and related surfaces. Exact per-window fixture colors, zero inactive-window pixels, native selection/restoration and real widget input pass. Subsequent Xwayland content follows native surface damage after the initial decoration frame.",
+      "limits": "Frame fixture still feeds the attachment manually. Automatic capture barriers, full popup matrix and production backend remain incomplete."
     }
   ],
   "rejected_assumptions": [
@@ -147,6 +152,7 @@
     "Weston XWM requires frame PNG assets even for client-decorated windows; failing to set private WESTON_DATA_DIR aborts on hosts without system Weston, while a preinstalled host Weston can hide the defect",
     "Verified GTK archives alone are insufficient for private file dialogs: MIME, schema and image loader caches must be derived; missing MIME data caused an actual GTK chooser assertion",
     "XDG_DESKTOP_PORTAL_DIR overrides both backend descriptions and portal configuration; separating them silently restores fallback interfaces",
-    "Portal 1.20 validates the bwrap process through metadata under the actual Flatpak launcher runtime, not an unrelated service or host runtime directory; the private portal resolves the original instance metadata without copying or fabricating it"
+    "Portal 1.20 validates the bwrap process through metadata under the actual Flatpak launcher runtime, not an unrelated service or host runtime directory; the private portal resolves the original instance metadata without copying or fabricating it",
+    "WESTON_LAYER_POSITION_HIDDEN still renders. It requires an opaque background; removing the layer instead loses native mapping/callback behavior. The private shell covers inactive surfaces and clears prior pixels without a user desktop."
   ]
 }

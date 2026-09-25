@@ -90,6 +90,9 @@ class NativeFixture:
             raise ValueError('Fixture target is no longer selected')
         self.channel.sendall(f'input {self.epoch} {window} {self.target.generation} close\n'.encode())
 
+    def select(self, window):
+        self.channel.sendall(f'select {self.epoch} {window}\n'.encode())
+
 
 class ControlProbe:
     def __init__(self, directory, channel, events):
