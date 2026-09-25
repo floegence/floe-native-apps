@@ -89,14 +89,19 @@
       "limits": "Unpublished local fixture protocol; production authentication, per-window selection, encoding, damage scheduling and Runtime/viewer integration are not implemented"
     },
     {
-      "case": "Portable original Alpine Weston 14 candidate on arm64 Ubuntu",
-      "result": "Signature-verified archives pass the existing bounded extractor; relocated compositor and Xwayland run directly on the host, preserve mixed native windows, actual seat input, bounded frames and detach/resume; an unauthenticated X11 client is rejected",
+      "case": "Portable original Alpine Weston 14 candidate on native amd64 and arm64 Ubuntu",
+      "result": "Original verified archives, private compositor data and modules, native musl shell and frame capture run directly on both hosts; actual Wayland/X11 surfaces receive seat input; private X11 rejects unauthenticated clients; blocked frame delivery, detach/resume and stale target rejection pass",
       "limits": "Unpublished candidate. Durable authenticated helper, complete input adapters, host-service admission and release qualification remain incomplete"
     },
     {
       "case": "Immutable application plans on native amd64 and arm64",
       "result": "Real GIO preserves quoted arguments and field codes; final launcher revalidation rejects changed desktop/executable/unknown plans without creating a child; Go public plan and actual exit 46 pass; Snap, DEB and Flatpak deployment identities match custom executable entries",
       "limits": "Graphical capabilities in these identity-only tests are fixtures; not proof of backend readiness or all package support"
+    },
+    {
+      "case": "Strict Snap Firefox with the portable combined display on amd64 Ubuntu 24.04",
+      "result": "No GDK/Mozilla/Qt protocol override; Firefox selects actual Wayland with Xwayland offered. Actual field click, 64 repeated Unicode commits, 14000-byte text, following Enter, remote official save dialog, exact saved bytes and normal close pass",
+      "limits": "Fixture profile is explicitly isolated. Production helper, native adapter admission and complete package/desktop qualification remain incomplete"
     }
   ],
   "rejected_assumptions": [
@@ -104,6 +109,7 @@
     "An IBus engine marker receipt alone does not prove Qt has applied text; both synchronous and asynchronous Qt IBus failed without poll-delay masking",
     "IBus hybrid mode 2 nested dispatch can reorder GTK input under pressure; it is not the synchronous post-processing contract",
     "Newer sandbox libxkbcommon rejects keycodes above 0xfff; fixture private markers use 2048..2079 and disable repetition",
-    "Flatpak 1.14 does not expose a relocated private document mount at the path returned by GetMountPoint; a bounded facade to the official headless host document service is prototyped"
+    "Flatpak 1.14 does not expose a relocated private document mount at the path returned by GetMountPoint; a bounded facade to the official headless host document service is prototyped",
+    "Weston XWM requires frame PNG assets even for client-decorated windows; failing to set private WESTON_DATA_DIR aborts on hosts without system Weston, while a preinstalled host Weston can hide the defect"
   ]
 }

@@ -9,10 +9,12 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
 from pathlib import Path
+import re
 import secrets
 import shutil
 import signal
 import socket
+import struct
 import subprocess
 import sys
 import tempfile
@@ -25,8 +27,7 @@ from scope_bridge import ScopeBridge, identity
 
 def main():
     root = Path(sys.argv[1]).resolve()
-    evidence = root / "wayland-evidence"
-    evidence.mkdir(exist_ok=False, mode=0o700)
+    evidence = Path(tempfile.mkdtemp(prefix="snap-wayland-", dir=root))
     host_address = os.environ["DBUS_SESSION_BUS_ADDRESS"]
     input_kind = os.environ.get("FLOE_PROBE_INPUT", "native")
     runtime = Path(f"/run/user/{os.getuid()}/snap.firefox")
@@ -42,8 +43,11 @@ def main():
     bridge = None
     left, right = socket.socketpair()
     mainloop = GLib.MainLoop()
-    outcome = {"passed": False, "profile": str(profile), "display": str(display), "input": input_kind}
+    outcome = {"passed": False, "evidence": str(evidence), "profile": str(profile),
+               "display": str(display), "input": input_kind}
     failure = []
+    capture_command, authorize = None, None
+    app_environment = None
 
     def record(event):
         events.append(event)
@@ -111,6 +115,44 @@ def main():
         directory.mkdir()
         environment = {**os.environ, "WAYLAND_DISPLAY": str(display), "XDG_RUNTIME_DIR": str(runtime),
                        "XDG_PICTURES_DIR": str(directory)}
+        if capture_command:
+            parent, child = socket.socketpair()
+            parent.settimeout(10)
+            try:
+                process = start(["python3", "-c", "import os,sys; os.read(0,1); os.execv(sys.argv[1],sys.argv[1:])",
+                                 *capture_command],
+                    {**environment, "FLOE_PROBE_FRAME_FD": str(child.fileno())},
+                    "capture-" + stage, stdin=subprocess.PIPE, pass_fds=(child.fileno(),))
+                child.close()
+                left.sendall(f"capture-authorize {process.pid}\n".encode())
+                wait_until(lambda: any(e.get("control") == f"capture-authorized {process.pid}" for e in events),
+                           "Capture process was not authorized")
+                process.stdin.write(b"x")
+                process.stdin.close()
+                def receive(length):
+                    data = bytearray()
+                    while len(data) < length:
+                        chunk = parent.recv(length - len(data))
+                        if not chunk:
+                            raise RuntimeError("Portable frame disconnected")
+                        data.extend(chunk)
+                    return bytes(data)
+                parent.sendall(struct.pack("=I", 1))
+                sequence, status, width, height, fmt, size = struct.unpack("=6I", receive(24))
+                assert sequence == 1 and status == 1
+                assert 0 < width <= 4096 and 0 < height <= 4096 and size == width * height * 4
+                pixels = receive(size)
+                assert len(set(pixels)) > 16, "No painted application pixels"
+                from PIL import Image
+                Image.frombytes("RGBA", (width, height), pixels, "raw", "BGRA").convert("RGB").save(directory / "frame.png")
+                outcome.setdefault("frames", []).append({"stage": stage, "width": width, "height": height,
+                    "format": fmt, "sha256": hashlib.sha256(pixels).hexdigest()})
+            finally:
+                parent.close()
+                child.close()
+            process.wait(timeout=5)
+            assert process.returncode == 0
+            return
         command = ["/lib64/ld-linux-x86-64.so.2", "--library-path", str(libraries) + ":" + str(libraries / "weston"),
                    str(root / "stack/usr/bin/weston-screenshooter")]
         child = start(["python3", "-c", "import os,sys; os.read(0,1); os.execv(sys.argv[1],sys.argv[1:])", *command],
@@ -135,6 +177,21 @@ def main():
             for key in ("DISPLAY", "XAUTHORITY", "GTK_PATH", "GTK_IM_MODULE_FILE",
                         "GIO_EXTRA_MODULES", "LD_LIBRARY_PATH", "LD_PRELOAD"):
                 environment.pop(key, None)
+            if authorize:
+                log = evidence / "compositor.log"
+                pattern = r"xserver listening on display (:[0-9]+)"
+                wait_until(lambda: re.search(pattern, log.read_text()) or compositor.poll() is not None,
+                           "Private Xwayland did not reserve its display")
+                assert compositor.poll() is None, "Portable compositor exited"
+                xdisplay = re.search(pattern, log.read_text()).group(1)
+                authorize(xdisplay)
+                environment.update(DISPLAY=xdisplay, XAUTHORITY=app_environment['XAUTHORITY'])
+                # This run tests the approved default: both displays exist and
+                # the unmodified package chooses its graphical protocol.
+                for key in ('GDK_BACKEND', 'MOZ_ENABLE_WAYLAND', 'QT_QPA_PLATFORM'):
+                    environment.pop(key, None)
+                outcome['offered_protocols'] = ['wayland', 'x11']
+                outcome['graphical_protocol_forced'] = False
             if input_kind == "ibus":
                 ibus.activate()
             original = Path("/var/lib/snapd/desktop/applications/firefox_firefox.desktop")
@@ -153,6 +210,10 @@ def main():
             app = start(["python3", str(root / "application.py"), str(desktop), str(evidence / "application.json")],
                         environment, "application")
             wait_until(lambda: any(r.get("loaded") for r in receipts), "Snap page did not load", 35)
+            protocols = [e['control'].split()[2] for e in events
+                         if e.get('control', '').startswith('window-protocol ')]
+            assert protocols, 'No actual surface protocol observation'
+            outcome['actual_application_protocol'] = protocols[0]
             capture("loaded")
             # One actual click is delivered through the compositor seat.
             left.sendall(b"motion 300 280\nbutton 272 1\nbutton 272 0\n")
@@ -244,10 +305,19 @@ def main():
         weston_environment = {**os.environ, "XDG_RUNTIME_DIR": str(runtime),
             "DBUS_SESSION_BUS_ADDRESS": address, "FLOE_PROBE_CONTROL_FD": str(right.fileno()),
             "WESTON_MODULE_MAP": "headless-backend.so=" + str(libraries / "libweston-13/headless-backend.so")}
-        compositor = start(["/lib64/ld-linux-x86-64.so.2", "--library-path", str(libraries) + ":" + str(libraries / "weston"),
+        command = ["/lib64/ld-linux-x86-64.so.2", "--library-path", str(libraries) + ":" + str(libraries / "weston"),
             str(root / "stack/usr/bin/weston"), "--backend=headless", "--renderer=pixman",
             "--shell=" + str(root / "probe/probe-shell.so"), "--socket=" + display.name,
-            "--width=1000", "--height=700", "--idle-time=0", "--no-config"],
+            "--width=1000", "--height=700", "--idle-time=0", "--no-config"]
+        if os.environ.get('FLOE_PROBE_COMPONENT'):
+            from portable_probe import prepare
+            app_environment = {**os.environ, 'DBUS_SESSION_BUS_ADDRESS': address,
+                'XDG_RUNTIME_DIR': str(runtime), 'WAYLAND_DISPLAY': display.name}
+            command, weston_environment, capture_command, authorize, outcome['portable'] = prepare(
+                os.environ['FLOE_PROBE_COMPONENT'], evidence, app_environment,
+                root / 'alpine-wayland-probe/probe-shell.so', profile / 'Xauthority')
+            weston_environment['FLOE_PROBE_CONTROL_FD'] = str(right.fileno())
+        compositor = start(command,
             weston_environment, "compositor", pass_fds=(right.fileno(),))
         right.close()
 

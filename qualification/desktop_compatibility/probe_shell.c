@@ -7,6 +7,7 @@
 #define _GNU_SOURCE
 #include <libweston/libweston.h>
 #include <libweston/desktop.h>
+#include <libweston/xwayland-api.h>
 #include <linux/input-event-codes.h>
 #include <inttypes.h>
 #include <stdio.h>
@@ -205,6 +206,9 @@ static void surface_committed(struct weston_desktop_surface *desktop,
     weston_surface_damage(surface);
     dprintf(p->control, "frame %d %d\n", surface->width, surface->height);
     dprintf(p->control, "window-mapped %" PRIu64 "\n", window->identity);
+    const struct weston_xwayland_surface_api *xwayland = weston_xwayland_surface_get_api(p->compositor);
+    dprintf(p->control, "window-protocol %" PRIu64 " %s\n", window->identity,
+        xwayland && xwayland->is_xwayland_surface(surface) ? "x11" : "wayland");
 }
 static const struct weston_desktop_api desktop_api = {
     .struct_size = sizeof desktop_api,

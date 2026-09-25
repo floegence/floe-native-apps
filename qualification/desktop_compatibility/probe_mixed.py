@@ -28,6 +28,7 @@ def main():
     processes, logs, events = [], [], []
     result = {"passed": False, "evidence": str(evidence)}
     frame_socket, frame_process, frame_sequence = None, None, 0
+    capture_command = [str(root / 'frame-probe/frame-probe')]
 
     def wait(predicate, reason):
         deadline = time.monotonic() + 15
@@ -51,7 +52,7 @@ def main():
                 frame_socket, child_socket = socket.socketpair()
                 frame_socket.settimeout(10)
                 frame_process = start(["python3", "-c", "import os,sys; os.read(0,1); os.execv(sys.argv[1],sys.argv[1:])",
-                                       str(root / "frame-probe/frame-probe")],
+                                       *capture_command],
                     {**environment, "FLOE_PROBE_FRAME_FD": str(child_socket.fileno())},
                     "frame-capture", stdin=subprocess.PIPE, pass_fds=(child_socket.fileno(),))
                 child_socket.close()
@@ -117,7 +118,7 @@ def main():
         server_environment, authorize = dict(environment), None
         if os.environ.get('FLOE_PROBE_COMPONENT'):
             from portable_probe import prepare
-            command, server_environment, authorize, result['portable'] = prepare(
+            command, server_environment, capture_command, authorize, result['portable'] = prepare(
                 os.environ['FLOE_PROBE_COMPONENT'], evidence, environment,
                 root / 'alpine-wayland-probe/probe-shell.so')
         compositor = start(command,
@@ -216,6 +217,9 @@ def main():
         wayland.wait(timeout=10)
         assert wayland.returncode == 0
         result["actual"] = [json.loads(path.read_text()) for path in receipts]
+        protocols = [line.split()[2] for line in events if line.startswith('window-protocol ')]
+        assert protocols == ['wayland', 'x11'], 'Compositor did not confirm both actual surface protocols'
+        result['actual_protocols'] = protocols
         result["passed"] = True
     except Exception as error:
         result["error"] = str(error)

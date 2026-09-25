@@ -13,7 +13,7 @@ import shlex
 import subprocess
 
 
-def prepare(component, evidence, environment, shell):
+def prepare(component, evidence, environment, shell, authentication=None):
     component = Path(component).resolve()
     loader = component / 'lib' / ('ld-musl-aarch64.so.1' if platform.machine() == 'aarch64' else 'ld-musl-x86_64.so.1')
     libraries = ':'.join(str(component / path) for path in
@@ -27,6 +27,13 @@ def prepare(component, evidence, environment, shell):
         raise RuntimeError('Unreviewed candidate Weston version')
     if (component / '.native-apps').exists():
         raise RuntimeError('Portable fixture must not mutate an activated installation')
+    # XWM creates server-side frames even for client-decorated X11 windows.
+    # Resolving these assets from the host accidentally passes on hosts with
+    # Weston installed and aborts the compositor on clean hosts.
+    assets = component / 'usr/share/weston'
+    for name in ('icon_window.png', 'sign_close.png', 'sign_maximize.png', 'sign_minimize.png'):
+        if not (assets / name).is_file():
+            raise RuntimeError('Candidate Weston frame resources are incomplete')
     # Same bounded relocation as the released Xvfb recipe, applied only to this
     # new candidate executable. An unknown binary shape is a hard failure.
     original = component / 'usr/bin/Xwayland'
@@ -36,7 +43,7 @@ def prepare(component, evidence, environment, shell):
     binary = evidence / 'Xwayland'
     binary.write_bytes(data.replace(b'/usr/bin\0', b'.\0\0\0\0\0\0\0\0'))
     binary.chmod(0o700)
-    authentication = evidence / 'Xauthority'
+    authentication = Path(authentication) if authentication else evidence / 'Xauthority'
     authentication.touch(mode=0o600)
     compiler = evidence / 'xkbcomp'
     compiler.write_text('#!/bin/sh\nexec ' + shlex.join(command('usr/bin/xkbcomp')) + ' "$@"\n')
@@ -50,11 +57,12 @@ def prepare(component, evidence, environment, shell):
     config = evidence / 'weston.ini'
     config.write_text('[xwayland]\npath=' + str(wrapper) + '\n')
     server_environment = {**environment,
+        'WESTON_DATA_DIR': str(assets),
         'XKB_CONFIG_ROOT': str(component / 'usr/share/X11/xkb'),
         'WESTON_MODULE_MAP': ';'.join(name + '=' + str(component / 'usr/lib/libweston-14' / name)
                                     for name in ('headless-backend.so', 'xwayland.so'))}
     arguments = command('usr/bin/weston') + ['--backend=headless', '--renderer=pixman', '--xwayland',
-        '--shell=' + str(shell), '--socket=wayland-0', '--width=1000', '--height=700',
+        '--shell=' + str(shell), '--socket=' + environment['WAYLAND_DISPLAY'], '--width=1000', '--height=700',
         '--idle-time=0', '--config=' + str(config)]
 
     def authorize(display):
@@ -63,6 +71,7 @@ def prepare(component, evidence, environment, shell):
                        env=environment, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
         environment['XAUTHORITY'] = str(authentication)
 
-    return arguments, server_environment, authorize, {'version': version,
+    frames = [str(loader), '--library-path', libraries, str(Path(shell).parent / 'frame-probe')]
+    return arguments, server_environment, frames, authorize, {'version': version,
         'original_xwayland_sha256': hashlib.sha256(data).hexdigest(),
         'prepared_xwayland_sha256': hashlib.sha256(binary.read_bytes()).hexdigest()}
