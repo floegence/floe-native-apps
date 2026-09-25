@@ -17,6 +17,7 @@ SLOT_COUNT = 32
 class Transaction:
     generation: int
     text: str | None
+    owner: str | None = None
     pressed: bool = False
 
 
@@ -32,7 +33,7 @@ class MarkerTransactions:
         with self.lock:
             return any(t.text is not None for t in self.slots.values())
 
-    def enqueue(self, text):
+    def enqueue(self, text, owner=None):
         with self.lock:
             if self.pending:
                 raise RuntimeError("A native text transaction is already pending")
@@ -40,7 +41,7 @@ class MarkerTransactions:
                 slot = (self.next_slot + offset) % SLOT_COUNT
                 code = FIRST_CODE + slot
                 if code not in self.slots:
-                    self.slots[code] = Transaction(self.generation, text)
+                    self.slots[code] = Transaction(self.generation, text, owner)
                     self.next_slot = (slot + 1) % SLOT_COUNT
                     return code
             raise RuntimeError("Native marker capacity is exhausted")
@@ -51,10 +52,10 @@ class MarkerTransactions:
             for transaction in self.slots.values():
                 transaction.text = None
 
-    def key(self, code, released, focused):
+    def key(self, code, released, focused, owner=None):
         with self.lock:
             transaction = self.slots.get(code)
-            if transaction is None:
+            if transaction is None or transaction.owner != owner:
                 return None
             if released:
                 # An unmatched release is not proof that a pending press was

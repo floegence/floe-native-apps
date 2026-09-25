@@ -11,7 +11,7 @@ import time
 python, launcher = sys.argv[1:]
 sys.path.insert(0, str(Path(launcher).parent))
 from launch_plan import prepare, restored_environment
-from application_processes import LaunchChildren, identity
+from application_processes import LaunchChildren, ProcessTree, identity
 
 
 def await_file(path, process):
@@ -150,3 +150,24 @@ finally:
     lease.close()
     waiter.join(5)
 print('application ownership: actual kernel exit observed without reaping until scope lease release')
+
+# Native window and D-Bus peer admission shares this observer, while the
+# supervisor alone keeps launch/termination/wait ownership.
+tree = ProcessTree(os.getpid(), identity(os.getpid())[1])
+peer = subprocess.Popen([python, '-c', 'import os; os.read(0,1)'], stdin=subprocess.PIPE)
+try:
+    reference = tree.admit(peer.pid)
+    assert reference.valid(), 'live owned native peer was rejected'
+    assert not tree.owns(os.getppid()), 'unrelated parent inherited application authority'
+    peer.stdin.write(b'x')
+    peer.stdin.close()
+    assert peer.wait(timeout=5) == 0
+    assert not reference.valid(), 'exited native peer retained input authority'
+    reference.close()
+    assert not tree.references
+finally:
+    tree.close()
+    if peer.poll() is None:
+        peer.kill()
+        peer.wait(timeout=5)
+print('native peer ownership: exact live descendant, unrelated process rejection and exit revocation passed')

@@ -10,7 +10,7 @@ from pathlib import Path
 import xml.etree.ElementTree as ET
 
 from gi.repository import Gio, GLib
-from application_processes import identity
+from application_processes import ProcessTree, identity
 
 NAME = "org.freedesktop.portal.Documents"
 PATH = "/org/freedesktop/portal/documents"
@@ -23,6 +23,7 @@ class DocumentBridge:
         self.private, self.owner, self.app_id = private, owner, app_id
         self.root, self.record, self.documents = root.resolve(), record, set()
         self.owner_start = identity(owner)[1]
+        self.tree = ProcessTree(owner, self.owner_start)
         flags = Gio.DBusConnectionFlags.AUTHENTICATION_CLIENT | Gio.DBusConnectionFlags.MESSAGE_BUS_CONNECTION
         self.host = Gio.DBusConnection.new_for_address_sync(host_address, flags, None, None)
         self.host.set_exit_on_close(False)
@@ -43,18 +44,6 @@ class DocumentBridge:
         if reply.unpack()[0] != 1:
             raise RuntimeError("Private document facade is already owned")
 
-    def owned(self, pid):
-        if identity(self.owner)[1] != self.owner_start:
-            return False
-        for _ in range(128):
-            parent, _ticks = identity(pid)
-            if parent == self.owner:
-                return True
-            if parent <= 1 or parent == pid:
-                return False
-            pid = parent
-        return False
-
     def property(self, _connection, _sender, _path, _interface, name):
         if name != "version":
             return None
@@ -67,7 +56,7 @@ class DocumentBridge:
             credentials = connection.call_sync("org.freedesktop.DBus", "/org/freedesktop/DBus",
                 "org.freedesktop.DBus", "GetConnectionCredentials", GLib.Variant("(s)", (sender,)),
                 GLib.VariantType.new("(a{sv})"), Gio.DBusCallFlags.NONE, 2000, None).unpack()[0]
-            if credentials["UnixUserID"] != os.getuid() or not self.owned(credentials["ProcessID"]):
+            if credentials["UnixUserID"] != os.getuid() or not self.tree.owns(credentials["ProcessID"]):
                 raise ValueError("Document caller is outside the fixture tree")
             if method not in METHODS:
                 raise ValueError("Document operation is unavailable")
@@ -109,6 +98,7 @@ class DocumentBridge:
             Gio.DBusCallFlags.NONE, 5000, fds, None, completed, None)
 
     def close(self):
+        self.tree.close()
         self.private.unregister_object(self.registration)
         # These grants refer only to unique fixture files. Never remove an
         # unrelated portal grant, nor stop the host's official portal process.

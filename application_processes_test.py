@@ -92,5 +92,72 @@ class ProcessOwnershipTests(unittest.TestCase):
         self.assertEqual(self.owner.roots, {})
 
 
+class PeerOwnershipTests(unittest.TestCase):
+    def setUp(self):
+        self.identities = {100: (1, 40), 101: (100, 41), 102: (101, 42), 200: (1, 90)}
+        self.closed, self.exited = [], set()
+        for item in (
+            patch.object(processes, 'identity', side_effect=lambda pid: self.identities[pid]),
+            patch.object(processes.os, 'pidfd_open', side_effect=lambda pid: pid + 1000, create=True),
+            patch.object(processes.os, 'close', side_effect=self.closed.append),
+            patch.object(processes, 'descriptor_exited', side_effect=lambda fd: fd in self.exited),
+        ):
+            item.start()
+            self.addCleanup(item.stop)
+        self.tree = processes.ProcessTree(100, 40)
+        self.addCleanup(self.tree.close)
+
+    def test_direct_and_nested_peers_use_exact_process_identity(self):
+        reference = self.tree.admit(102)
+        self.assertEqual((reference.pid, reference.started), (102, 42))
+        self.assertTrue(reference.valid())
+        reference.close()
+        self.assertFalse(reference.valid())
+        self.assertEqual(len(self.tree.references), 0)
+
+    def test_other_tree_and_supervisor_itself_are_not_application_peers(self):
+        for pid in (100, 200):
+            with self.assertRaises(ValueError):
+                self.tree.admit(pid)
+
+    def test_native_peer_pid_reuse_cannot_inherit_old_authority(self):
+        reference = self.tree.admit(102)
+        self.identities[102] = (101, 999)
+        self.assertFalse(reference.valid())
+
+    def test_supervisor_pid_reuse_revokes_all_peers(self):
+        reference = self.tree.admit(102)
+        self.identities[100] = (1, 999)
+        self.assertFalse(reference.valid())
+        with self.assertRaises(ValueError):
+            self.tree.admit(101)
+
+    def test_dead_unreaped_peer_and_reparented_peer_are_unavailable(self):
+        reference = self.tree.admit(102)
+        self.exited.add(1102)
+        self.assertFalse(reference.valid())
+        self.exited.clear()
+        self.identities[102] = (200, 42)
+        self.assertFalse(reference.valid())
+
+    def test_ancestor_reuse_during_admission_is_rejected(self):
+        def opened(pid):
+            if pid == 101:
+                self.identities[101] = (100, 999)
+            return pid + 1000
+        with patch.object(processes.os, 'pidfd_open', side_effect=opened, create=True):
+            with self.assertRaises(ValueError):
+                self.tree.admit(102)
+        self.assertEqual(len(self.tree.references), 0)
+
+    def test_closing_tree_releases_all_peer_references_without_signalling(self):
+        first, second = self.tree.admit(101), self.tree.admit(102)
+        self.tree.close()
+        self.assertFalse(first.valid())
+        self.assertFalse(second.valid())
+        self.assertEqual(self.tree.references, set())
+        self.assertEqual(self.closed.count(1100), 1)
+
+
 if __name__ == '__main__':
     unittest.main()

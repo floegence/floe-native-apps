@@ -21,6 +21,101 @@ def descriptor_exited(descriptor):
     return bool(poll.poll(0))
 
 
+class ProcessReference:
+    """A native peer identity, never process termination or wait authority."""
+    def __init__(self, tree, pid, started, descriptor):
+        self.tree, self.pid, self.started, self.descriptor = tree, pid, started, descriptor
+
+    def valid(self):
+        if self.descriptor is None:
+            return False
+        try:
+            return (not descriptor_exited(self.descriptor) and identity(self.pid)[1] == self.started and
+                    self.tree.owns(self.pid))
+        except (OSError, ValueError):
+            return False
+
+    def close(self):
+        if self.descriptor is not None:
+            os.close(self.descriptor)
+            self.descriptor = None
+            self.tree.references.discard(self)
+
+
+class ProcessTree:
+    """Verify native window/bus callers against the existing launch supervisor.
+
+    This observes ownership only. It never adopts, waits for, signals or moves a
+    process. The application supervisor remains the sole lifecycle owner. Use
+    the root identity recorded at launch, not a PID rediscovered by app name.
+    """
+    def __init__(self, pid, started):
+        self.pid, self.started = pid, started
+        self.references = set()
+        self.descriptor = os.pidfd_open(pid)
+        try:
+            if descriptor_exited(self.descriptor) or identity(pid)[1] != started:
+                raise ValueError('Application supervisor identity is unavailable')
+        except BaseException:
+            os.close(self.descriptor)
+            self.descriptor = None
+            raise
+
+    def owns(self, pid):
+        if self.descriptor is None or pid == self.pid:
+            return False
+        ancestors = []
+        try:
+            if descriptor_exited(self.descriptor) or identity(self.pid)[1] != self.started:
+                return False
+            seen = set()
+            for _ in range(128):
+                if pid <= 1 or pid in seen:
+                    return False
+                seen.add(pid)
+                observed = identity(pid)
+                descriptor = os.pidfd_open(pid)
+                ancestors.append((pid, observed, descriptor))
+                if descriptor_exited(descriptor) or identity(pid) != observed:
+                    return False
+                parent, _started = observed
+                if parent == self.pid:
+                    # A pidfd does not freeze ancestry or reserve a reaped PID.
+                    # Validate the entire observed chain before granting a peer.
+                    return (not descriptor_exited(self.descriptor) and identity(self.pid)[1] == self.started and
+                            all(not descriptor_exited(fd) and identity(child) == previous
+                                for child, previous, fd in ancestors))
+                pid = parent
+            return False
+        except (OSError, ValueError):
+            return False
+        finally:
+            for _pid, _observed, descriptor in ancestors:
+                os.close(descriptor)
+
+    def admit(self, pid):
+        if type(pid) is not int or pid <= 1 or len(self.references) >= 256:
+            raise ValueError('Native application peer is unavailable')
+        before = identity(pid)
+        descriptor = os.pidfd_open(pid)
+        try:
+            if descriptor_exited(descriptor) or identity(pid) != before or not self.owns(pid):
+                raise ValueError('Native peer does not belong to the application')
+            reference = ProcessReference(self, pid, before[1], descriptor)
+            self.references.add(reference)
+            return reference
+        except BaseException:
+            os.close(descriptor)
+            raise
+
+    def close(self):
+        for reference in tuple(self.references):
+            reference.close()
+        if self.descriptor is not None:
+            os.close(self.descriptor)
+            self.descriptor = None
+
+
 class ChildLease:
     def __init__(self, owner, pid, started, descriptor):
         self.owner, self.pid, self.started, self.descriptor = owner, pid, started, descriptor

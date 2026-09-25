@@ -62,6 +62,25 @@ class MarkerTests(unittest.TestCase):
         self.assertIsNone(queue.key(FIRST_CODE + SLOT_COUNT, False, True))
         self.assertEqual(queue.key(code, False, True), "still pending")
 
+    def test_other_native_peer_cannot_consume_or_release_a_marker(self):
+        queue = MarkerTransactions()
+        code = queue.enqueue('owned', owner=':1.4')
+        self.assertIsNone(queue.key(code, False, True, owner=':1.5'))
+        self.assertIsNone(queue.key(code, True, True, owner=':1.5'))
+        self.assertTrue(queue.pending)
+        self.assertFalse(queue.slots[code].pressed)
+        self.assertEqual(queue.key(code, False, True, owner=':1.4'), 'owned')
+
+    def test_cancelled_marker_is_retired_by_its_original_native_peer(self):
+        queue = MarkerTransactions()
+        code = queue.enqueue('cancelled', owner=':1.4')
+        queue.revoke()
+        replacement = queue.enqueue('replacement', owner=':1.5')
+        self.assertIsNone(queue.key(code, False, True, owner=':1.4'))
+        self.assertIsNone(queue.key(code, True, True, owner=':1.4'))
+        self.assertNotIn(code, queue.slots)
+        self.assertEqual(queue.key(replacement, False, True, owner=':1.5'), 'replacement')
+
 
 if __name__ == "__main__":
     unittest.main()
