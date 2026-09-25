@@ -111,6 +111,11 @@
     {
       "case": "Production launch PID protection on native amd64 and arm64",
       "result": "The sole wait owner observes kernel exit without reaping a PID pinned by a host-service operation, then releases it exactly once; previous child-tree, host environment, stale-plan and exit-status checks pass"
+    },
+    {
+      "case": "Original portable desktop services with strict Snap amd64 and concurrent Flatpak GTK/Qt arm64",
+      "result": "Private Alpine D-Bus, IBus 1.5.33, original IBus portal, xdg-desktop-portal 1.20.3 and GTK backend 1.15.3; schemas, MIME and image caches derived privately. Default combined display selection, Unicode stress, remote Save As, real document grants and exact saved bytes pass. Private bus rejects unrelated portal interfaces before dispatch",
+      "limits": "First-party graphical shell, input engines/modules and document grant facade remain unpublished fixtures; production window/input/portal admission and full desktop/package matrix remain incomplete"
     }
   ],
   "rejected_assumptions": [
@@ -119,6 +124,9 @@
     "IBus hybrid mode 2 nested dispatch can reorder GTK input under pressure; it is not the synchronous post-processing contract",
     "Newer sandbox libxkbcommon rejects keycodes above 0xfff; fixture private markers use 2048..2079 and disable repetition",
     "Flatpak 1.14 does not expose a relocated private document mount at the path returned by GetMountPoint; a bounded facade to the official headless host document service is prototyped",
-    "Weston XWM requires frame PNG assets even for client-decorated windows; failing to set private WESTON_DATA_DIR aborts on hosts without system Weston, while a preinstalled host Weston can hide the defect"
+    "Weston XWM requires frame PNG assets even for client-decorated windows; failing to set private WESTON_DATA_DIR aborts on hosts without system Weston, while a preinstalled host Weston can hide the defect",
+    "Verified GTK archives alone are insufficient for private file dialogs: MIME, schema and image loader caches must be derived; missing MIME data caused an actual GTK chooser assertion",
+    "XDG_DESKTOP_PORTAL_DIR overrides both backend descriptions and portal configuration; separating them silently restores fallback interfaces",
+    "Portal 1.20 validates the bwrap process through metadata under the actual Flatpak launcher runtime, not an unrelated service or host runtime directory; the private portal resolves the original instance metadata without copying or fabricating it"
   ]
 }

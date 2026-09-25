@@ -14,7 +14,6 @@ import secrets
 import shutil
 import signal
 import socket
-import struct
 import subprocess
 import sys
 import tempfile
@@ -23,6 +22,7 @@ import time
 
 from gi.repository import Gio, GLib
 from application_processes import identity
+from bus_probe import configuration
 
 
 def main():
@@ -48,6 +48,11 @@ def main():
     failure = []
     capture_command, authorize = None, None
     app_environment = None
+    support = None
+    if os.environ.get('FLOE_PROBE_COMPONENT'):
+        from portable_services import PortableServices
+        support = PortableServices(os.environ['FLOE_PROBE_COMPONENT'], evidence)
+        outcome['support_processes'] = 'private original Alpine component'
 
     def record(event):
         events.append(event)
@@ -92,9 +97,7 @@ def main():
     server_thread = threading.Thread(target=server.serve_forever, daemon=True)
     server_thread.start()
     config = evidence / "bus.conf"
-    config.write_text('''<busconfig><type>session</type><auth>EXTERNAL</auth>
-    <listen>unix:abstract=/tmp/dbus-floe-''' + secrets.token_hex(12) + '''</listen><policy context="default">
-    <allow send_destination="*"/><allow receive_sender="*"/><allow own="*"/></policy></busconfig>''')
+    config.write_text(configuration('unix:abstract=/tmp/dbus-floe-' + secrets.token_hex(12)))
 
     def start(command, environment, name, **kwargs):
         log = (evidence / (name + ".log")).open("w")
@@ -116,42 +119,12 @@ def main():
         environment = {**os.environ, "WAYLAND_DISPLAY": str(display), "XDG_RUNTIME_DIR": str(runtime),
                        "XDG_PICTURES_DIR": str(directory)}
         if capture_command:
-            parent, child = socket.socketpair()
-            parent.settimeout(10)
-            try:
-                process = start(["python3", "-c", "import os,sys; os.read(0,1); os.execv(sys.argv[1],sys.argv[1:])",
-                                 *capture_command],
-                    {**environment, "FLOE_PROBE_FRAME_FD": str(child.fileno())},
-                    "capture-" + stage, stdin=subprocess.PIPE, pass_fds=(child.fileno(),))
-                child.close()
-                left.sendall(f"capture-authorize {process.pid}\n".encode())
-                wait_until(lambda: any(e.get("control") == f"capture-authorized {process.pid}" for e in events),
-                           "Capture process was not authorized")
-                process.stdin.write(b"x")
-                process.stdin.close()
-                def receive(length):
-                    data = bytearray()
-                    while len(data) < length:
-                        chunk = parent.recv(length - len(data))
-                        if not chunk:
-                            raise RuntimeError("Portable frame disconnected")
-                        data.extend(chunk)
-                    return bytes(data)
-                parent.sendall(struct.pack("=I", 1))
-                sequence, status, width, height, fmt, size = struct.unpack("=6I", receive(24))
-                assert sequence == 1 and status == 1
-                assert 0 < width <= 4096 and 0 < height <= 4096 and size == width * height * 4
-                pixels = receive(size)
-                assert len(set(pixels)) > 16, "No painted application pixels"
-                from PIL import Image
-                Image.frombytes("RGBA", (width, height), pixels, "raw", "BGRA").convert("RGB").save(directory / "frame.png")
-                outcome.setdefault("frames", []).append({"stage": stage, "width": width, "height": height,
-                    "format": fmt, "sha256": hashlib.sha256(pixels).hexdigest()})
-            finally:
-                parent.close()
-                child.close()
-            process.wait(timeout=5)
-            assert process.returncode == 0
+            from capture_probe import capture as portable_capture
+            def authorized(pid):
+                wait_until(lambda: any(e.get('control') == f'capture-authorized {pid}' for e in events),
+                           'Capture process was not authorized')
+            outcome.setdefault('frames', []).append(portable_capture(
+                capture_command, environment, start, left, authorized, directory))
             return
         command = ["/lib64/ld-linux-x86-64.so.2", "--library-path", str(libraries) + ":" + str(libraries / "weston"),
                    str(root / "stack/usr/bin/weston-screenshooter")]
@@ -169,7 +142,7 @@ def main():
         try:
             wait_until(display.exists, "Private Wayland socket did not appear")
             from portal_probe import start_portals
-            start_portals(evidence, address, display, private, start, wait_until)
+            outcome['portal'] = start_portals(evidence, address, display, private, start, wait_until, tools=support)
             environment = {**os.environ, "DBUS_SESSION_BUS_ADDRESS": address,
                 "WAYLAND_DISPLAY": display.name, "GDK_BACKEND": "wayland", "MOZ_ENABLE_WAYLAND": "1",
                 "GTK_IM_MODULE": "ibus" if input_kind == "ibus" else "wayland", "XDG_RUNTIME_DIR": str(runtime),
@@ -298,8 +271,10 @@ def main():
             GLib.idle_add(mainloop.quit)
 
     try:
-        bus = subprocess.Popen(["dbus-daemon", "--nofork", "--config-file=" + str(config),
-            "--print-address=1"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, start_new_session=True)
+        bus_command = support.command('usr/bin/dbus-daemon') if support else ['dbus-daemon']
+        bus = subprocess.Popen([*bus_command, "--nofork", "--config-file=" + str(config),
+            "--print-address=1"], env=support.environment(os.environ) if support else os.environ,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, start_new_session=True)
         processes.append((bus, identity(bus.pid)[1], "bus"))
         address = bus.stdout.readline().strip()
         flags = Gio.DBusConnectionFlags.AUTHENTICATION_CLIENT | Gio.DBusConnectionFlags.MESSAGE_BUS_CONNECTION
@@ -312,8 +287,10 @@ def main():
             daemon_environment = {**os.environ, "DBUS_SESSION_BUS_ADDRESS": address,
                 "XDG_CONFIG_HOME": str(evidence / "ibus-config"), "XDG_CACHE_HOME": str(evidence / "ibus-cache"),
                 "IBUS_COMPONENT_PATH": str(components)}
-            start(["ibus-daemon", "--single", "--panel=disable", "--config=disable", "--emoji-extension=disable",
-                   "--cache=none", "--address=" + os.environ["IBUS_ADDRESS"]], daemon_environment, "ibus")
+            daemon_command = support.command('usr/bin/ibus-daemon') if support else ['ibus-daemon']
+            start([*daemon_command, "--single", "--panel=disable", "--config=disable", "--emoji-extension=disable",
+                   "--cache=none", "--address=" + os.environ["IBUS_ADDRESS"]],
+                  support.environment(daemon_environment) if support else daemon_environment, "ibus")
             def daemon_ready():
                 return private.call_sync("org.freedesktop.DBus", "/org/freedesktop/DBus",
                     "org.freedesktop.DBus", "NameHasOwner", GLib.Variant("(s)", ("org.freedesktop.IBus",)),

@@ -3,6 +3,7 @@ import json
 import hashlib
 import os
 from pathlib import Path
+import re
 import secrets
 import shutil
 import socket
@@ -15,6 +16,7 @@ import time
 from gi.repository import Gio, GLib
 from application_processes import identity
 from portal_probe import start_portals
+from bus_probe import configuration
 
 
 def main():
@@ -37,6 +39,11 @@ def main():
     fixture_state.mkdir(mode=0o700)
     mainloop = GLib.MainLoop()
     left, right = socket.socketpair()
+    support, capture_command, authorize = None, None, None
+    if os.environ.get('FLOE_PROBE_COMPONENT'):
+        from portable_services import PortableServices
+        support = PortableServices(os.environ['FLOE_PROBE_COMPONENT'], evidence)
+        outcome['support_processes'] = 'private original Alpine component'
 
     def record(event):
         events.append(event)
@@ -65,6 +72,14 @@ def main():
     def capture(stage):
         destination = evidence / stage
         destination.mkdir()
+        if capture_command:
+            from capture_probe import capture as portable_capture
+            def authorized(pid):
+                wait_until(lambda: any(e.get('control') == f'capture-authorized {pid}' for e in events),
+                           'Capture process was not authorized')
+            outcome.setdefault('frames', []).append(portable_capture(
+                capture_command, environment, start, left, authorized, destination))
+            return
         child = start(["python3", "-c", "import os; os.read(0,1); os.execl('/usr/bin/weston-screenshooter','weston-screenshooter')"],
                       {**environment, "XDG_PICTURES_DIR": str(destination)}, "capture-" + stage, stdin=subprocess.PIPE)
         left.sendall(f"capture-authorize {child.pid}\n".encode())
@@ -85,15 +100,28 @@ def main():
             wait_until(display.exists, "No private Wayland display")
             if os.environ.get("FLOE_PROBE_TRACE"):
                 start(["dbus-monitor", "--address", address], environment, "bus-trace")
-            start_portals(evidence, address, display, connection, start, wait_until,
-                          host_documents=document_bridge is not None)
-            portal_binary = os.environ.get("FLOE_PROBE_IBUS_PORTAL", "/usr/libexec/ibus-portal")
+            outcome['portal'] = start_portals(evidence, address, display, connection, start, wait_until,
+                          host_documents=document_bridge is not None, tools=support, package_runtime=runtime)
+            portal_command = support.command('usr/lib/ibus/ibus-portal') if support else [
+                os.environ.get("FLOE_PROBE_IBUS_PORTAL", "/usr/libexec/ibus-portal")]
+            portal_binary = portal_command[-1]
             outcome["ibus_portal"] = {"path": portal_binary,
                                       "sha256": hashlib.sha256(Path(portal_binary).read_bytes()).hexdigest()}
-            portal = start([portal_binary], environment, "ibus-portal")
+            portal = start(portal_command, support.environment(environment) if support else environment, "ibus-portal")
             wait_until(lambda: owns("org.freedesktop.portal.IBus") or portal.poll() is not None, "No IBus portal")
             assert portal.poll() is None, "IBus portal exited"
             ibus.activate()
+            if authorize:
+                log = evidence / 'compositor.log'
+                pattern = r'xserver listening on display (:[0-9]+)'
+                wait_until(lambda: re.search(pattern, log.read_text()), 'Private Xwayland did not reserve its display')
+                xdisplay = re.search(pattern, log.read_text()).group(1)
+                authorize(xdisplay)
+                environment['DISPLAY'] = xdisplay
+                for key in ('GDK_BACKEND', 'QT_QPA_PLATFORM'):
+                    environment.pop(key, None)
+                outcome['offered_protocols'] = ['wayland', 'x11']
+                outcome['graphical_protocol_forced'] = False
             original = Path.home() / ".local/share/flatpak/exports/share/applications" / (app_id + ".desktop")
             outcome["desktop_sha256"] = hashlib.sha256(original.read_bytes()).hexdigest()
             entry = GLib.KeyFile.new()
@@ -133,6 +161,10 @@ def main():
             app = start(["python3", str(root / "application.py"), str(desktop), str(evidence / "application.json")],
                         environment, "application")
             wait_until(lambda: any(e.get("control", "").startswith("frame ") for e in events), "No actual editor frame", 45)
+            protocols = [e['control'].split()[2] for e in events
+                         if e.get('control', '').startswith('window-protocol ')]
+            assert protocols, 'No actual application protocol observation'
+            outcome['actual_application_protocol'] = protocols[0]
             capture("loaded")
             left.sendall(b"motion 330 300\nbutton 272 1\nbutton 272 0\n")
             if input_kind == "module":
@@ -234,12 +266,12 @@ def main():
 
     try:
         config = evidence / "bus.conf"
-        config.write_text('<busconfig><type>session</type><auth>EXTERNAL</auth><listen>'
-            'unix:abstract=/tmp/dbus-floe-' + secrets.token_hex(12) + '</listen><policy context="default">'
-            '<allow send_destination="*"/><allow receive_sender="*"/><allow own="*"/></policy></busconfig>')
+        config.write_text(configuration('unix:abstract=/tmp/dbus-floe-' + secrets.token_hex(12)))
         bus_log = (evidence / "bus.log").open("w")
         logs.append(bus_log)
-        bus = subprocess.Popen(["dbus-daemon", "--nofork", "--config-file=" + str(config), "--print-address=1"],
+        bus_command = support.command('usr/bin/dbus-daemon') if support else ['dbus-daemon']
+        bus = subprocess.Popen([*bus_command, "--nofork", "--config-file=" + str(config), "--print-address=1"],
+            env=support.environment(os.environ) if support else os.environ,
             stdout=subprocess.PIPE, stderr=bus_log, text=True, start_new_session=True)
         processes.append((bus, identity(bus.pid)[1], "bus"))
         address = bus.stdout.readline().strip()
@@ -266,16 +298,25 @@ def main():
             environment.pop(key, None)
         components = evidence / "ibus-components"
         components.mkdir()
-        start(["ibus-daemon", "--single", "--panel=disable", "--config=disable", "--emoji-extension=disable",
+        daemon_command = support.command('usr/bin/ibus-daemon') if support else ['ibus-daemon']
+        daemon_environment = {**environment, "IBUS_COMPONENT_PATH": str(components),
+            "XDG_CONFIG_HOME": str(evidence / "ibus-config"), "XDG_CACHE_HOME": str(evidence / "ibus-cache")}
+        start([*daemon_command, "--single", "--panel=disable", "--config=disable", "--emoji-extension=disable",
                "--cache=none", "--address=" + os.environ["IBUS_ADDRESS"]],
-              {**environment, "IBUS_COMPONENT_PATH": str(components),
-               "XDG_CONFIG_HOME": str(evidence / "ibus-config"), "XDG_CACHE_HOME": str(evidence / "ibus-cache")}, "ibus")
+              support.environment(daemon_environment) if support else daemon_environment, "ibus")
         wait_until(lambda: owns("org.freedesktop.IBus"), "No private IBus daemon")
         from ibus_probe import IBusProbe
         ibus = IBusProbe(record)
-        start(["weston", "--backend=headless", "--renderer=pixman", "--shell=" + str(root / "probe/probe-shell.so"),
-               "--socket=" + display.name, "--width=1000", "--height=700", "--idle-time=0", "--no-config"],
-              {**environment, "FLOE_PROBE_CONTROL_FD": str(right.fileno())}, "compositor", pass_fds=(right.fileno(),))
+        compositor_command = ["weston", "--backend=headless", "--renderer=pixman", "--shell=" + str(root / "probe/probe-shell.so"),
+               "--socket=" + display.name, "--width=1000", "--height=700", "--idle-time=0", "--no-config"]
+        compositor_environment = dict(environment)
+        if support:
+            from portable_probe import prepare
+            compositor_command, compositor_environment, capture_command, authorize, outcome['portable'] = prepare(
+                os.environ['FLOE_PROBE_COMPONENT'], evidence, environment,
+                root / 'alpine-wayland-probe/probe-shell.so')
+        start(compositor_command, {**compositor_environment, "FLOE_PROBE_CONTROL_FD": str(right.fileno())},
+              "compositor", pass_fds=(right.fileno(),))
         right.close()
 
         def controls():
@@ -310,6 +351,8 @@ def main():
         outcome["socket_cleaned"] = not display.exists()
         shutil.rmtree(runtime)
         shutil.rmtree(fixture_state)
+        (evidence / 'Xauthority').unlink(missing_ok=True)
+        (evidence / 'portal-runtime/.flatpak').unlink(missing_ok=True)
         (evidence / "result.json").write_text(json.dumps(outcome, ensure_ascii=False, indent=2) + "\n")
         print(json.dumps({key: value for key, value in outcome.items()
                           if key not in ("processes", "expected", "actual")}, ensure_ascii=False, indent=2))
