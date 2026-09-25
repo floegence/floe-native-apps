@@ -33,6 +33,14 @@
       "version": "6.4.2",
       "source": "https://github.com/qt/qtbase/blob/v6.4.2/src/plugins/platforminputcontexts/ibus/qibusplatforminputcontext.cpp",
       "use": "Review synchronous and asynchronous event completion; neither passed sustained native focus/Enter ordering"
+    },
+    {
+      "project": "Weston portable candidate",
+      "version": "14.0.2-r4 (Alpine 3.23)",
+      "source": "https://gitlab.freedesktop.org/wayland/weston/-/releases/14.0.2/downloads/weston-14.0.2.tar.xz",
+      "original_source_sha512": "e8214ec893e6c3ae94eb3c92feba104b0201843e9143f726a3e9a4d396d02523c94da706c1348cf934bc339fb1a4bc1fecdb865f0ea914115fd346d9eda091f5",
+      "use": "Original signed APK candidate, native shell ABI and private software-only Xwayland relocation; no production catalog activation",
+      "license": "MIT"
     }
   ],
   "unproven_release_requirements": [
@@ -79,6 +87,16 @@
       "case": "bounded private frame consumer on native arm64",
       "result": "One persistent SHM capture buffer, sequential actual 1000x700 frames, disconnect during a blocked frame response preserves application input; replacement capture receives new authorization and resumes frames",
       "limits": "Unpublished local fixture protocol; production authentication, per-window selection, encoding, damage scheduling and Runtime/viewer integration are not implemented"
+    },
+    {
+      "case": "Portable original Alpine Weston 14 candidate on arm64 Ubuntu",
+      "result": "Signature-verified archives pass the existing bounded extractor; relocated compositor and Xwayland run directly on the host, preserve mixed native windows, actual seat input, bounded frames and detach/resume; an unauthenticated X11 client is rejected",
+      "limits": "Unpublished candidate. Durable authenticated helper, complete input adapters, host-service admission and release qualification remain incomplete"
+    },
+    {
+      "case": "Immutable application plans on native amd64 and arm64",
+      "result": "Real GIO preserves quoted arguments and field codes; final launcher revalidation rejects changed desktop/executable/unknown plans without creating a child; Go public plan and actual exit 46 pass; Snap, DEB and Flatpak deployment identities match custom executable entries",
+      "limits": "Graphical capabilities in these identity-only tests are fixtures; not proof of backend readiness or all package support"
     }
   ],
   "rejected_assumptions": [

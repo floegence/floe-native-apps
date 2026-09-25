@@ -1,6 +1,7 @@
 /* Unpublished headless feasibility fixture, not the product compositor.
- * Built against pinned libweston 13.0.0. Internal seat entry points below are
- * exported by that version; a release must build with its reviewed source ABI.
+ * Host fixtures use libweston 13.0.0; the portable candidate pins 14.0.2.
+ * Internal seat entry points below are exported by both reviewed versions;
+ * a release must retain the corresponding original source and native ABI proof.
  * The private inherited socket is available only to the owning test process.
  */
 #define _GNU_SOURCE
@@ -194,7 +195,7 @@ static void surface_committed(struct weston_desktop_surface *desktop,
     if (surface->width == 0 || weston_surface_is_mapped(surface)) return;
     struct weston_geometry geometry = weston_desktop_surface_get_geometry(desktop);
     weston_view_set_position(view, (struct weston_coord_global){ .c = { -geometry.x, -geometry.y } });
-    weston_layer_entry_insert(&p->layer.view_list, &view->layer_link);
+    weston_view_move_to_layer(view, &p->layer.view_list);
     weston_desktop_surface_propagate_layer(desktop);
     weston_view_update_transform(view);
     view->is_mapped = true;

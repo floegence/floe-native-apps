@@ -111,10 +111,17 @@ def main():
                        "GTK_IM_MODULE": "gtk-im-context-simple", "GSETTINGS_BACKEND": "memory"}
         for key in ("DISPLAY", "XAUTHORITY", "GTK_PATH", "GTK_IM_MODULE_FILE", "IBUS_ADDRESS", "QT_IM_MODULE"):
             environment.pop(key, None)
-        compositor = start(["weston", "--backend=headless", "--renderer=pixman", "--xwayland",
+        command = ["weston", "--backend=headless", "--renderer=pixman", "--xwayland",
                             "--shell=" + str(root / "probe/probe-shell.so"), "--socket=wayland-0",
-                            "--width=1000", "--height=700", "--idle-time=0", "--no-config"],
-                           {**environment, "FLOE_PROBE_CONTROL_FD": str(right.fileno())},
+                            "--width=1000", "--height=700", "--idle-time=0", "--no-config"]
+        server_environment, authorize = dict(environment), None
+        if os.environ.get('FLOE_PROBE_COMPONENT'):
+            from portable_probe import prepare
+            command, server_environment, authorize, result['portable'] = prepare(
+                os.environ['FLOE_PROBE_COMPONENT'], evidence, environment,
+                root / 'alpine-wayland-probe/probe-shell.so')
+        compositor = start(command,
+                           {**server_environment, "FLOE_PROBE_CONTROL_FD": str(right.fileno())},
                            "compositor", pass_fds=(right.fileno(),))
         right.close()
         threading.Thread(target=controls, daemon=True).start()
@@ -126,6 +133,13 @@ def main():
         assert compositor.poll() is None, "Compositor exited"
         display = re.search(pattern, log.read_text()).group(1)
         result["xwayland_display"] = display
+        if authorize:
+            authorize(display)
+            denied = subprocess.run(['python3', '-c', 'from Xlib.display import Display; import sys; Display(sys.argv[1])', display],
+                env={**environment, 'XAUTHORITY': str(evidence / 'missing-authority')},
+                stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=10)
+            assert denied.returncode != 0, 'Private Xwayland admitted an unauthenticated client'
+            result['x11_unauthenticated_client_rejected'] = True
         receipts = [evidence / "wayland.json", evidence / "xwayland.json"]
         wayland = start(["python3", str(root / "input_fixture.py"), "gtk4", str(receipts[0])],
                         {**environment, "GDK_BACKEND": "wayland"}, "wayland")
@@ -162,7 +176,9 @@ def main():
             assert frame_process.returncode == 0 and wayland.poll() is None and xwayland.poll() is None
             capture("reattached")
         from Xlib import Xatom, display as xdisplay
-        xconnection = xdisplay.Display(display)
+        from unittest.mock import patch
+        with patch.dict(os.environ, {'XAUTHORITY': environment.get('XAUTHORITY', '')}):
+            xconnection = xdisplay.Display(display)
         pids = []
         pending = list(xconnection.screen().root.query_tree().children)
         inspected = 0
@@ -218,6 +234,7 @@ def main():
         right.close()
         for log in logs:
             log.close()
+        (evidence / 'Xauthority').unlink(missing_ok=True)
         result["processes"] = [{"pid": p.pid, "start_ticks": ticks, "name": name, "exit": p.returncode}
                                for p, ticks, name in processes]
         (evidence / "events.json").write_text(json.dumps(events, indent=2) + "\n")
