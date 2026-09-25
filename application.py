@@ -16,6 +16,7 @@ import gi
 
 gi.require_version("Gio", "2.0")
 from gi.repository import Gio, GLib  # noqa: E402
+from launch_plan import Unavailable, revalidate, restored_environment  # noqa: E402
 
 
 def write_receipt(path, state, **details):
@@ -64,7 +65,7 @@ def terminate_children(_signal, _frame, observed=None):
             return
 
 
-def launch(app, receipt):
+def launch(app, receipt, plan=None):
     receipt = Path(receipt)
     if not receipt.is_absolute():
         raise ValueError("An absolute private receipt path is required.")
@@ -82,6 +83,10 @@ def launch(app, receipt):
         terminate_children(number, frame, observed)
 
     try:
+        if plan is not None:
+            revalidate(plan, restored_environment(os.environ), [plan['backend']])
+            if app.get_filename() != plan['observation']['desktop']['path']:
+                raise Unavailable('APPLICATION_PLAN_STALE', 'revalidation')
         if not app or not app.should_show() or app.get_boolean("Terminal"):
             raise ValueError("The selected graphical application is unavailable.")
         # Adopt daemonized descendants so an intermediate launcher exiting cannot
@@ -123,8 +128,9 @@ def launch(app, receipt):
                                           None, None, started, None) or not pids:
             raise ValueError("The application did not start an owned process.")
         write_receipt(receipt, "running", phase="spawn", launcher_pids=pids)
-    except Exception:
-        write_receipt(receipt, "failed", phase="spawn", error_code="APPLICATION_LAUNCH_FAILED")
+    except Exception as error:
+        write_receipt(receipt, "failed", phase=error.stage if isinstance(error, Unavailable) else "spawn",
+                      error_code=error.code if isinstance(error, Unavailable) else "APPLICATION_LAUNCH_FAILED")
         raise
     # No display polling or first-window timeout: a background application is
     # still an application. Reap both direct and adopted children until none remain.
@@ -147,12 +153,25 @@ def launch(app, receipt):
 
 
 if __name__ == "__main__":
-    desktop, receipt = sys.argv[1:]
-    if not Path(desktop).is_absolute():
-        raise ValueError("An absolute desktop entry is required.")
+    plan = None
+    receipt = sys.argv[-1]
     try:
+        if len(sys.argv) == 4 and sys.argv[1] == '--plan':
+            path = Path(sys.argv[2])
+            if not path.is_absolute() or path.stat().st_size > 2 << 20:
+                raise Unavailable('APPLICATION_PLAN_INVALID')
+            plan = json.loads(path.read_bytes())
+            desktop = plan['observation']['desktop']['path']
+        else:
+            desktop, receipt = sys.argv[1:]
+        if not Path(desktop).is_absolute():
+            raise ValueError("An absolute desktop entry is required.")
         app = Gio.DesktopAppInfo.new_from_filename(desktop)
+        code = launch(app, receipt, plan)
+    except Unavailable as error:
+        write_receipt(Path(receipt), 'failed', phase=error.stage, error_code=error.code)
+        sys.exit(1)
     except Exception:
-        write_receipt(Path(receipt), "failed", phase="spawn", error_code="APPLICATION_LAUNCH_FAILED")
-        raise
-    sys.exit(launch(app, receipt))
+        write_receipt(Path(receipt), 'failed', phase='spawn', error_code='APPLICATION_LAUNCH_FAILED')
+        sys.exit(1)
+    sys.exit(code)

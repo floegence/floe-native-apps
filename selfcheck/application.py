@@ -8,6 +8,8 @@ import tempfile
 import time
 
 python, launcher = sys.argv[1:]
+sys.path.insert(0, str(Path(launcher).parent))
+from launch_plan import prepare, restored_environment
 
 
 def await_file(path, process):
@@ -91,3 +93,30 @@ with tempfile.TemporaryDirectory(prefix="floe-application-terminate-") as direct
             child.terminate()
             child.wait(timeout=5)
 print("application lifetime: windowless, adopted descendant, host environment, exit status, failure and termination passed")
+
+with tempfile.TemporaryDirectory(prefix="floe-application-plan-") as directory:
+    root = Path(directory)
+    script = root / 'arguments.sh'
+    received = root / 'arguments.txt'
+    script.write_text('printf "%s\\n" "$@" > ' + str(received) + '\n')
+    desktop = root / 'fixture.desktop'
+    source = ('[Desktop Entry]\nType=Application\nName=Floe planned fixture\n'
+              f'Exec=/bin/sh "{script}" "literal spaces" %% %c %k %F\n')
+    desktop.write_text(source)
+    # This checks pre-execution identity, not availability of a graphics backend.
+    backend = {'id': 'wayland', 'component': 'identity-selfcheck-only',
+               'protocols': ['wayland', 'x11']}
+    plan = prepare(str(desktop), restored_environment(os.environ), [backend])
+    plan_path = root / 'plan.json'
+    plan_path.write_text(json.dumps(plan))
+    receipt = root / 'receipt.json'
+    command = [python, launcher, '--plan', str(plan_path), str(receipt)]
+    result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=20)
+    assert result.returncode == 0, 'validated plan failed to launch'
+    assert received.read_text().splitlines() == ['literal spaces', '%', 'Floe planned fixture', str(desktop)]
+    received.unlink()
+    desktop.write_text(source.replace('Floe planned fixture', 'Changed fixture'))
+    result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=20)
+    assert result.returncode != 0 and not received.exists(), 'stale plan executed a child'
+    assert json.loads(receipt.read_text())['error_code'] == 'APPLICATION_PLAN_STALE'
+print('application planning: GIO arguments preserved; stale plan rejected before execution')

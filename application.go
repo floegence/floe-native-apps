@@ -29,6 +29,13 @@ func XpraApplicationLifetimeArgs() []string {
 // The launcher restores the host application environment and reaps descendants;
 // closing a window or losing a viewer never terminates the application.
 func WriteApplicationLauncher(directory string) (string, error) {
+	if _, err := writeApplicationFile(directory, "launch_plan.py", applicationPlanner, true); err != nil {
+		return "", err
+	}
+	return writeApplicationFile(directory, "floe-application.py", applicationLauncher, true)
+}
+
+func writeApplicationFile(directory, name string, data []byte, replace bool) (string, error) {
 	if !filepath.IsAbs(directory) {
 		return "", ErrInvalid
 	}
@@ -37,15 +44,22 @@ func WriteApplicationLauncher(directory string) (string, error) {
 		return "", err
 	}
 	defer os.Remove(f.Name())
-	if _, err = f.Write(applicationLauncher); err != nil {
+	if _, err = f.Write(data); err != nil {
 		_ = f.Close()
 		return "", err
 	}
 	if err = f.Close(); err != nil {
 		return "", err
 	}
-	path := filepath.Join(directory, "floe-application.py")
-	if err = os.Rename(f.Name(), path); err != nil {
+	path := filepath.Join(directory, name)
+	if replace {
+		err = os.Rename(f.Name(), path)
+	} else {
+		// Publish a complete new snapshot atomically without rewriting a live
+		// instance if its directory was accidentally selected a second time.
+		err = os.Link(f.Name(), path)
+	}
+	if err != nil {
 		return "", err
 	}
 	return path, nil

@@ -145,6 +145,30 @@ readiness; the backend must distinguish startup failure from an established
 application ending using its own admitted window lifecycle. Intermediate wrapper
 exit still cannot end the supervisor while owned descendants remain.
 
+`PlanApplication` resolves an authorized desktop entry with GIO and binds its
+source bytes, executable identity, package revision and prepared backend. Package
+identity comes from snapd, Flatpak deployment metadata, dpkg/RPM or the AppImage
+header and content digest; it never determines the graphical protocol by app name.
+Unknown protocol metadata requires the prepared combined Wayland/Xwayland
+capability. Missing capabilities and required host services fail before execution,
+without a backend retry. A capability is not proof that an application has a window
+or accepts text. Read-only planning probes must not start the selected application.
+
+Plans are private, immutable Go values. Description results are copies, and `Write`
+places the snapshot with mode 0600 in a new instance directory. The installed GIO
+supervisor accepts `--plan PATH RECEIPT` and revalidates immediately before creating
+children. A changed desktop entry, executable, package revision, resolution
+environment, or unsupported plan produces `APPLICATION_PLAN_STALE`; the consumer
+must acquire a fresh plan instead of rewriting an existing instance. Session
+display/bus assignments do not change host package resolution. Consumers must
+verify the prepared component identity before assigning graphical resources.
+The existing positional desktop-file invocation remains the existing Xpra launch
+contract; it does not select or retry a new backend.
+
+The native lifetime self-check also asserts actual GIO field-code expansion and
+that a stale plan never executes its task-owned child. The fixture capability is
+explicitly identity-only; it is not evidence for Wayland or sandbox support.
+
 ## Component compatibility qualification
 
 An SDK release must preserve supported installed recipe identities independently
