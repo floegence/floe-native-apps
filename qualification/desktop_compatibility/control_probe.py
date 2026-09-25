@@ -1,10 +1,11 @@
 """Real helper attachment/frame admission around the unpublished compositor.
 
-The production transport, frame gate and input scheduler run unchanged. This
-fixture supplies native scene records and actual captured pixels; it does not
-claim production launch, automatic capture scheduling or package admission.
+The production transport, bounded native capture, frame gate and input scheduler
+run unchanged. This fixture adapts unpublished native scene/damage records; it
+does not claim production launch or complete package admission.
 """
 import json
+from collections import deque
 from pathlib import Path
 import secrets
 import socket
@@ -14,15 +15,34 @@ from types import SimpleNamespace
 
 from gi.repository import GLib
 from desktop_attachment import DesktopAttachment
+from desktop_capture import NativeFrames
 from desktop_control import DesktopControl, GLibLoop, encode_message
 
 
 class NativeFixture:
-    def __init__(self, channel):
+    def __init__(self, channel, frames, loop):
         self.channel, self.target, self.generation = channel, None, 0
-        self.pending, self.attachment = None, None
+        self.attachment, self.capture_observer = None, None
+        self.query_id, self.queries = 0, {}
+        self.frames = NativeFrames(frames, loop, self.query_scene)
+
+    def query_scene(self, completed):
+        assert not self.queries
+        self.query_id += 1
+        self.queries[self.query_id] = completed
+        self.channel.sendall(f'scene-query {self.query_id}\n'.encode())
 
     def observe(self, line):
+        if line.startswith('scene-at '):
+            _, query, generation, window = line.split()
+            completed = self.queries.pop(int(query), None)
+            if completed:
+                completed(int(window), int(generation))
+            return
+        if line.startswith('damage '):
+            if self.attachment:
+                self.attachment.damage()
+            return
         if not line.startswith('scene '):
             return
         _, generation, window = line.split()
@@ -48,29 +68,18 @@ class NativeFixture:
         self.cancel_capture()
 
     def cancel_capture(self):
-        if self.pending:
-            _target, completed = self.pending
-            self.pending = None
-            completed(None, None, 'CAPTURE_CANCELLED')
+        self.frames.cancel()
 
     def snapshot(self):
         return {'state': 'running' if self.target else 'waiting',
                 'window': self.target.window if self.target else None, 'generation': self.generation}
 
     def capture(self, target, completed):
-        assert self.pending is None
-        self.pending = (target, completed)
-
-    def pixels(self, data):
-        if not self.pending:
-            return False
-        target, completed = self.pending
-        self.pending = None
-        if self.target is not target:
-            completed(None, None, 'CAPTURE_CANCELLED')
-        else:
-            completed({'encoding': 'bgrx', 'width': 1000, 'height': 700}, data, None)
-        return True
+        def captured(description, data, error):
+            completed(description, data, error)
+            if self.capture_observer:
+                self.capture_observer(error)
+        self.frames.capture(target, captured)
 
     def validate_input(self, operation):
         if not isinstance(operation, dict) or operation.get('kind') != 'fixture':
@@ -95,13 +104,14 @@ class NativeFixture:
 
 
 class ControlProbe:
-    def __init__(self, directory, channel, events):
+    def __init__(self, directory, channel, events, frames):
         self.request_id, self.client = 0, None
+        self.frames, self.responses, self.events = deque(), {}, []
         self.directory = Path(directory) / 'helper'
         self.directory.mkdir(mode=0o700)
         self.token = secrets.token_hex(32)
         self.loop = GLibLoop()
-        self.native = NativeFixture(channel)
+        self.native = NativeFixture(channel, frames, self.loop)
         for line in tuple(events):
             self.native.observe(line)
         self.attachment = DesktopAttachment(self.native, GLib.timeout_add, GLib.source_remove)
@@ -110,7 +120,6 @@ class ControlProbe:
         self.mainloop = GLib.MainLoop()
         self.thread = Thread(target=self.mainloop.run, daemon=True)
         self.thread.start()
-        self.reconnect()
 
     def observe(self, line):
         def apply():
@@ -129,6 +138,8 @@ class ControlProbe:
         response = json.loads(body)
         assert kind == 1 and response['event'] == 'attached'
         self.generation = response['connection']
+        self.frames.clear()
+        self.responses.clear()
         return self.generation
 
     def receive(self):
@@ -144,13 +155,24 @@ class ControlProbe:
         assert kind in (1, 2) and size <= 64 * 1024 * 1024
         return kind, read(size)
 
+    def record(self):
+        kind, body = self.receive()
+        assert kind == 1
+        message = json.loads(body)
+        if message.get('event') == 'frame':
+            kind, data = self.receive()
+            assert kind == 2 and len(data) == message['bytes']
+            self.frames.append((message['frame'], data))
+            assert len(self.frames) <= 4, 'Fixture consumer accumulated unbounded native frames'
+        elif 'id' in message:
+            self.responses[message['id']] = message
+        else:
+            self.events.append(message)
+
     def response(self, request):
-        while True:
-            kind, body = self.receive()
-            assert kind == 1
-            message = json.loads(body)
-            if message.get('id') == request:
-                return message
+        while request not in self.responses:
+            self.record()
+        return self.responses.pop(request)
 
     def request(self, method, **values):
         self.request_id += 1
@@ -163,42 +185,47 @@ class ControlProbe:
         return self.request('input', connection=self.generation, window=window,
             generation=self.native.generation, operation={'kind': 'fixture', 'commands': commands.decode()})
 
-    def offer(self, pixels):
-        ready, result = Event(), []
-        def offer():
-            self.attachment.damage()
-            result.append(self.native.pixels(pixels))
-            ready.set()
-            return False
-        GLib.idle_add(offer)
-        assert ready.wait(5) and result == [True]
-
-    def paint(self, pixels):
-        self.offer(pixels)
-        while True:
-            kind, body = self.receive()
-            assert kind == 1
-            message = json.loads(body)
-            if message.get('event') == 'frame':
-                break
-        kind, data = self.receive()
-        assert kind == 2 and data == pixels
+    def paint(self, stage, expected=None):
         from PIL import Image
-        frame = message['frame']
-        image = Image.frombytes('RGB', (frame['width'], frame['height']), data, 'raw', 'BGRX')
-        assert len(image.getcolors(frame['width'] * frame['height'])) > 16
-        response = self.response(self.request('frame_ack', frame=frame['sequence']))
-        assert response.get('result') == 'painted', response
+        import hashlib
+        recorded = []
+        while True:
+            while not self.frames:
+                self.record()
+            frame, data = self.frames.popleft()
+            assert frame['encoding'] == 'bgrx'
+            image = Image.frombytes('RGB', (frame['width'], frame['height']), data, 'raw', 'BGRX')
+            image.save(self.directory.parent / f"{stage}-{frame['sequence']}.png")
+            response = self.response(self.request('frame_ack', frame=frame['sequence']))
+            record = {**frame, 'stage': stage, 'sha256': hashlib.sha256(data).hexdigest(),
+                      'admitted': response.get('result') == 'painted'}
+            recorded.append(record)
+            if not record['admitted']:
+                assert response['error'] == 'FRAME_TARGET_UNAVAILABLE'
+                continue
+            assert len(image.getcolors(frame['width'] * frame['height'])) > 16
+            if expected is None:
+                return recorded
+            sample = image.getpixel((200, 240))
+            record['selected_window_pixel'] = sample
+            other = (155, 49, 19) if expected == (19, 87, 155) else (19, 87, 155)
+            count = sum(count for count, color in image.getcolors(frame['width'] * frame['height']) if color == other)
+            record['inactive_window_pixels'] = count
+            assert count == 0, 'Inactive native window pixels leaked into the selected frame'
+            if sample == expected:
+                return recorded
 
-    def block_frame(self, pixels):
+    def block_frame(self):
         ready = Event()
+        def captured(error):
+            if not error:
+                self.native.capture_observer = None
+                assert self.attachment.awaiting is not None
+                ready.set()
         def block():
             self.server.current.socket.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 4096)
+            self.native.capture_observer = captured
             self.attachment.damage()
-            assert self.native.pixels(pixels)
-            self.attachment.damage()
-            assert self.native.pending is None and self.attachment.awaiting is not None
-            ready.set()
             return False
         GLib.idle_add(block)
         assert ready.wait(5)
@@ -210,6 +237,7 @@ class ControlProbe:
         def stop():
             self.server.close()
             self.attachment.close()
+            self.native.frames.close()
             self.mainloop.quit()
             stopped.set()
             return False

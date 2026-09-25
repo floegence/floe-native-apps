@@ -106,7 +106,7 @@ static void release_input(struct probe *p) {
     notify_pointer_frame(&p->seat);
 }
 
-static void scene_changed(struct probe *p) {
+static uint64_t current_window(struct probe *p) {
     struct probe_window *window;
     uint64_t current = 0;
     wl_list_for_each(window, &p->windows, link) {
@@ -115,7 +115,10 @@ static void scene_changed(struct probe *p) {
             break;
         }
     }
-    dprintf(p->control, "scene %" PRIu64 " %" PRIu64 "\n", ++p->scene, current);
+    return current;
+}
+static void scene_changed(struct probe *p) {
+    dprintf(p->control, "scene %" PRIu64 " %" PRIu64 "\n", ++p->scene, current_window(p));
 }
 
 static void context_focus(struct text_context *ctx, struct weston_surface *surface) {
@@ -392,6 +395,11 @@ static void command(struct probe *p, char *line) {
     double x, y;
     struct timespec time;
     weston_compositor_get_time(&time);
+    if (sscanf(line, "scene-query %" SCNu64, &generation) == 1) {
+        dprintf(p->control, "scene-at %" PRIu64 " %" PRIu64 " %" PRIu64 "\n",
+                generation, p->scene, current_window(p));
+        return;
+    }
     if (sscanf(line, "connection %" SCNu64, &connection) == 1) {
         if (connection > p->last_connection) {
             release_input(p);

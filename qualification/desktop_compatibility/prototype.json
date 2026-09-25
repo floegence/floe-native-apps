@@ -141,6 +141,11 @@
       "case": "Selected native window pixels on amd64 and arm64",
       "result": "Actual Wayland and Xwayland frames retain only the selected window and related surfaces. Exact per-window fixture colors, zero inactive-window pixels, native selection/restoration and real widget input pass. Subsequent Xwayland content follows native surface damage after the initial decoration frame.",
       "limits": "Frame fixture still feeds the attachment manually. Automatic capture barriers, full popup matrix and production backend remain incomplete."
+    },
+    {
+      "case": "Automatic bounded capture on native amd64 and arm64",
+      "result": "The production frame reader brackets real native captures with ordered compositor scene barriers. Surface commits drive capture, without polling. Actual mixed-window pixels are decoded and acknowledged through the authenticated attachment; stale frames cannot authorize a new target. Blocked frame delivery preserves real widget input; reconnect preserves applications and releases modifiers.",
+      "limits": "The shell and native record adapter remain unpublished fixtures. Raw pixel decoding is a native test client, not the product browser renderer. Launch realization, complete surface lifecycle and release input/portal admission remain incomplete."
     }
   ],
   "rejected_assumptions": [

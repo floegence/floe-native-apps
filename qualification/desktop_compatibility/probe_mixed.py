@@ -4,13 +4,11 @@ The two child fixtures represent a single owned application process tree. This
 does not qualify production X11 authorization, Unicode or sandbox admission.
 """
 import json
-import hashlib
 import os
 from pathlib import Path
 import re
 import shutil
 import socket
-import struct
 import subprocess
 import sys
 import tempfile
@@ -27,8 +25,8 @@ def main():
     left, right = socket.socketpair()
     processes, logs, events = [], [], []
     result = {"passed": False, "evidence": str(evidence)}
-    frame_socket, frame_process, frame_sequence = None, None, 0
-    control, pixels = None, None
+    frame_socket, frame_process = None, None
+    control = None
     capture_command = [str(root / 'frame-probe/frame-probe')]
 
     def wait(predicate, reason):
@@ -46,65 +44,21 @@ def main():
         processes.append((process, identity(process.pid)[1], name))
         return process
 
-    def capture_once(stage, expected=None):
-        nonlocal frame_socket, frame_process, frame_sequence, pixels
-        if frame_socket is None:
-            frame_socket, child_socket = socket.socketpair()
-            frame_socket.settimeout(10)
-            frame_process = start(["python3", "-c", "import os,sys; os.read(0,1); os.execv(sys.argv[1],sys.argv[1:])",
-                                   *capture_command],
-                {**environment, "FLOE_PROBE_FRAME_FD": str(child_socket.fileno())},
-                "frame-capture", stdin=subprocess.PIPE, pass_fds=(child_socket.fileno(),))
-            child_socket.close()
-            left.sendall(f"capture-authorize {frame_process.pid}\n".encode())
-            wait(lambda: f"capture-authorized {frame_process.pid}" in events, "Frame capture was not authorized")
-            frame_process.stdin.write(b"x")
-            frame_process.stdin.close()
-        def read_bytes(length):
-            chunks, total = [], 0
-            while total < length:
-                chunk = frame_socket.recv(length - total)
-                if not chunk:
-                    raise RuntimeError("Frame capture disconnected")
-                chunks.append(chunk)
-                total += len(chunk)
-            return b"".join(chunks)
-        frame_sequence += 1
-        damage_at_request = sum(line.startswith('damage ') for line in events)
-        frame_socket.sendall(struct.pack("=I", frame_sequence))
-        sequence, status, width, height, fmt, length = struct.unpack("=6I", read_bytes(24))
-        assert sequence == frame_sequence and status == 1
-        assert 0 < width <= 4096 and 0 < height <= 4096 and length == width * height * 4
-        pixels = read_bytes(length)
-        assert len(set(pixels)) > 16, "Captured frame does not contain real painted content"
-        result.setdefault("frames", []).append({"stage": stage, "sequence": sequence, "width": width,
-            "height": height, "format": fmt, "sha256": hashlib.sha256(pixels).hexdigest()})
-        from PIL import Image
-        image = Image.frombytes("RGBA", (width, height), pixels, "raw", "BGRA").convert("RGB")
-        image.save(evidence / (stage + '-' + str(frame_sequence) + ".png"))
-        if expected is not None:
-            sample = image.getpixel((200, 240))
-            result['frames'][-1]['selected_window_pixel'] = sample
-            other = (155, 49, 19) if expected == (19, 87, 155) else (19, 87, 155)
-            other_pixels = sum(count for count, color in image.getcolors(width * height) if color == other)
-            result['frames'][-1]['inactive_window_pixels'] = other_pixels
-            assert other_pixels == 0, 'Inactive native window pixels leaked into the selected frame'
-            return sample == expected, damage_at_request
-        return True, damage_at_request
+    def start_capture():
+        nonlocal frame_socket, frame_process
+        frame_socket, child_socket = socket.socketpair()
+        frame_process = start(["python3", "-c", "import os,sys; os.read(0,1); os.execv(sys.argv[1],sys.argv[1:])",
+                               *capture_command],
+            {**environment, "FLOE_PROBE_FRAME_FD": str(child_socket.fileno())},
+            "frame-capture", stdin=subprocess.PIPE, pass_fds=(child_socket.fileno(),))
+        child_socket.close()
+        left.sendall(f"capture-authorize {frame_process.pid}\n".encode())
+        wait(lambda: f"capture-authorized {frame_process.pid}" in events, "Frame capture was not authorized")
+        frame_process.stdin.write(b"x")
+        frame_process.stdin.close()
 
-    def capture(stage, expected=None):
-        # Xwayland can map the server decoration before the application's first
-        # buffer. Consume subsequent native damage, exactly as a live viewer
-        # does; never request another frame merely because time has passed.
-        deadline = time.monotonic() + 15
-        while True:
-            painted, revision = capture_once(stage, expected)
-            if painted:
-                return
-            if time.monotonic() >= deadline:
-                raise RuntimeError('Application did not paint its selected native window')
-            wait(lambda: sum(line.startswith('damage ') for line in events) > revision,
-                 'Selected application has not committed new content')
+    def paint(stage, expected=None):
+        result.setdefault('frames', []).extend(control.paint(stage, expected))
 
     def controls():
         with left.makefile("r") as stream:
@@ -162,13 +116,14 @@ def main():
                         {**environment, "GDK_BACKEND": "wayland", 'FLOE_TEST_WINDOW_COLOR': '13579b'}, "wayland")
         wait(lambda: receipts[0].exists() and any(e.startswith("frame ") for e in events),
              "No mapped Wayland fixture frame")
-        capture("wayland", (19, 87, 155))
+        start_capture()
         from control_probe import ControlProbe
-        control = ControlProbe(evidence, left, events)
+        control = ControlProbe(evidence, left, events, frame_socket)
+        control.reconnect()
         first = int(next(e.split()[1] for e in events if e.startswith('window-instance ')))
         before = control.send(first, b'key 45 1\nkey 45 0\n')
         assert control.response(before)['error'] == 'INPUT_TARGET_UNAVAILABLE'
-        control.paint(pixels)
+        paint("wayland", (19, 87, 155))
         result['first_frame_admission'] = True
         control.send(first, b"motion 250 180\nbutton 272 1\nbutton 272 0\nkey 30 1\nkey 30 0\n")
         wait(lambda: json.loads(receipts[0].read_text()) == ["a", ""], "No actual Wayland seat input")
@@ -177,9 +132,8 @@ def main():
                           'FLOE_TEST_WINDOW_COLOR': '9b3113'}, "xwayland")
         wait(lambda: receipts[1].exists() and events.count("window-added") == 2 and
              sum(e.startswith("frame ") for e in events) == 2, "No distinct mapped Xwayland fixture")
-        capture("mixed", (155, 49, 19))
         second = int([e.split()[1] for e in events if e.startswith('window-instance ')][-1])
-        control.paint(pixels)
+        paint("mixed", (155, 49, 19))
         control.send(second, b"motion 250 180\nbutton 272 1\nbutton 272 0\nkey 48 1\nkey 48 0\n")
         wait(lambda: json.loads(receipts[1].read_text()) == ["b", ""], "No actual Xwayland seat input")
         for window, stage in ((first, 'selected-wayland'), (second, 'selected-xwayland')):
@@ -188,40 +142,31 @@ def main():
             assert control.response(request).get('result') == 'requested'
             wait(lambda: control.native.target is not None and control.native.target.window == window and
                  control.native.generation > previous_generation, 'Native window selection did not change the scene')
-            capture(stage, (19, 87, 155) if window == first else (155, 49, 19))
-            control.paint(pixels)
+            paint(stage, (19, 87, 155) if window == first else (155, 49, 19))
         result['native_window_selection'] = [first, second]
-        if frame_socket:
-            for index in range(8):
-                capture("frame-" + str(index))
-            # Withhold the complete frame from the consumer. The separate
-            # bounded capture process may block, but the application must not.
-            frame_sequence += 1
-            frame_socket.sendall(struct.pack("=I", frame_sequence))
-            control.block_frame(pixels)
-            control.send(second, b"key 32 1\nkey 32 0\n")
-            wait(lambda: json.loads(receipts[1].read_text()) == ["bd", ""],
-                 "Frame backpressure blocked application input")
-            # Closing in the middle of that response must free the one pending
-            # frame, without requiring the compositor or application to exit.
-            result["backpressure_input"] = ["bd", ""]
-            # Detaching the capture consumer must preserve both applications
-            # and the compositor. A new helper receives a fresh authorization.
-            frame_socket.close()
-            frame_socket = None
-            frame_process.wait(timeout=5)
-            assert frame_process.returncode == 0 and wayland.poll() is None and xwayland.poll() is None
-            control.send(second, b"key 29 1\n")
-            assert control.reconnect() == 2
-            result['authenticated_helper_reconnected'] = True
-            before = control.send(second, b'key 45 1\nkey 45 0\n')
-            assert control.response(before)['error'] == 'INPUT_TARGET_UNAVAILABLE'
-            capture("reattached", (155, 49, 19))
-            control.paint(pixels)
-            control.send(second, b"key 18 1\nkey 18 0\n")
-            wait(lambda: json.loads(receipts[1].read_text()) == ["bde", ""],
-                 "Attachment replacement retained the old Control modifier")
-            result['modifier_released_on_reattach'] = True
+        for index in range(8):
+            request = control.request('refresh')
+            assert control.response(request)['result'] == 'requested'
+            paint('frame-' + str(index), (155, 49, 19))
+        # Withhold the next helper frame from the client. Automatic native
+        # capture and the bounded attachment must retain just one pending frame,
+        # while the application's seat remains responsive.
+        control.block_frame()
+        control.send(second, b"key 32 1\nkey 32 0\n")
+        wait(lambda: json.loads(receipts[1].read_text()) == ["bd", ""],
+             "Frame backpressure blocked application input")
+        result["backpressure_input"] = ["bd", ""]
+        control.send(second, b"key 29 1\n")
+        assert control.reconnect() == 2
+        result['authenticated_helper_reconnected'] = True
+        assert compositor.poll() is None and wayland.poll() is None and xwayland.poll() is None
+        before = control.send(second, b'key 45 1\nkey 45 0\n')
+        assert control.response(before)['error'] == 'INPUT_TARGET_UNAVAILABLE'
+        paint("reattached", (155, 49, 19))
+        control.send(second, b"key 18 1\nkey 18 0\n")
+        wait(lambda: json.loads(receipts[1].read_text()) == ["bde", ""],
+             "Attachment replacement retained the old Control modifier")
+        result['modifier_released_on_reattach'] = True
         from Xlib import Xatom, display as xdisplay
         from unittest.mock import patch
         with patch.dict(os.environ, {'XAUTHORITY': environment.get('XAUTHORITY', '')}):
@@ -244,8 +189,7 @@ def main():
         xwayland.wait(timeout=10)
         assert xwayland.returncode == 0 and wayland.poll() is None
         wait(lambda: "window-restored" in events, "Closing Xwayland did not restore Wayland")
-        capture("restored", (19, 87, 155))
-        control.paint(pixels)
+        paint("restored", (19, 87, 155))
         identities = [int(e.split()[1]) for e in events if e.startswith("window-instance ")]
         assert len(identities) == 2 and identities[0] != identities[1]
         wait(lambda: "connection-ready 2" in events, "Connection replacement was not admitted")
