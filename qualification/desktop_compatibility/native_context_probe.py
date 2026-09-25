@@ -26,6 +26,7 @@ class NativeContextProbe:
         self.owner, self.owner_start = os.getpid(), identity(os.getpid())[1]
         self.clients, self.transactions = {}, MarkerTransactions()
         self.current, self.sequence = None, 0
+        self.completed = None
         self.condition = Condition()
         self.node = Gio.DBusNodeInfo.new_for_xml(XML)
         self.registration = connection.register_object(PATH, self.node.interfaces[0], self.call, None, None)
@@ -79,6 +80,9 @@ class NativeContextProbe:
                         raise ValueError("Native input completion is unavailable")
                     self.record({"native": "completed", "sequence": number})
                     self.current = None
+                    completed, self.completed = self.completed, None
+                    if completed:
+                        completed(None)
                     self.condition.notify_all()
                 else:
                     raise ValueError("Native input method is unavailable")
@@ -86,19 +90,21 @@ class NativeContextProbe:
         except (KeyError, ValueError, OSError) as error:
             invocation.return_dbus_error(INTERFACE + ".Unavailable", str(error))
 
-    def enqueue(self, text):
+    def enqueue(self, text, completed=None):
         with self.condition:
             if self.current is not None or len(self.clients) != 1:
                 raise RuntimeError("Native input context is unavailable")
             code = self.transactions.enqueue(text)
             self.sequence += 1
             self.current = (code, self.sequence, None)
+            self.completed = completed
             return marker_command(code)
 
     def revoke(self):
         with self.condition:
             self.transactions.revoke()
             self.current = None
+            self.completed = None
             self.condition.notify_all()
 
     def wait_completed(self, timeout):
@@ -112,4 +118,5 @@ class NativeContextProbe:
             return self.current
 
     def close(self):
+        self.revoke()
         self.connection.unregister_object(self.registration)

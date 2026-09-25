@@ -131,25 +131,37 @@ def main():
         expected = ["甲🙂", "乙𠮷"]
         wait(lambda: json.loads(receipt.read_text()) == expected, "Text crossed native input contexts")
         if ibus is not None:
+            ordered = None
+            if input_kind == 'module':
+                ibus.wait_completed(5)
+                from ordered_probe import OrderedProbe
+                ordered = OrderedProbe(left, ibus)
             # Exercise slot reuse and actual toolkit event ordering without
             # waiting for fixture document feedback between each operation.
             for index in range(64):
-                if input_kind == "module":
-                    ibus.wait_completed(5)
-                else:
+                if input_kind != "module":
                     ibus.transactions.wait_drained(5)
                 field = index % 2
                 command = f"motion {250 if field == 0 else 750} 180\nbutton 272 1\nbutton 272 0\n"
                 # Put each field's caret at its end; a click must not make this
                 # test dependent on the current text's rendered glyph width.
                 command += "key 29 1\nkey 107 1\nkey 107 0\nkey 29 0\n"
-                left.sendall(command.encode() + ibus.enqueue("同🙂"))
-                if input_kind == "module":
-                    ibus.wait_completed(5)
+                if ordered:
+                    ordered.enqueue('native', command.encode())
+                    ordered.enqueue('text', '同🙂')
+                    ordered.enqueue('native', b"key 28 1\nkey 28 0\n")
                 else:
+                    left.sendall(command.encode() + ibus.enqueue("同🙂"))
                     ibus.transactions.wait_drained(5)
-                left.sendall(b"key 28 1\nkey 28 0\n")
+                    left.sendall(b"key 28 1\nkey 28 0\n")
                 expected[field] += "同🙂\n"
+            if ordered:
+                try:
+                    ordered.flush()
+                    assert len(ordered.completed) == 64
+                    result['production_ordered_queue'] = {'commits': 64, 'intervening_operations': 128}
+                finally:
+                    ordered.close()
             wait(lambda: json.loads(receipt.read_text()) == expected,
                  "Repeated focus changes or subsequent Enter crossed a native transaction")
             wait(lambda: not ibus.transactions.slots, "Native marker releases were not observed")
