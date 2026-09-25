@@ -182,20 +182,18 @@ def main():
             capture("save-dialog")
             left.sendall(b"key 28 1\nkey 28 0\n")
             saved = downloads / "floe-confirmed-text.txt"
-            wait_until(saved.exists, "Native save did not produce the fixture file")
-            assert saved.read_bytes() == (text + text + "\n").encode(), "Saved bytes differ from actual input"
+            wait_until(lambda: saved.exists() and saved.read_bytes() == (text + text + "\n").encode(),
+                       "Native save did not produce the exact fixture bytes")
             shutil.copyfile(saved, evidence / "saved-text.txt")
             outcome["saved_sha256"] = hashlib.sha256(saved.read_bytes()).hexdigest()
-            # Ask this isolated Firefox window to close through its actual keyboard.
-            left.sendall(b"key 29 1\nkey 16 1\nkey 16 0\nkey 29 0\n")
-            wait_until(lambda: ibus.active is None if input_kind == "ibus" else
-                       any(e.get("control", "").startswith("context ") and
-                           e["control"].endswith(" 0") for e in events), "Quit confirmation did not take focus")
-            capture("quit-confirmation")
+            wait_until(lambda: any(e.get("control") == "window-restored" for e in events),
+                       "File chooser did not restore the application window")
+            capture("saved")
             wait_until(lambda: any(r.get("event") == "blur" for r in receipts), "No actual field blur receipt")
             latest = max((r for r in receipts if "sequence" in r), key=lambda r: r["sequence"])
             assert latest["value"] == text + text + "\n", "Text changed after losing input focus"
-            left.sendall(b"motion 617 187\nbutton 272 1\nbutton 272 0\n")
+            # Send the native window-manager close request, never force termination.
+            left.sendall(b"close\n")
             app.wait(timeout=15)
             outcome["application_exit"] = app.returncode
             outcome["passed"] = app.returncode == 0
@@ -278,7 +276,8 @@ def main():
                                 for p, ticks, name in processes]
         outcome["socket_cleaned"] = not display.exists()
         (evidence / "result.json").write_text(json.dumps(outcome, indent=2, ensure_ascii=False) + "\n")
-        print(json.dumps(outcome, indent=2, ensure_ascii=False))
+        print(json.dumps({key: value for key, value in outcome.items()
+                          if key not in ("events", "receipts", "processes")}, indent=2, ensure_ascii=False))
     if failure:
         raise SystemExit(1)
 

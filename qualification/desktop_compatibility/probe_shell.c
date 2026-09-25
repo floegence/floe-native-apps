@@ -171,6 +171,7 @@ static void surface_removed(struct weston_desktop_surface *desktop, void *data) 
             if (!weston_view_is_mapped(window->view)) continue;
             p->current = weston_desktop_surface_get_surface(window->desktop);
             weston_seat_set_keyboard_focus(&p->seat, p->current);
+            dprintf(p->control, "window-restored\n");
             break;
         }
     }
@@ -221,6 +222,8 @@ static void command(struct probe *p, char *line) {
         struct weston_pointer *pointer = weston_seat_get_pointer(&p->seat);
         dprintf(p->control, "pointer %.0f %.0f %d %.0f %.0f\n", pointer->pos.c.x, pointer->pos.c.y,
             weston_pointer_has_focus_resource(pointer), wl_fixed_to_double(pointer->sx), wl_fixed_to_double(pointer->sy));
+    } else if (!strcmp(line, "close") && p->current) {
+        weston_desktop_surface_close(weston_surface_get_desktop_surface(p->current));
     } else if (!strncmp(line, "text ", 5)) {
         struct text_context *ctx, *selected = NULL;
         unsigned int count = 0;
