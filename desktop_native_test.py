@@ -48,6 +48,8 @@ class NativeTests(unittest.TestCase):
         self.native.observe('native-version 1')
         self.native.observe('window-instance 1')
         self.native.observe('window-state 1 0 wayland 120 1000 700')
+        self.native.observe('surface-instance 1')
+        self.native.observe('focus 1 1 120 19 1')
         self.native.observe('scene 1 1')
         self.native.bind(1)
 
@@ -55,6 +57,8 @@ class NativeTests(unittest.TestCase):
         previous = self.native.target
         self.native.observe('window-instance 2')
         self.native.observe('window-state 2 1 wayland 120 350 280')
+        self.native.observe('surface-instance 2')
+        self.native.observe('focus 2 2 120 20 1')
         self.native.observe('scene 2 2')
         self.assertIsNot(previous, self.native.target)
         snapshot = self.native.snapshot()
@@ -62,6 +66,7 @@ class NativeTests(unittest.TestCase):
         self.assertEqual(snapshot['windows'][1]['parent'], 1)
         self.native.observe('window-retired 2')
         self.assertIsNone(self.native.target)
+        self.native.observe('focus 1 1 120 19 1')
         self.native.observe('scene 3 1')
         self.assertEqual(self.native.target.window, 1)
         with self.assertRaises(ValueError):
@@ -74,6 +79,8 @@ class NativeTests(unittest.TestCase):
         self.native.observe('window-instance 3')
         self.native.observe('window-state 3 0 wayland 121 1000 700')
         self.native.observe('window-state 2 0 wayland 121 1000 700')
+        self.native.observe('surface-instance 2')
+        self.native.observe('focus 2 2 121 25 1')
         self.native.observe('scene 2 2')
         self.assertEqual(self.native.target.window, 2)
         with self.assertRaises(ValueError):
@@ -86,6 +93,37 @@ class NativeTests(unittest.TestCase):
         self.assertEqual(self.native.target.width, 600)
         with self.assertRaises(ValueError):
             self.native.observe('scene 2 1')
+
+    def test_popup_focus_cannot_keep_parent_input_or_reuse_a_destroyed_surface(self):
+        previous = self.native.target
+        self.native.observe('surface-instance 9')
+        self.native.observe('focus 9 1 120 37 0')
+        self.assertIsNone(self.native.target)
+        self.assertFalse(self.native.focus.available)
+        with self.assertRaises(ValueError):
+            self.native.observe('scene 2 1')
+        self.native.observe('scene 2 0')
+        self.native.observe('focus 9 1 120 37 1')
+        self.native.observe('scene 3 1')
+        self.assertIsNot(self.native.target, previous)
+        self.assertEqual(self.native.focus.surface, 37)
+        self.native.observe('surface-retired 9')
+        self.assertIsNone(self.native.target)
+        self.assertIsNone(self.native.focus)
+        for event in ('surface-instance 9', 'focus 9 1 120 37 1', 'scene 4 1'):
+            with self.subTest(event=event), self.assertRaises(ValueError):
+                self.native.observe(event)
+
+    def test_surface_and_focus_are_private_to_each_native_connection(self):
+        other = NativeDesktop(lambda _: None, Frames())
+        other.observe('native-version 1')
+        other.observe('window-instance 1')
+        with self.assertRaises(ValueError):
+            other.observe('focus 1 1 120 19 1')
+        self.native.lost()
+        self.native.observe('focus 1 1 120 19 1')
+        self.assertIsNone(self.native.focus)
+        self.assertIsNone(self.native.target)
 
     def test_pointer_key_and_scroll_are_typed_without_marker_or_command_access(self):
         target = self.native.target

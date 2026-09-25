@@ -166,6 +166,11 @@
       "case": "Typed native seat and window registry on native amd64 and arm64",
       "result": "Actual GTK receives first diagonal wheel, reverse wheel and eight sub-pixel increments. Authenticated per-operation requests drive native keyboard popup, modal dialog, Wayland/Xwayland windows, first-frame admission and reconnect. One nonblocking socket owner handles scene, input and capture barriers. EOF and stalled observer preserve applications and release Control.",
       "limits": "Unpublished native component. Complete process/sandbox/context admission, prepared durable helper and release packaging remain required."
+    },
+    {
+      "case": "Native focus admission on amd64 and arm64",
+      "result": "Actual GTK popup and transient dialog focus revokes old frame/input authority; ready surface restores only a new scene, authenticated reconnect preserves applications and releases modifiers",
+      "limits": "Surface identity is native; production sandbox input-context binding and popup reposition/resize qualification remain incomplete"
     }
   ],
   "rejected_assumptions": [

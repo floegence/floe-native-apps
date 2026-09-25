@@ -64,6 +64,7 @@ struct probe {
     char buffer[65536];
     size_t used;
     uint64_t next_window;
+    uint64_t next_surface;
     uint64_t connection;
     uint64_t last_connection;
     uint64_t scene;
@@ -93,6 +94,8 @@ struct probe_surface {
     struct probe *probe;
     struct weston_surface *surface;
     struct wl_listener commit, destroy;
+    uint64_t identity;
+    bool ready;
 };
 struct text_context {
     struct wl_list link;
@@ -183,6 +186,45 @@ static uint64_t current_window(struct probe *p) {
     }
     return current;
 }
+static struct probe_window *window_for_surface(struct probe *p, struct weston_surface *surface) {
+    if (!surface) return NULL;
+    struct weston_surface *root = weston_surface_get_main_surface(surface);
+    struct weston_desktop_surface *desktop = weston_surface_is_desktop_surface(root) ?
+        weston_surface_get_desktop_surface(root) : NULL;
+    for (unsigned int depth = 0; desktop && depth < 128; depth++) {
+        struct weston_desktop_surface *parent = weston_desktop_surface_get_parent(desktop);
+        if (!parent) break;
+        desktop = parent;
+        root = weston_desktop_surface_get_surface(desktop);
+    }
+    struct probe_window *window;
+    wl_list_for_each(window, &p->windows, link)
+        if (weston_desktop_surface_get_surface(window->desktop) == root) return window;
+    return NULL;
+}
+static uint64_t input_window(struct probe *p) {
+    struct weston_surface *focus = weston_seat_get_keyboard(&p->seat)->focus;
+    struct probe_window *window = window_for_surface(p, focus);
+    return focus && focus->width > 0 && focus->height > 0 && window &&
+        window->identity == current_window(p) ? window->identity : 0;
+}
+static void emit_focus(struct probe *p) {
+    struct weston_surface *focus = weston_seat_get_keyboard(&p->seat)->focus;
+    struct probe_window *window = window_for_surface(p, focus);
+    struct probe_surface *content;
+    if (focus && focus->resource && window) {
+        wl_list_for_each(content, &p->surfaces, link) {
+            if (content->surface != focus) continue;
+            pid_t pid; uid_t uid; gid_t gid;
+            wl_client_get_credentials(wl_resource_get_client(focus->resource), &pid, &uid, &gid);
+            emit(p, "focus %" PRIu64 " %" PRIu64 " %d %u %u\n", content->identity,
+                window->identity, (int)pid, wl_resource_get_id(focus->resource),
+                focus->width > 0 && focus->height > 0);
+            return;
+        }
+    }
+    emit(p, "focus 0 0 0 0 0\n");
+}
 static void window_state(struct probe *p, struct probe_window *window) {
     struct weston_surface *surface = weston_desktop_surface_get_surface(window->desktop);
     const struct weston_xwayland_surface_api *api = weston_xwayland_surface_get_api(p->compositor);
@@ -194,7 +236,7 @@ static void window_state(struct probe *p, struct probe_window *window) {
         (int)weston_desktop_surface_get_pid(window->desktop), window->width, window->height);
 }
 static void scene_changed(struct probe *p) {
-    emit(p, "scene %" PRIu64 " %" PRIu64 "\n", ++p->scene, current_window(p));
+    emit(p, "scene %" PRIu64 " %" PRIu64 "\n", ++p->scene, input_window(p));
 }
 
 static void context_focus(struct text_context *ctx, struct weston_surface *surface) {
@@ -215,6 +257,9 @@ static void focus_changed(struct wl_listener *listener, void *data) {
     struct weston_keyboard *keyboard = weston_seat_get_keyboard(&p->seat);
     struct text_context *ctx;
     wl_list_for_each(ctx, &p->contexts, link) context_focus(ctx, keyboard->focus);
+    release_input(p);
+    emit_focus(p);
+    scene_changed(p);
 }
 static void resource_destroy(struct wl_client *client, struct wl_resource *resource) {
     (void)client; wl_resource_destroy(resource);
@@ -332,6 +377,12 @@ static void content_committed(struct wl_listener *listener, void *data) {
     (void)data;
     struct probe_surface *content = wl_container_of(listener, content, commit);
     struct probe *p = content->probe;
+    bool ready = content->surface->width > 0 && content->surface->height > 0;
+    if (ready != content->ready && weston_seat_get_keyboard(&p->seat)->focus == content->surface) {
+        emit_focus(p);
+        scene_changed(p);
+    }
+    content->ready = ready;
     struct weston_surface *root = weston_surface_get_main_surface(content->surface);
     /* xdg_popup is a desktop child, not a wl_subsurface or a top-level added
      * through the shell callback. Its commits still damage the parent's frame. */
@@ -354,6 +405,7 @@ static void content_committed(struct wl_listener *listener, void *data) {
 static void content_destroyed(struct wl_listener *listener, void *data) {
     (void)data;
     struct probe_surface *content = wl_container_of(listener, content, destroy);
+    emit(content->probe, "surface-retired %" PRIu64 "\n", content->identity);
     if (content->probe->current)
         emit(content->probe, "damage %" PRIu64 " %" PRIu64 "\n",
                 ++content->probe->damage, content->probe->scene);
@@ -366,11 +418,13 @@ static void surface_created(struct wl_listener *listener, void *data) {
     struct probe *p = wl_container_of(listener, p, surface_created);
     struct probe_surface *content = calloc(1, sizeof *content);
     content->probe = p; content->surface = data;
+    content->identity = ++p->next_surface;
     content->commit.notify = content_committed;
     content->destroy.notify = content_destroyed;
     wl_signal_add(&content->surface->commit_signal, &content->commit);
     wl_signal_add(&content->surface->destroy_signal, &content->destroy);
     wl_list_insert(&p->surfaces, &content->link);
+    emit(p, "surface-instance %" PRIu64 "\n", content->identity);
 }
 static void apply_selection(struct probe *p, struct probe_window *selected) {
     struct weston_surface *surface = selected ? weston_desktop_surface_get_surface(selected->desktop) : NULL;
@@ -532,7 +586,7 @@ static void command(struct probe *p, char *line) {
     weston_compositor_get_time(&time);
     if (sscanf(line, "scene-query %" SCNu64, &generation) == 1) {
         emit(p, "scene-at %" PRIu64 " %" PRIu64 " %" PRIu64 "\n",
-                generation, p->scene, current_window(p));
+                generation, p->scene, input_window(p));
         return;
     }
     if (sscanf(line, "connection %" SCNu64, &connection) == 1) {
@@ -578,7 +632,8 @@ static void command(struct probe *p, char *line) {
                 break;
             }
         }
-        if (!connection || connection != p->connection || generation != p->scene || !valid) {
+        if (!connection || connection != p->connection || generation != p->scene ||
+            identity != input_window(p) || !valid) {
             emit(p, "input-rejected %" PRIu64 " %" PRIu64 "\n", connection, identity);
             return;
         }
@@ -708,6 +763,7 @@ WL_EXPORT int wet_shell_init(struct weston_compositor *compositor, int *argc, ch
     if (flags < 0 || fcntl(p->control, F_SETFL, flags | O_NONBLOCK) < 0) return -1;
     int descriptor_flags = fcntl(p->control, F_GETFD);
     if (descriptor_flags < 0 || fcntl(p->control, F_SETFD, descriptor_flags | FD_CLOEXEC) < 0) return -1;
+    emit(p, "native-version 1\n");
     wl_list_init(&p->contexts);
     wl_list_init(&p->windows);
     wl_list_init(&p->backgrounds);
@@ -760,7 +816,6 @@ WL_EXPORT int wet_shell_init(struct weston_compositor *compositor, int *argc, ch
     wl_global_create(compositor->wl_display, &zwp_text_input_manager_v3_interface, 1, p, manager_bind);
     p->control_source = wl_event_loop_add_fd(wl_display_get_event_loop(compositor->wl_display), p->control,
                                             WL_EVENT_READABLE, control_ready, p);
-    emit(p, "native-version 1\n");
     emit(p, "ready\n");
     return 0;
 }

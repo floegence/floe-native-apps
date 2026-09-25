@@ -102,6 +102,15 @@ class NativeTarget:
     height: int
 
 
+@dataclass(frozen=True)
+class NativeFocus:
+    identity: int
+    window: int
+    pid: int
+    surface: int
+    available: bool
+
+
 def integer(value, minimum=1, maximum=MAX_ID):
     if type(value) is not int or not minimum <= value <= maximum:
         raise ValueError('Invalid native integer')
@@ -119,6 +128,7 @@ class NativeDesktop:
         self.send, self.frames = send, frames
         self.attachment, self.target = None, None
         self.windows, self.declared, self.last_window, self.generation = {}, set(), 0, 0
+        self.surfaces, self.last_surface, self.focus = set(), 0, None
         self.epoch, self.last_epoch = 0, 0
         self.query, self.query_id = None, 0
         self.version, self.closed = None, False
@@ -142,6 +152,37 @@ class NativeDesktop:
                 raise ValueError('Retired native window or window limit')
             self.declared.add(wid)
             self.last_window = wid
+        elif kind == 'surface-instance':
+            if self.version != 1 or len(fields) != 2:
+                raise ValueError('Invalid native surface')
+            sid = integer(int(fields[1]))
+            if sid <= self.last_surface or len(self.surfaces) >= 4096:
+                raise ValueError('Retired native surface or surface limit')
+            self.last_surface = sid
+            self.surfaces.add(sid)
+        elif kind == 'surface-retired':
+            if len(fields) != 2:
+                raise ValueError('Invalid native surface retirement')
+            sid = integer(int(fields[1]))
+            self.surfaces.discard(sid)
+            if self.focus and self.focus.identity == sid:
+                self.focus, self.target = None, None
+                self.changed()
+        elif kind == 'focus':
+            if self.version != 1 or len(fields) != 6:
+                raise ValueError('Invalid native focus')
+            sid, wid, pid, surface, ready = (integer(int(v), 0) for v in fields[1:])
+            if not sid:
+                if any((wid, pid, surface, ready)):
+                    raise ValueError('Invalid cleared native focus')
+                focus = None
+            else:
+                if sid not in self.surfaces or wid not in self.declared or not pid or not surface or ready > 1:
+                    raise ValueError('Unknown native focus')
+                focus = NativeFocus(sid, wid, pid, surface, bool(ready))
+            if focus != self.focus:
+                self.focus, self.target = focus, None
+                self.changed()
         elif kind == 'window-state':
             if self.version != 1 or len(fields) != 7:
                 raise ValueError('Invalid native window')
@@ -178,6 +219,8 @@ class NativeDesktop:
             generation, wid = integer(int(fields[1])), integer(int(fields[2]), 0)
             if generation <= self.generation or (wid and wid not in self.windows):
                 raise ValueError('Stale or unknown native scene')
+            if wid and (not self.focus or not self.focus.available or self.focus.window != wid):
+                raise ValueError('Native scene has no ready focus')
             window = self.windows.get(wid)
             self.generation = generation
             self.target = NativeTarget(wid, generation, window.width, window.height) if window else None
@@ -208,7 +251,7 @@ class NativeDesktop:
     def lost(self):
         if self.closed:
             return
-        self.closed, self.target, self.epoch = True, None, 0
+        self.closed, self.target, self.focus, self.epoch = True, None, None, 0
         if self.query:
             callback, self.query = self.query, None
             callback(0, 0)
