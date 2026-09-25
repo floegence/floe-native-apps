@@ -74,6 +74,11 @@
       "case": "GIO launcher status on native amd64 and arm64",
       "result": "exit 46 is preserved in the receipt and supervisor status; windowless, adopted descendants, host environment and explicit termination regressions pass",
       "limits": "Graphical readiness classification belongs to the still-unimplemented production backend"
+    },
+    {
+      "case": "bounded private frame consumer on native arm64",
+      "result": "One persistent SHM capture buffer, sequential actual 1000x700 frames, disconnect during a blocked frame response preserves application input; replacement capture receives new authorization and resumes frames",
+      "limits": "Unpublished local fixture protocol; production authentication, per-window selection, encoding, damage scheduling and Runtime/viewer integration are not implemented"
     }
   ],
   "rejected_assumptions": [

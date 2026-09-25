@@ -7,6 +7,7 @@
 #include <libweston/libweston.h>
 #include <libweston/desktop.h>
 #include <linux/input-event-codes.h>
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -41,11 +42,14 @@ struct probe {
     int control;
     char buffer[65536];
     size_t used;
+    uint64_t next_window;
+    uint64_t connection;
 };
 struct probe_window {
     struct wl_list link;
     struct weston_desktop_surface *desktop;
     struct weston_view *view;
+    uint64_t identity;
 };
 struct text_context {
     struct wl_list link;
@@ -146,12 +150,14 @@ static void surface_added(struct weston_desktop_surface *desktop, void *data) {
     struct probe *p = data;
     struct probe_window *window = calloc(1, sizeof *window);
     window->desktop = desktop;
+    window->identity = ++p->next_window;
     window->view = weston_desktop_surface_create_view(desktop);
     wl_list_insert(&p->windows, &window->link);
     weston_desktop_surface_set_user_data(desktop, window);
     weston_desktop_surface_set_size(desktop, 1000, 700);
     weston_desktop_surface_set_activated(desktop, true);
     dprintf(p->control, "window-added\n");
+    dprintf(p->control, "window-instance %" PRIu64 "\n", window->identity);
 }
 static void surface_removed(struct weston_desktop_surface *desktop, void *data) {
     struct probe *p = data;
@@ -162,6 +168,7 @@ static void surface_removed(struct weston_desktop_surface *desktop, void *data) 
         if (ctx->surface == surface) { ctx->surface = NULL; ctx->enabled = false; }
     }
     if (p->current == surface) p->current = NULL;
+    dprintf(p->control, "window-retired %" PRIu64 "\n", window->identity);
     wl_list_remove(&window->link);
     weston_desktop_surface_unlink_view(window->view);
     weston_view_destroy(window->view);
@@ -196,6 +203,7 @@ static void surface_committed(struct weston_desktop_surface *desktop,
     weston_seat_set_keyboard_focus(&p->seat, surface);
     weston_surface_damage(surface);
     dprintf(p->control, "frame %d %d\n", surface->width, surface->height);
+    dprintf(p->control, "window-mapped %" PRIu64 "\n", window->identity);
 }
 static const struct weston_desktop_api desktop_api = {
     .struct_size = sizeof desktop_api,
@@ -205,9 +213,38 @@ static const struct weston_desktop_api desktop_api = {
 
 static void command(struct probe *p, char *line) {
     unsigned int key, state;
+    uint64_t connection, identity;
+    int prefix = 0;
     double x, y;
     struct timespec time;
     weston_compositor_get_time(&time);
+    if (sscanf(line, "connection %" SCNu64, &connection) == 1) {
+        if (connection > p->connection) {
+            p->connection = connection;
+            dprintf(p->control, "connection-ready %" PRIu64 "\n", connection);
+        }
+        return;
+    }
+    if (sscanf(line, "input %" SCNu64 " %" SCNu64 " %n", &connection, &identity, &prefix) == 2 && prefix > 0) {
+        struct probe_window *window;
+        bool valid = false;
+        wl_list_for_each(window, &p->windows, link) {
+            if (window->identity == identity && weston_view_is_mapped(window->view) &&
+                weston_desktop_surface_get_surface(window->desktop) == p->current) {
+                valid = true;
+                break;
+            }
+        }
+        if (!connection || connection != p->connection || !valid) {
+            dprintf(p->control, "input-rejected %" PRIu64 " %" PRIu64 "\n", connection, identity);
+            return;
+        }
+        /* Fixture controls remain separate from target-bearing input. Never
+         * permit an input payload to grant capture or replace a connection. */
+        line += prefix;
+        if (strncmp(line, "key ", 4) && strncmp(line, "button ", 7) &&
+            strncmp(line, "motion ", 7) && strncmp(line, "text ", 5) && strcmp(line, "close")) return;
+    }
     if (sscanf(line, "capture-authorize %u", &key) == 1) {
         p->capture_pid = key;
         dprintf(p->control, "capture-authorized %u\n", key);
