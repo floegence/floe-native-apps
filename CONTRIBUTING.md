@@ -138,6 +138,12 @@ there is one wait owner. Applications that delegate to unrelated pre-existing
 processes or an external system service are outside this child-tree contract.
 A host must not infer process exit from a missing window, or revoke sharing merely
 by deleting a route while its upgraded connections remain open.
+The launcher receipt preserves direct-child exit codes, including Snap's exit 46,
+and reports whether explicit supervisor termination was requested. Spawn failures
+carry a stable error code and phase. Process results do not establish graphical
+readiness; the backend must distinguish startup failure from an established
+application ending using its own admitted window lifecycle. Intermediate wrapper
+exit still cannot end the supervisor while owned descendants remain.
 
 ## Component compatibility qualification
 

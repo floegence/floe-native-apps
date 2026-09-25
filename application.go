@@ -21,6 +21,11 @@ func XpraApplicationLifetimeArgs() []string {
 // private directory. Invoke it with the tools' Python, an absolute .desktop file
 // and an absolute receipt path. The atomic receipt reports running, exited or
 // failed. A running receipt confirms process launch, not window/pixel readiness.
+// Spawn failures include phase and a stable error_code. Final receipts include
+// the actual direct-launcher exit_code (negative for a signal), per-launcher
+// statuses and termination_requested. These are process observations; the
+// graphical backend determines whether launch or established execution ended.
+// The supervisor retains a nonzero launcher result after reaping descendants.
 // The launcher restores the host application environment and reaps descendants;
 // closing a window or losing a viewer never terminates the application.
 func WriteApplicationLauncher(directory string) (string, error) {

@@ -52,6 +52,21 @@ with tempfile.TemporaryDirectory(prefix="floe-application-failed-") as directory
     assert result.returncode != 0
     assert json.loads(receipt.read_text())["state"] == "failed"
 
+with tempfile.TemporaryDirectory(prefix="floe-application-exit-status-") as directory:
+    root = Path(directory)
+    script = root / "app.sh"
+    script.write_text('exit 46\n')
+    desktop = root / "fixture.desktop"
+    desktop.write_text(f'[Desktop Entry]\nType=Application\nName=Exit status fixture\nExec=/bin/sh "{script}"\n')
+    receipt = root / "launch.json"
+    result = subprocess.run([python, launcher, str(desktop), str(receipt)],
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=5)
+    status = json.loads(receipt.read_text())
+    assert result.returncode == 46, "supervisor discarded the launcher's failure status"
+    assert status["exit_code"] == 46 and status["phase"] == "process_exit"
+    assert status["launchers"][0]["exit_code"] == 46
+    assert not status["termination_requested"]
+
 with tempfile.TemporaryDirectory(prefix="floe-application-terminate-") as directory:
     root = Path(directory)
     script = root / "app.sh"
@@ -64,6 +79,8 @@ with tempfile.TemporaryDirectory(prefix="floe-application-terminate-") as direct
         descendant = int((root / "child").read_text())
         child.terminate()
         child.wait(timeout=5)
+        status = json.loads((root / "launch.json").read_text())
+        assert status["termination_requested"], "explicit force quit lost its observation"
         try:
             os.kill(descendant, 0)
             raise AssertionError("explicit termination left an application descendant")
@@ -73,4 +90,4 @@ with tempfile.TemporaryDirectory(prefix="floe-application-terminate-") as direct
         if child.poll() is None:
             child.terminate()
             child.wait(timeout=5)
-print("application lifetime: windowless, adopted descendant, host environment, exit and failure passed")
+print("application lifetime: windowless, adopted descendant, host environment, exit status, failure and termination passed")
