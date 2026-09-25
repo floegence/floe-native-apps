@@ -53,9 +53,11 @@ class DispatchTests(unittest.TestCase):
             clear_keys_pressed=lambda: self.keys.append('release'))
         self.contexts, self.xim = Adapter(), Adapter()
         self.timers = {}
+        self.next_timer = 0
         def timeout(_ms, callback):
-            self.timers[1] = callback
-            return 1
+            self.next_timer += 1
+            self.timers[self.next_timer] = callback
+            return self.next_timer
         self.dispatch = InputDispatch(self.server, self.xim, self.contexts, timeout,
                                       lambda token: self.timers.pop(token, None))
 
@@ -130,6 +132,92 @@ class DispatchTests(unittest.TestCase):
         self.contexts.pending(None)
         self.assertEqual(self.keys, [])
         self.assertEqual(self.acks, [])
+
+    def test_revoked_pending_owner_does_not_block_another_live_connection(self):
+        second = Protocol()
+        self.server.get_server_source = lambda p: self.source if p in (self.protocol, second) else None
+        self.commit()
+        self.dispatch.enqueue(second, ('key-action',), lambda p, data: self.keys.append('second'))
+        self.dispatch.invalidate(self.protocol)
+        self.assertEqual(self.keys, ['second'])
+        self.assertEqual(self.contexts.cancelled, ['context'])
+
+    def test_reused_window_number_cannot_receive_queued_text_for_retired_window(self):
+        self.commit()
+        self.commit(2)
+        self.server._id_to_window[1] = SimpleNamespace(get_property=self.window.get_property)
+        self.contexts.pending(None)
+        self.assertEqual(len(self.contexts.received), 1)
+        self.assertEqual(self.acks[-1], ('floe-input-result', 2, 'INPUT_TARGET_UNAVAILABLE'))
+
+    def test_old_native_callback_cannot_complete_replacement_operation(self):
+        self.commit()
+        previous = self.contexts.pending
+        self.dispatch.invalidate(self.protocol)
+        self.commit(2)
+        current = self.contexts.pending
+        previous(None)
+        self.assertEqual(self.acks, [])
+        self.assertIsNotNone(self.dispatch.pending)
+        current(None)
+        self.assertEqual(self.acks, [('floe-input-result', 2, '')])
+
+    def test_retired_timeout_cannot_clear_replacement_timer(self):
+        self.commit()
+        previous = self.timers[1]
+        self.dispatch.invalidate(self.protocol)
+        self.commit(2)
+        current = self.contexts.pending
+        previous()
+        self.assertEqual(self.acks, [])
+        current(None)
+        self.assertEqual(self.acks, [('floe-input-result', 2, '')])
+        self.assertEqual(self.timers, {})
+
+    def test_synchronous_native_completions_drain_without_recursive_dispatch(self):
+        self.commit()
+        completed = self.contexts.pending
+        for sequence in range(2, 256):
+            self.commit(sequence)
+        self.enter()
+        self.contexts.commit = lambda token, text, done: done(None)
+        completed(None)
+        self.assertEqual(len(self.acks), 255)
+        self.assertEqual(self.keys, ['Enter'])
+        self.assertIsNone(self.dispatch.pending)
+        self.assertEqual(self.timers, {})
+
+    def test_native_exception_is_private_and_revokes_following_input(self):
+        def failed(*_args):
+            raise ValueError('private text must not reach the result')
+        self.contexts.commit = failed
+        self.commit()
+        self.enter()
+        self.assertEqual(self.acks, [('floe-input-result', 1, 'INPUT_DELIVERY_FAILED')])
+        self.assertEqual(self.contexts.cancelled, ['context'])
+        self.assertEqual(self.keys, [])
+
+    def test_driver_release_precedes_another_queued_owner(self):
+        self.server.ui_driver = self.source.uuid = 'first'
+        second = Protocol()
+        self.server.get_server_source = lambda p: self.source if p in (self.protocol, second) else None
+        self.commit()
+        def activate(_protocol, _packet):
+            self.server.ui_driver = 'second'
+            self.keys.append('second')
+        self.dispatch.enqueue(second, ('focus',), activate)
+        self.contexts.pending('INPUT_DELIVERY_FAILED')
+        self.assertEqual(self.keys, ['release', 'second'])
+
+    def test_close_retires_native_work_and_discards_late_completion(self):
+        self.commit()
+        completed = self.contexts.pending
+        self.enter()
+        self.dispatch.close()
+        completed(None)
+        self.assertEqual(self.contexts.cancelled, ['context'])
+        self.assertEqual(self.acks, [])
+        self.assertEqual(self.keys, [])
 
     def test_sequence_replay_is_rejected(self):
         self.commit()
