@@ -43,8 +43,11 @@ if kind == 'gtk':
 elif kind in ('gtk4', 'gtk4-entry'):
     import gi
     gi.require_version('Gtk', '4.0')
-    from gi.repository import Gtk, GLib
-    app = Gtk.Application(application_id='org.floegence.InputQualification')
+    from gi.repository import Gtk, GLib, Gio
+    # Every qualification process owns its controls, including mixed-protocol
+    # tests sharing one private bus. Never delegate to another fixture process.
+    app = Gtk.Application(application_id='org.floegence.InputQualification',
+                          flags=Gio.ApplicationFlags.NON_UNIQUE)
     def activate(application):
         window = Gtk.ApplicationWindow(application=application, title='Floe GTK4 input qualification')
         row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, homogeneous=True)

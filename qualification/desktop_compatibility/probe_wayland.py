@@ -172,8 +172,20 @@ def main():
             left.sendall(text_command(text) + b"key 28 1\nkey 28 0\n")
             wait_until(lambda: any(r.get("value") == text + text + "\n" for r in receipts),
                        "Repeated text and following Enter were not ordered")
+            expected = text + text + "\n"
+            if os.environ.get("FLOE_PROBE_STRESS"):
+                assert input_kind == "ibus"
+                for value in [text] * 64 + ["界🙂" * 2000]:
+                    ibus.transactions.wait_drained(5)
+                    left.sendall(text_command(value))
+                    ibus.transactions.wait_drained(5)
+                    left.sendall(b"key 28 1\nkey 28 0\n")
+                    expected += value + "\n"
+                wait_until(lambda: any(r.get("value") == expected for r in receipts),
+                           "Actual Snap browser did not receive ordered repeated and long Unicode")
+                outcome["stress"] = {"repeated_commits": 64, "long_commit_bytes": 14000}
             capture("received")
-            outcome.update(expected=text + text + "\n", composition="native protocol; client IME not exercised")
+            outcome.update(expected=expected, composition="native protocol; client IME not exercised")
             left.sendall(b"motion 105 585\nbutton 272 1\nbutton 272 0\n")
             wait_until(lambda: any(r.get("event") == "save-click" for r in receipts), "Save was not clicked")
             wait_until(lambda: sum(e.get("control") == "window-added" for e in events) >= 2,
@@ -181,7 +193,7 @@ def main():
             capture("save-dialog")
             left.sendall(b"key 28 1\nkey 28 0\n")
             saved = downloads / "floe-confirmed-text.txt"
-            wait_until(lambda: saved.exists() and saved.read_bytes() == (text + text + "\n").encode(),
+            wait_until(lambda: saved.exists() and saved.read_bytes() == expected.encode(),
                        "Native save did not produce the exact fixture bytes")
             shutil.copyfile(saved, evidence / "saved-text.txt")
             outcome["saved_sha256"] = hashlib.sha256(saved.read_bytes()).hexdigest()
@@ -190,7 +202,7 @@ def main():
             capture("saved")
             wait_until(lambda: any(r.get("event") == "blur" for r in receipts), "No actual field blur receipt")
             latest = max((r for r in receipts if "sequence" in r), key=lambda r: r["sequence"])
-            assert latest["value"] == text + text + "\n", "Text changed after losing input focus"
+            assert latest["value"] == expected, "Text changed after losing input focus"
             # Send the native window-manager close request, never force termination.
             left.sendall(b"close\n")
             app.wait(timeout=15)
@@ -276,7 +288,7 @@ def main():
         outcome["socket_cleaned"] = not display.exists()
         (evidence / "result.json").write_text(json.dumps(outcome, indent=2, ensure_ascii=False) + "\n")
         print(json.dumps({key: value for key, value in outcome.items()
-                          if key not in ("events", "receipts", "processes")}, indent=2, ensure_ascii=False))
+                          if key not in ("events", "receipts", "processes", "expected")}, indent=2, ensure_ascii=False))
     if failure:
         raise SystemExit(1)
 

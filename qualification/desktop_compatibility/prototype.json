@@ -47,8 +47,8 @@
   "observed_prototypes": [
     {
       "case": "strict Snap Firefox on Ubuntu 24.04 amd64",
-      "result": "private real systemd scope, pure Wayland first frame, actual click, repeated Unicode and Enter, official remote file chooser, exact saved bytes; no security policy changes",
-      "limits": "Full high-rate focus/Enter ordering, target revocation and production launch failure status still unproven"
+      "result": "private real systemd scope, pure Wayland first frame, actual click, 64 repeated Unicode commits, a 14000-byte commit, ordered Enter, official remote file chooser and exact saved bytes; no security policy changes",
+      "limits": "Multi-widget focus ordering, target revocation and production admission remain unproven; prototype supervisor status is now separately qualified"
     },
     {
       "case": "Flatpak GNOME Text Editor 51.0 on native arm64",
@@ -64,6 +64,16 @@
       "case": "native GTK4 and Qt6 fields",
       "result": "cancelled marker before/after current marker; 64 alternating field changes with text and Enter",
       "input": "GTK4 synchronous IBus; Qt private native module with event-loop Done acknowledgement"
+    },
+    {
+      "case": "mixed native Wayland and Xwayland on native arm64",
+      "result": "independent fixture processes share one private compositor; both receive actual seat input; closing Xwayland restores Wayland input",
+      "limits": "No production X11 authorization, Unicode, full popup matrix or reconnect proof"
+    },
+    {
+      "case": "GIO launcher status on native amd64 and arm64",
+      "result": "exit 46 is preserved in the receipt and supervisor status; windowless, adopted descendants, host environment and explicit termination regressions pass",
+      "limits": "Graphical readiness classification belongs to the still-unimplemented production backend"
     }
   ],
   "rejected_assumptions": [
