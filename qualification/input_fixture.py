@@ -84,7 +84,8 @@ elif kind in ('gtk4', 'gtk4-entry'):
         if os.environ.get('FLOE_TEST_WINDOW_ACTIONS'):
             from gi.repository import Gdk
             Gtk.Settings.get_default().set_property('gtk-cursor-blink', False)
-            state = {'popup_clicks': 0, 'dialog_clicks': 0, 'dialog_closed': 0}
+            state = {'popup_clicks': 0, 'popup_closed': 0, 'dialog_clicks': 0, 'dialog_closed': 0,
+                     'control_down': False, 'control_releases': 0}
             state_path = receipt.with_suffix('.windows.json')
             def write_state():
                 pending = state_path.with_suffix('.pending')
@@ -95,7 +96,11 @@ elif kind in ('gtk4', 'gtk4-entry'):
                                b'.floe-dialog { background: #bf31bd; padding: 20px; }')
             Gtk.StyleContext.add_provider_for_display(window.get_display(), css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
             def pressed(_controller, keyval, _keycode, _state):
-                if keyval == Gdk.KEY_F2:
+                if keyval == Gdk.KEY_Control_L:
+                    state['control_down'] = True
+                    write_state()
+                    return False
+                elif keyval == Gdk.KEY_F2:
                     popup = Gtk.Popover()
                     popup.set_parent(editors[0])
                     anchor = Gdk.Rectangle()
@@ -110,7 +115,11 @@ elif kind in ('gtk4', 'gtk4-entry'):
                         popup.popdown()
                     button.connect('clicked', clicked)
                     popup.set_child(button)
-                    popup.connect('closed', lambda *_: popup.unparent())
+                    def closed(_popup):
+                        popup.unparent()
+                        state['popup_closed'] += 1
+                        write_state()
+                    popup.connect('closed', closed)
                     popup.popup()
                 elif keyval == Gdk.KEY_F3:
                     dialog = Gtk.Window(title='Floe transient fixture', transient_for=window, modal=True)
@@ -133,6 +142,12 @@ elif kind in ('gtk4', 'gtk4-entry'):
                 return True
             keys = Gtk.EventControllerKey()
             keys.connect('key-pressed', pressed)
+            def released(_controller, keyval, _keycode, _state):
+                if keyval == Gdk.KEY_Control_L:
+                    state['control_down'] = False
+                    state['control_releases'] += 1
+                    write_state()
+            keys.connect('key-released', released)
             window.add_controller(keys)
             write_state()
         window.present()

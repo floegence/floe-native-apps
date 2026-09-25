@@ -185,7 +185,7 @@ class ControlProbe:
         return self.request('input', connection=self.generation, window=window,
             generation=self.native.generation, operation={'kind': 'fixture', 'commands': commands.decode()})
 
-    def paint(self, stage, expected=None, marker=None, required=()):
+    def paint(self, stage, expected=None, marker=None, required=(), absent=()):
         from PIL import Image
         import hashlib
         recorded = []
@@ -203,9 +203,11 @@ class ControlProbe:
             if not record['admitted']:
                 assert response['error'] == 'FRAME_TARGET_UNAVAILABLE'
                 continue
-            assert len(image.getcolors(frame['width'] * frame['height'])) > 16
+            colors = {color: count for count, color in image.getcolors(frame['width'] * frame['height'])}
+            assert len(colors) > 16
+            if any(colors.get(color, 0) for color in absent):
+                continue
             if marker is not None:
-                colors = {color: count for count, color in image.getcolors(frame['width'] * frame['height'])}
                 if colors.get(marker, 0) < 20:
                     continue
                 assert all(colors.get(color, 0) >= 20 for color in required), 'Transient surface omitted its parent'

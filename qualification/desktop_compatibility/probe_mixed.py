@@ -20,6 +20,8 @@ from application_processes import identity
 
 def main():
     root = Path(sys.argv[1]).resolve()
+    control_loss = sys.argv[2] if len(sys.argv) > 2 else 'disconnect'
+    assert control_loss in ('disconnect', 'stall')
     evidence = Path(tempfile.mkdtemp(prefix="mixed-", dir=root))
     runtime = Path(tempfile.mkdtemp(prefix="floe-mixed-", dir=f"/run/user/{os.getuid()}"))
     left, right = socket.socketpair()
@@ -27,6 +29,8 @@ def main():
     result = {"passed": False, "evidence": str(evidence)}
     frame_socket, frame_process = None, None
     control = None
+    consume_control = threading.Event()
+    consume_control.set()
     capture_command = [str(root / 'frame-probe/frame-probe')]
 
     def wait(predicate, reason):
@@ -67,11 +71,15 @@ def main():
         control.send(frame['window'], f'motion {(x0 + x1) / 2} {(y0 + y1) / 2}\nbutton 272 1\nbutton 272 0\n'.encode())
 
     def controls():
-        with left.makefile("r") as stream:
-            for line in stream:
-                events.append(line.strip())
-                if control:
-                    control.observe(line.strip())
+        try:
+            with left.makefile("r") as stream:
+                for line in stream:
+                    consume_control.wait()
+                    events.append(line.strip())
+                    if control:
+                        control.observe(line.strip())
+        except ConnectionResetError:
+            events.append('control-reset')
 
     try:
         config = evidence / "bus.conf"
@@ -139,6 +147,8 @@ def main():
         click_marker(popup)
         actions = receipts[0].with_suffix('.windows.json')
         wait(lambda: json.loads(actions.read_text())['popup_clicks'] == 1, 'Popup did not receive the actual click')
+        wait(lambda: json.loads(actions.read_text())['popup_closed'] == 1, 'Application has not closed its popup')
+        paint('popup-dismissed', (19, 87, 155), absent=((19, 183, 73),))
         control.send(first, b'key 61 1\nkey 61 0\n')
         dialog = paint('dialog', marker=(191, 49, 189), required=((19, 87, 155),))
         click_marker(dialog)
@@ -224,9 +234,36 @@ def main():
         assert events.count(f"input-rejected 1 {identities[0]}") == 2
         assert events.count(f"input-rejected 2 {second}") == 2
         result["rejected_stale_input"] = {"old_connection": 2, "retired_window": 2}
-        control.send(first, b"close\n")
-        wayland.wait(timeout=10)
-        assert wayland.returncode == 0
+        control.close()
+        control = None
+        left.sendall(b'key 29 1\n')
+        wait(lambda: json.loads(actions.read_text())['control_down'], 'Native key press was not received')
+        releases = json.loads(actions.read_text())['control_releases']
+        if control_loss == 'stall':
+            consume_control.clear()
+            left.settimeout(5)
+            try:
+                left.sendall(b'scene-query 900000\n' * 40000)
+            except BrokenPipeError:
+                pass
+            except ConnectionResetError:
+                pass
+            except socket.timeout:
+                raise AssertionError('Stalled native observer froze the compositor control channel') from None
+            wait(lambda: json.loads(actions.read_text())['control_releases'] == releases + 1,
+                 'Stalled native observer did not revoke its held modifier')
+            consume_control.set()
+        else:
+            left.shutdown(socket.SHUT_RDWR)
+        left.close()
+        try:
+            compositor.wait(timeout=1)
+        except subprocess.TimeoutExpired:
+            pass
+        assert compositor.poll() is None and wayland.poll() is None, 'Native controller loss terminated the graphical application'
+        wait(lambda: json.loads(actions.read_text())['control_releases'] == releases + 1,
+             'Native controller loss left the Control modifier pressed')
+        result['native_controller_loss'] = {'mode': control_loss, 'application_preserved': True, 'modifier_released': True}
         result["actual"] = [json.loads(path.read_text()) for path in receipts]
         protocols = [line.split()[2] for line in events if line.startswith('window-protocol ')]
         assert protocols == ['wayland', 'wayland', 'x11'], 'Compositor did not confirm both actual surface protocols'
@@ -235,6 +272,7 @@ def main():
     except Exception as error:
         result["error"] = str(error)
     finally:
+        consume_control.set()
         if control:
             control.close()
         if frame_socket:

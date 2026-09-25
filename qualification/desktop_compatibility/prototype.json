@@ -151,6 +151,16 @@
       "case": "Actual xdg popup and transient dialog on native amd64 and arm64",
       "result": "A GTK4 popover publishes real native damage and receives its actual button click. A separate modal top-level retains and displays its parent, receives its actual button click and native close, then restores parent input. Pixel evidence is selected by test-only widget colors through the automatically captured authenticated frames.",
       "limits": "This covers GTK4 menu/dialog behavior in the unpublished shell; full cross-toolkit window operations and release integration remain incomplete."
+    },
+    {
+      "case": "Native controller loss and stalled observer on amd64 and arm64",
+      "result": "The shell emits through a bounded nonblocking channel. Disconnect and overflow revoke native input, release a held Control key with an actual GTK receipt, and preserve the compositor and application process. The private control descriptor cannot leak into Xwayland exec.",
+      "limits": "This is the unpublished native-shell boundary. Full helper crash recovery and product restart/reattachment qualification remain incomplete."
+    },
+    {
+      "case": "Snap and Flatpak regression after native window-family changes",
+      "result": "Strict Snap Firefox amd64 and concurrent Flatpak GTK/Qt arm64 again pass 64 repeated Unicode commits, 14000-byte text, subsequent Enter, visible remote Save As, exact saved bytes and normal close with original portable services.",
+      "limits": "Input adapters and document facade remain prototype-specific; this is not a production release claim."
     }
   ],
   "rejected_assumptions": [

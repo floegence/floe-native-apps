@@ -11,6 +11,9 @@
 #include <libweston/shell-utils.h>
 #include <linux/input-event-codes.h>
 #include <inttypes.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -51,6 +54,9 @@ struct probe {
     struct weston_surface *current;
     pid_t capture_pid;
     int control;
+    struct wl_event_source *control_source;
+    char output[128 * 1024];
+    size_t output_start, output_end;
     char buffer[65536];
     size_t used;
     uint64_t next_window;
@@ -91,6 +97,57 @@ struct text_context {
     bool enabled;
 };
 
+static void release_input(struct probe *p);
+static void control_lost(struct probe *p) {
+    if (p->control < 0) return;
+    int descriptor = p->control;
+    p->control = -1;
+    if (p->control_source) wl_event_source_remove(p->control_source);
+    p->control_source = NULL;
+    close(descriptor);
+    p->output_start = p->output_end = p->used = 0;
+    p->connection = 0;
+    p->capture_pid = 0;
+    release_input(p);
+}
+static void flush_control(struct probe *p) {
+    size_t budget = 16 * 1024;
+    while (p->control >= 0 && p->output_start < p->output_end && budget) {
+        size_t length = p->output_end - p->output_start;
+        if (length > budget) length = budget;
+        ssize_t count = send(p->control, p->output + p->output_start, length, MSG_NOSIGNAL);
+        if (count < 0 && errno == EINTR) continue;
+        if (count < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) break;
+        if (count <= 0) { control_lost(p); return; }
+        p->output_start += (size_t)count;
+        budget -= (size_t)count;
+    }
+    if (p->output_start == p->output_end) p->output_start = p->output_end = 0;
+    if (p->control_source)
+        wl_event_source_fd_update(p->control_source, WL_EVENT_READABLE |
+            (p->output_end > p->output_start ? WL_EVENT_WRITABLE : 0));
+}
+static void emit(struct probe *p, const char *format, ...) {
+    if (p->control < 0) return;
+    char record[1024];
+    va_list arguments;
+    va_start(arguments, format);
+    int length = vsnprintf(record, sizeof record, format, arguments);
+    va_end(arguments);
+    if (length < 0 || (size_t)length >= sizeof record) { control_lost(p); return; }
+    if (p->output_end + (size_t)length > sizeof p->output && p->output_start) {
+        memmove(p->output, p->output + p->output_start, p->output_end - p->output_start);
+        p->output_end -= p->output_start;
+        p->output_start = 0;
+    }
+    /* Sharing control may fail, but a stalled observer must never freeze the
+     * compositor or terminate the applications whose surfaces it owns. */
+    if (p->output_end + (size_t)length > sizeof p->output) { control_lost(p); return; }
+    memcpy(p->output + p->output_end, record, (size_t)length);
+    p->output_end += (size_t)length;
+    flush_control(p);
+}
+
 static void release_input(struct probe *p) {
     struct timespec time;
     weston_compositor_get_time(&time);
@@ -119,7 +176,7 @@ static uint64_t current_window(struct probe *p) {
     return current;
 }
 static void scene_changed(struct probe *p) {
-    dprintf(p->control, "scene %" PRIu64 " %" PRIu64 "\n", ++p->scene, current_window(p));
+    emit(p, "scene %" PRIu64 " %" PRIu64 "\n", ++p->scene, current_window(p));
 }
 
 static void context_focus(struct text_context *ctx, struct weston_surface *surface) {
@@ -176,7 +233,7 @@ static void context_commit(struct wl_client *c, struct wl_resource *r) {
     (void)c;
     struct text_context *ctx = wl_resource_get_user_data(r);
     ctx->serial++;
-    dprintf(ctx->probe->control, "context %u %d\n", ctx->serial, ctx->enabled);
+    emit(ctx->probe, "context %u %d\n", ctx->serial, ctx->enabled);
 }
 static const struct zwp_text_input_v3_interface context_api = {
     .destroy = resource_destroy, .enable = context_enable, .disable = context_disable,
@@ -272,7 +329,7 @@ static void content_committed(struct wl_listener *listener, void *data) {
     wl_list_for_each(window, &p->windows, link) {
         if (weston_desktop_surface_get_surface(window->desktop) != root ||
                 window->view->layer_link.layer != &p->layer) continue;
-        dprintf(p->control, "damage %" PRIu64 " %" PRIu64 "\n", ++p->damage, p->scene);
+        emit(p, "damage %" PRIu64 " %" PRIu64 "\n", ++p->damage, p->scene);
         break;
     }
 }
@@ -280,7 +337,7 @@ static void content_destroyed(struct wl_listener *listener, void *data) {
     (void)data;
     struct probe_surface *content = wl_container_of(listener, content, destroy);
     if (content->probe->current)
-        dprintf(content->probe->control, "damage %" PRIu64 " %" PRIu64 "\n",
+        emit(content->probe, "damage %" PRIu64 " %" PRIu64 "\n",
                 ++content->probe->damage, content->probe->scene);
     wl_list_remove(&content->commit.link);
     wl_list_remove(&content->destroy.link);
@@ -328,8 +385,8 @@ static void surface_added(struct weston_desktop_surface *desktop, void *data) {
     weston_desktop_surface_set_user_data(desktop, window);
     weston_desktop_surface_set_size(desktop, 1000, 700);
     weston_desktop_surface_set_activated(desktop, true);
-    dprintf(p->control, "window-added\n");
-    dprintf(p->control, "window-instance %" PRIu64 "\n", window->identity);
+    emit(p, "window-added\n");
+    emit(p, "window-instance %" PRIu64 "\n", window->identity);
 }
 static void surface_removed(struct weston_desktop_surface *desktop, void *data) {
     struct probe *p = data;
@@ -343,24 +400,24 @@ static void surface_removed(struct weston_desktop_surface *desktop, void *data) 
         if (ctx->surface == surface) { ctx->surface = NULL; ctx->enabled = false; }
     }
     if (p->current == surface) { release_input(p); p->current = NULL; }
-    dprintf(p->control, "window-retired %" PRIu64 "\n", window->identity);
+    emit(p, "window-retired %" PRIu64 "\n", window->identity);
     wl_list_remove(&window->link);
     weston_desktop_surface_unlink_view(window->view);
     weston_view_destroy(window->view);
     free(window);
     if (!p->current && parent && weston_view_is_mapped(parent->view)) {
         apply_selection(p, parent);
-        dprintf(p->control, "window-restored\n");
+        emit(p, "window-restored\n");
     }
     if (!p->current) {
         wl_list_for_each(window, &p->windows, link) {
             if (!weston_view_is_mapped(window->view)) continue;
             apply_selection(p, window);
-            dprintf(p->control, "window-restored\n");
+            emit(p, "window-restored\n");
             break;
         }
     }
-    dprintf(p->control, "window-removed\n");
+    emit(p, "window-removed\n");
     scene_changed(p);
 }
 static void position_window(struct probe_window *window) {
@@ -430,10 +487,10 @@ static void surface_committed(struct weston_desktop_surface *desktop,
     weston_surface_map(surface);
     apply_selection(p, window);
     weston_surface_damage(surface);
-    dprintf(p->control, "frame %d %d\n", surface->width, surface->height);
-    dprintf(p->control, "window-mapped %" PRIu64 "\n", window->identity);
+    emit(p, "frame %d %d\n", surface->width, surface->height);
+    emit(p, "window-mapped %" PRIu64 "\n", window->identity);
     const struct weston_xwayland_surface_api *xwayland = weston_xwayland_surface_get_api(p->compositor);
-    dprintf(p->control, "window-protocol %" PRIu64 " %s\n", window->identity,
+    emit(p, "window-protocol %" PRIu64 " %s\n", window->identity,
         xwayland && xwayland->is_xwayland_surface(surface) ? "x11" : "wayland");
     scene_changed(p);
 }
@@ -451,7 +508,7 @@ static void command(struct probe *p, char *line) {
     struct timespec time;
     weston_compositor_get_time(&time);
     if (sscanf(line, "scene-query %" SCNu64, &generation) == 1) {
-        dprintf(p->control, "scene-at %" PRIu64 " %" PRIu64 " %" PRIu64 "\n",
+        emit(p, "scene-at %" PRIu64 " %" PRIu64 " %" PRIu64 "\n",
                 generation, p->scene, current_window(p));
         return;
     }
@@ -460,7 +517,7 @@ static void command(struct probe *p, char *line) {
             release_input(p);
             p->connection = connection;
             p->last_connection = connection;
-            dprintf(p->control, "connection-ready %" PRIu64 "\n", connection);
+            emit(p, "connection-ready %" PRIu64 "\n", connection);
         }
         return;
     }
@@ -485,7 +542,7 @@ static void command(struct probe *p, char *line) {
                 return;
             }
         }
-        dprintf(p->control, "selection-unavailable %" PRIu64 "\n", identity);
+        emit(p, "selection-unavailable %" PRIu64 "\n", identity);
         return;
     }
     if (sscanf(line, "input %" SCNu64 " %" SCNu64 " %" SCNu64 " %n", &connection, &identity, &generation, &prefix) == 3 && prefix > 0) {
@@ -499,7 +556,7 @@ static void command(struct probe *p, char *line) {
             }
         }
         if (!connection || connection != p->connection || generation != p->scene || !valid) {
-            dprintf(p->control, "input-rejected %" PRIu64 " %" PRIu64 "\n", connection, identity);
+            emit(p, "input-rejected %" PRIu64 " %" PRIu64 "\n", connection, identity);
             return;
         }
         /* Fixture controls remain separate from target-bearing input. Never
@@ -510,7 +567,7 @@ static void command(struct probe *p, char *line) {
     }
     if (sscanf(line, "capture-authorize %u", &key) == 1) {
         p->capture_pid = key;
-        dprintf(p->control, "capture-authorized %u\n", key);
+        emit(p, "capture-authorized %u\n", key);
     } else if (sscanf(line, "key %u %u", &key, &state) == 2 && state <= 1 && key < 2080) {
         p->keys[key] = state;
         notify_key(&p->seat, &time, key, state, STATE_UPDATE_AUTOMATIC);
@@ -522,7 +579,7 @@ static void command(struct probe *p, char *line) {
         notify_motion_absolute(&p->seat, &time, (struct weston_coord_global){ .c = {x, y} });
         notify_pointer_frame(&p->seat);
         struct weston_pointer *pointer = weston_seat_get_pointer(&p->seat);
-        dprintf(p->control, "pointer %.0f %.0f %d %.0f %.0f\n", pointer->pos.c.x, pointer->pos.c.y,
+        emit(p, "pointer %.0f %.0f %d %.0f %.0f\n", pointer->pos.c.x, pointer->pos.c.y,
             weston_pointer_has_focus_resource(pointer), wl_fixed_to_double(pointer->sx), wl_fixed_to_double(pointer->sy));
     } else if (!strcmp(line, "close") && p->current) {
         weston_desktop_surface_close(weston_surface_get_desktop_surface(p->current));
@@ -537,23 +594,27 @@ static void command(struct probe *p, char *line) {
         if (count == 1) {
             zwp_text_input_v3_send_commit_string(selected->resource, line + 5);
             zwp_text_input_v3_send_done(selected->resource, selected->serial);
-            dprintf(p->control, "text-queued %u\n", selected->serial);
-        } else dprintf(p->control, "text-unavailable %u\n", count);
+            emit(p, "text-queued %u\n", selected->serial);
+        } else emit(p, "text-unavailable %u\n", count);
     }
     wl_display_flush_clients(p->compositor->wl_display);
 }
 static int control_ready(int fd, uint32_t mask, void *data) {
     struct probe *p = data;
     if (mask & (WL_EVENT_HANGUP | WL_EVENT_ERROR)) {
-        wl_display_terminate(p->compositor->wl_display); return 0;
+        control_lost(p); return 0;
     }
+    if (mask & WL_EVENT_WRITABLE) flush_control(p);
+    if (!(mask & WL_EVENT_READABLE) || p->control < 0) return 0;
     ssize_t count = read(fd, p->buffer + p->used, sizeof p->buffer - p->used - 1);
-    if (count <= 0) { wl_display_terminate(p->compositor->wl_display); return 0; }
+    if (count < 0 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)) return 0;
+    if (count <= 0) { control_lost(p); return 0; }
     p->used += count; p->buffer[p->used] = 0;
     char *line = p->buffer, *next;
-    while ((next = strchr(line, '\n'))) { *next++ = 0; command(p, line); line = next; }
+    while (p->control >= 0 && (next = strchr(line, '\n'))) { *next++ = 0; command(p, line); line = next; }
+    if (p->control < 0) return 0;
     p->used -= line - p->buffer; memmove(p->buffer, line, p->used);
-    if (p->used == sizeof p->buffer - 1) wl_display_terminate(p->compositor->wl_display);
+    if (p->used == sizeof p->buffer - 1) control_lost(p);
     return 0;
 }
 
@@ -567,6 +628,7 @@ static void authorize_capture(struct wl_listener *listener, struct weston_output
 static void destroy_probe(struct wl_listener *listener, void *data) {
     (void)data;
     struct probe *p = wl_container_of(listener, p, destroy);
+    control_lost(p);
     wl_list_remove(&p->destroy.link);
     wl_list_remove(&p->capture_authority.link);
     wl_list_remove(&p->focus.link);
@@ -593,6 +655,10 @@ WL_EXPORT int wet_shell_init(struct weston_compositor *compositor, int *argc, ch
     struct probe *p = calloc(1, sizeof *p);
     if (!p) return -1;
     p->compositor = compositor; p->control = atoi(descriptor);
+    int flags = fcntl(p->control, F_GETFL);
+    if (flags < 0 || fcntl(p->control, F_SETFL, flags | O_NONBLOCK) < 0) return -1;
+    int descriptor_flags = fcntl(p->control, F_GETFD);
+    if (descriptor_flags < 0 || fcntl(p->control, F_SETFD, descriptor_flags | FD_CLOEXEC) < 0) return -1;
     wl_list_init(&p->contexts);
     wl_list_init(&p->windows);
     wl_list_init(&p->backgrounds);
@@ -643,8 +709,8 @@ WL_EXPORT int wet_shell_init(struct weston_compositor *compositor, int *argc, ch
     wl_signal_add(&compositor->destroy_signal, &p->destroy);
     weston_compositor_add_screenshot_authority(compositor, &p->capture_authority, authorize_capture);
     wl_global_create(compositor->wl_display, &zwp_text_input_manager_v3_interface, 1, p, manager_bind);
-    wl_event_loop_add_fd(wl_display_get_event_loop(compositor->wl_display), p->control,
-                        WL_EVENT_READABLE, control_ready, p);
-    dprintf(p->control, "ready\n");
+    p->control_source = wl_event_loop_add_fd(wl_display_get_event_loop(compositor->wl_display), p->control,
+                                            WL_EVENT_READABLE, control_ready, p);
+    emit(p, "ready\n");
     return 0;
 }
