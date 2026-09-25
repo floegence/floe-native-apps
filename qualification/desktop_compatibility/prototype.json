@@ -171,6 +171,11 @@
       "case": "Native focus admission on amd64 and arm64",
       "result": "Actual GTK popup and transient dialog focus revokes old frame/input authority; ready surface restores only a new scene, authenticated reconnect preserves applications and releases modifiers",
       "limits": "Surface identity is native; production sandbox input-context binding and popup reposition/resize qualification remain incomplete"
+    },
+    {
+      "case": "Actual GTK4 popup geometry on native amd64 and arm64",
+      "result": "Original resize/reposition retains stale input generation and deterministically fails; native child-surface geometry invalidation advances the scene, rejects old pixels, and the resized popup receives an actual click",
+      "limits": "This proves compositor geometry and input admission, not complete package support"
     }
   ],
   "rejected_assumptions": [

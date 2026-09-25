@@ -134,6 +134,13 @@ def main():
         click_marker(popup)
         actions = receipts[0].with_suffix('.windows.json')
         wait(lambda: json.loads(actions.read_text())['popup_clicks'] == 1, 'Popup did not receive the actual click')
+        wait(lambda: control.native.generation > popup['generation'],
+             'Popup resize/reposition did not revoke the previous frame and coordinates')
+        resized = paint('popup-resized', marker=(19, 183, 73))
+        assert resized['marker_bounds'][2] - resized['marker_bounds'][0] >= 370
+        assert resized['generation'] > popup['generation']
+        click_marker(resized)
+        wait(lambda: json.loads(actions.read_text())['popup_clicks'] == 2, 'Resized popup did not receive the actual click')
         wait(lambda: json.loads(actions.read_text())['popup_closed'] == 1, 'Application has not closed its popup')
         paint('popup-dismissed', (19, 87, 155), absent=((19, 183, 73),))
         control.send(first, b'key 61 1\nkey 61 0\n')

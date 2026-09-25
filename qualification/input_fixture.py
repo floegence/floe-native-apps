@@ -116,7 +116,12 @@ elif kind in ('gtk4', 'gtk4-entry'):
                     def clicked(_button):
                         state['popup_clicks'] += 1
                         write_state()
-                        popup.popdown()
+                        if state['popup_clicks'] == 1:
+                            button.set_size_request(380, 140)
+                            anchor.x = 210
+                            popup.set_pointing_to(anchor)
+                        else:
+                            popup.popdown()
                     button.connect('clicked', clicked)
                     popup.set_child(button)
                     def closed(_popup):

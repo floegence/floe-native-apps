@@ -95,7 +95,8 @@ struct probe_surface {
     struct weston_surface *surface;
     struct wl_listener commit, destroy;
     uint64_t identity;
-    bool ready;
+    int32_t width, height;
+    double x, y;
 };
 struct text_context {
     struct wl_list link;
@@ -377,30 +378,32 @@ static void content_committed(struct wl_listener *listener, void *data) {
     (void)data;
     struct probe_surface *content = wl_container_of(listener, content, commit);
     struct probe *p = content->probe;
-    bool ready = content->surface->width > 0 && content->surface->height > 0;
-    if (ready != content->ready && weston_seat_get_keyboard(&p->seat)->focus == content->surface) {
+    struct weston_view *view;
+    double x = 0, y = 0;
+    wl_list_for_each(view, &content->surface->views, surface_link) {
+        if (!weston_view_is_mapped(view)) continue;
+        weston_view_update_transform(view);
+        struct weston_coord_global position = weston_coord_surface_to_global(view,
+            (struct weston_coord_surface){ .c = {0, 0}, .coordinate_space_id = content->surface });
+        x = position.c.x; y = position.c.y;
+        break;
+    }
+    struct probe_window *owner = window_for_surface(p, content->surface);
+    bool geometry_changed = content->width != content->surface->width ||
+        content->height != content->surface->height || content->x != x || content->y != y;
+    if (geometry_changed && owner && owner->view->layer_link.layer == &p->layer) {
+        /* Child surfaces can change hit regions without a top-level commit.
+         * Revoke coordinates on native geometry changes, not ordinary repaint. */
+        release_input(p);
         emit_focus(p);
         scene_changed(p);
     }
-    content->ready = ready;
-    struct weston_surface *root = weston_surface_get_main_surface(content->surface);
+    content->width = content->surface->width; content->height = content->surface->height;
+    content->x = x; content->y = y;
     /* xdg_popup is a desktop child, not a wl_subsurface or a top-level added
      * through the shell callback. Its commits still damage the parent's frame. */
-    struct weston_desktop_surface *desktop = weston_surface_is_desktop_surface(root) ?
-        weston_surface_get_desktop_surface(root) : NULL;
-    for (unsigned int depth = 0; desktop && depth < 128; depth++) {
-        struct weston_desktop_surface *parent = weston_desktop_surface_get_parent(desktop);
-        if (!parent) break;
-        desktop = parent;
-        root = weston_desktop_surface_get_surface(desktop);
-    }
-    struct probe_window *window;
-    wl_list_for_each(window, &p->windows, link) {
-        if (weston_desktop_surface_get_surface(window->desktop) != root ||
-                window->view->layer_link.layer != &p->layer) continue;
+    if (owner && owner->view->layer_link.layer == &p->layer)
         emit(p, "damage %" PRIu64 " %" PRIu64 "\n", ++p->damage, p->scene);
-        break;
-    }
 }
 static void content_destroyed(struct wl_listener *listener, void *data) {
     (void)data;
