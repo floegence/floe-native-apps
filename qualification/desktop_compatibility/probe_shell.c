@@ -287,9 +287,20 @@ WL_EXPORT int wet_shell_init(struct weston_compositor *compositor, int *argc, ch
     weston_seat_init(&p->seat, compositor, "floe-prototype");
     weston_seat_init_pointer(&p->seat);
     struct xkb_context *xkb = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
-    const char *map = "xkb_keymap { xkb_keycodes { include \"evdev+aliases(qwerty)\" };"
-        "xkb_types { include \"complete\" }; xkb_compatibility { include \"complete\" };"
-        "xkb_symbols { include \"pc+us+inet(evdev)\" key <I248> { [ U0F0000 ] }; }; };";
+    /* Fixture-only, non-text, non-repeating marker slots outside physical
+     * evdev codes. Xwayland's narrower keycode range is not qualified here. */
+    char map[8192];
+    size_t used = (size_t)snprintf(map, sizeof map,
+        "xkb_keymap { xkb_keycodes { include \"evdev+aliases(qwerty)\" ");
+    for (unsigned int i = 0; i < 32; i++)
+        used += (size_t)snprintf(map + used, sizeof map - used, "<F%03u> = %u; ", i, 2048 + i + 8);
+    used += (size_t)snprintf(map + used, sizeof map - used,
+        "}; xkb_types { include \"complete\" }; xkb_compatibility { include \"complete\" };"
+        "xkb_symbols { include \"pc+us+inet(evdev)\" ");
+    for (unsigned int i = 0; i < 32; i++)
+        used += (size_t)snprintf(map + used, sizeof map - used,
+            "key <F%03u> { repeat=no, [ F24 ] }; ", i);
+    snprintf(map + used, sizeof map - used, "}; };");
     struct xkb_keymap *keymap = xkb_keymap_new_from_string(xkb, map,
         XKB_KEYMAP_FORMAT_TEXT_V1, XKB_KEYMAP_COMPILE_NO_FLAGS);
     if (!keymap || weston_seat_init_keyboard(&p->seat, keymap) < 0) return -1;

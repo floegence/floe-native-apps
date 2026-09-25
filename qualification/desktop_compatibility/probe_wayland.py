@@ -131,7 +131,7 @@ def main():
             environment = {**os.environ, "DBUS_SESSION_BUS_ADDRESS": address,
                 "WAYLAND_DISPLAY": display.name, "GDK_BACKEND": "wayland", "MOZ_ENABLE_WAYLAND": "1",
                 "GTK_IM_MODULE": "ibus" if input_kind == "ibus" else "wayland", "XDG_RUNTIME_DIR": str(runtime),
-                "IBUS_ENABLE_SYNC_MODE": "2", "GTK_USE_PORTAL": "1"}
+                "IBUS_ENABLE_SYNC_MODE": "1", "GTK_USE_PORTAL": "1"}
             for key in ("DISPLAY", "XAUTHORITY", "GTK_PATH", "GTK_IM_MODULE_FILE",
                         "GIO_EXTRA_MODULES", "LD_LIBRARY_PATH", "LD_PRELOAD"):
                 environment.pop(key, None)
@@ -164,8 +164,7 @@ def main():
                     e["control"].endswith(" 1") for e in events), "No native text-input context")
             def text_command(value):
                 if input_kind == "ibus":
-                    ibus.enqueue(value)
-                    return b"key 240 1\nkey 240 0\n"
+                    return ibus.enqueue(value)
                 return ("text " + value + "\n").encode()
             text = "中文日本語한글🙂👩🏽‍💻e\u0301𠮷"
             left.sendall(text_command(text))

@@ -3,7 +3,7 @@ from pathlib import Path
 from gi.repository import Gio, GLib
 
 
-def start_portals(root, address, display, connection, start, wait_until):
+def start_portals(root, address, display, connection, start, wait_until, *, host_documents=False, input_module="ibus"):
     directories = {key: root / name for key, name in (
         ("XDG_RUNTIME_DIR", "portal-runtime"), ("XDG_CONFIG_HOME", "portal-config"),
         ("XDG_DATA_HOME", "portal-data"), ("XDG_CACHE_HOME", "portal-cache"))}
@@ -17,9 +17,11 @@ def start_portals(root, address, display, connection, start, wait_until):
     environment = {**os.environ, **{key: str(value) for key, value in directories.items()},
         "DBUS_SESSION_BUS_ADDRESS": address, "WAYLAND_DISPLAY": str(display),
         "GDK_BACKEND": "wayland", "GTK_USE_PORTAL": "0", "XDG_CURRENT_DESKTOP": "FloePrototype",
-        "GTK_IM_MODULE": "ibus", "IBUS_ENABLE_SYNC_MODE": "2"}
+        "GTK_IM_MODULE": input_module, "IBUS_ENABLE_SYNC_MODE": "1", "GSETTINGS_BACKEND": "memory"}
     for key in ("DISPLAY", "XAUTHORITY", "GTK_PATH", "GTK_IM_MODULE_FILE"):
         environment.pop(key, None)
+    if os.environ.get("FLOE_PROBE_TRACE"):
+        environment["WAYLAND_DEBUG"] = "client"
 
     def owns(name):
         return connection.call_sync("org.freedesktop.DBus", "/org/freedesktop/DBus",
@@ -32,6 +34,10 @@ def start_portals(root, address, display, connection, start, wait_until):
         ("xdg-desktop-portal-gtk", "org.freedesktop.impl.portal.desktop.gtk"),
         ("xdg-desktop-portal", "org.freedesktop.portal.Desktop"),
     ):
+        if host_documents and executable == "xdg-document-portal":
+            if not owns(bus_name):
+                raise RuntimeError("Host document facade is unavailable")
+            continue
         binary = Path("/usr/libexec") / executable
         if not binary.is_file():
             raise RuntimeError("Missing fixture portal: " + executable)

@@ -21,15 +21,56 @@
       "version": "1.5.29",
       "source": "https://github.com/ibus/ibus/tree/1.5.29",
       "use": "Shipped daemon and GTK input module; a commit-only fixture implements the standard engine interface"
+    },
+    {
+      "project": "IBus portal",
+      "version": "1.5.34",
+      "source": "https://github.com/ibus/ibus/tree/1.5.34/portal",
+      "use": "Unmodified official portal with GTK synchronous post-processing properties; fixture-only build, original source digests in build_ibus_portal_probe.py"
+    },
+    {
+      "project": "Qt IBus module",
+      "version": "6.4.2",
+      "source": "https://github.com/qt/qtbase/blob/v6.4.2/src/plugins/platforminputcontexts/ibus/qibusplatforminputcontext.cpp",
+      "use": "Review synchronous and asynchronous event completion; neither passed sustained native focus/Enter ordering"
     }
   ],
   "unproven_release_requirements": [
     "All package, desktop and toolkit combinations in the approved acceptance matrix",
     "One production launch planner and supervisor with authoritative sandbox ownership",
-    "Bounded input scheduling with cancellation, stale marker and target replacement proofs",
-    "Native text-input focus/serial ordering without relying on test document feedback",
+    "Production shared scheduler, real window/process/context admission, cancellation, stale callbacks and reconnect isolation across all adapters",
+    "Reliable native text-input protocol completion or explicit unsupported admission; do not claim direct v3 sequencing from serial alone",
     "Authenticated reconnectable frame and input API with complete window and popup lifecycle",
     "Private portal document grants, concurrent sessions and sandbox-accessible paths",
     "Pinned production component catalog, complete native architecture qualification and release validation"
+  ],
+  "observed_prototypes": [
+    {
+      "case": "strict Snap Firefox on Ubuntu 24.04 amd64",
+      "result": "private real systemd scope, pure Wayland first frame, actual click, repeated Unicode and Enter, official remote file chooser, exact saved bytes; no security policy changes",
+      "limits": "Full high-rate focus/Enter ordering, target revocation and production launch failure status still unproven"
+    },
+    {
+      "case": "Flatpak GNOME Text Editor 51.0 on native arm64",
+      "result": "64 repeated Unicode commits, a 14000-byte commit, actual remote Save As with official document grant, exact saved bytes, normal close",
+      "input": "stock sandbox GTK4 IBus, synchronous mode 1, official IBus portal 1.5.34"
+    },
+    {
+      "case": "Flatpak KWrite 26.04.3 / KDE runtime 6.11 on native arm64",
+      "result": "same Unicode stress and actual granted remote Save As with exact saved bytes",
+      "input": "private Qt fixture module in the existing application-private directory; service in its existing allowed bus namespace; no additional sandbox permission"
+    },
+    {
+      "case": "native GTK4 and Qt6 fields",
+      "result": "cancelled marker before/after current marker; 64 alternating field changes with text and Enter",
+      "input": "GTK4 synchronous IBus; Qt private native module with event-loop Done acknowledgement"
+    }
+  ],
+  "rejected_assumptions": [
+    "text-input-v3 done serial is not a widget-processing acknowledgement; direct text/pointer/text crossed GTK fields",
+    "An IBus engine marker receipt alone does not prove Qt has applied text; both synchronous and asynchronous Qt IBus failed without poll-delay masking",
+    "IBus hybrid mode 2 nested dispatch can reorder GTK input under pressure; it is not the synchronous post-processing contract",
+    "Newer sandbox libxkbcommon rejects keycodes above 0xfff; fixture private markers use 2048..2079 and disable repetition",
+    "Flatpak 1.14 does not expose a relocated private document mount at the path returned by GetMountPoint; a bounded facade to the official headless host document service is prototyped"
   ]
 }

@@ -20,13 +20,14 @@ go vet ./...
 go test -race -count=1 ./...
 go tool actionlint -shellcheck= -pyflakes=
 python3 -m unittest input_context_test input_dispatch_test input_logging_test input_xim_test input_xpra_test display_test
+python3 -m unittest discover -s qualification/desktop_compatibility -p '*_test.py'
 python3 - <<'PY'
 import ast
 from pathlib import Path
-for path in [*Path('.').glob('*.py'), *Path('scripts').glob('*.py'), *Path('selfcheck').glob('*.py'), *Path('qualification').glob('*.py')]:
+for path in [*Path('.').glob('*.py'), *Path('scripts').glob('*.py'), *Path('selfcheck').glob('*.py'), *Path('qualification').glob('*.py'), *Path('qualification/desktop_compatibility').glob('*.py')]:
     ast.parse(path.read_text(), filename=str(path))
 PY
-for script in scripts/*.sh .githooks/pre-push; do sh -n "$script"; done
+for script in scripts/*.sh qualification/desktop_compatibility/*.sh .githooks/pre-push; do sh -n "$script"; done
 for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64; do
   GOOS=${target%/*} GOARCH=${target#*/} CGO_ENABLED=0 go build ./...
 done
