@@ -1,0 +1,132 @@
+--- a/include/libweston/libweston.h
++++ b/include/libweston/libweston.h
+@@ -901,6 +901,8 @@
+ 	struct wl_listener output_destroy_listener;
+ 
+ 	struct wl_list timestamps_list;
++	/* Metadata for one synchronous native high-resolution wheel dispatch. */
++	int32_t axis_value120;
+ };
+ 
+ /** libinput style calibration matrix
+@@ -1092,6 +1094,10 @@
+ void
+ weston_pointer_move(struct weston_pointer *pointer,
+ 		    struct weston_pointer_motion_event *event);
++bool
++weston_keyboard_has_input_serial(struct weston_keyboard *keyboard,
++                                 struct wl_client *client, uint32_t serial);
++
+ void
+ weston_keyboard_set_focus(struct weston_keyboard *keyboard,
+ 			  struct weston_surface *surface);
+@@ -1261,6 +1267,11 @@
+ 	struct xkb_keymap *pending_keymap;
+ 
+ 	struct wl_list timestamps_list;
++	/* Recent keyboard events for this exact focus lifetime. A release may
++	 * arrive before the client asks to open a popup from its preceding press. */
++	uint32_t input_serials[32];
++	unsigned int input_serial_count;
++	unsigned int input_serial_next;
+ };
+ 
+ struct weston_seat {
+--- a/libweston/input.c
++++ b/libweston/input.c
+@@ -694,9 +694,12 @@
+ 	resource_list = &pointer->focus_client->pointer_resources;
+ 	msecs = timespec_to_msec(time);
+ 	wl_resource_for_each(resource, resource_list) {
+-		if (event->has_discrete &&
+-		    wl_resource_get_version(resource) >=
+-		    WL_POINTER_AXIS_DISCRETE_SINCE_VERSION)
++		if (pointer->axis_value120 && wl_resource_get_version(resource) >=
++		    WL_POINTER_AXIS_VALUE120_SINCE_VERSION)
++			wl_pointer_send_axis_value120(resource, event->axis, pointer->axis_value120);
++		else if (event->has_discrete &&
++		         wl_resource_get_version(resource) >=
++		         WL_POINTER_AXIS_DISCRETE_SINCE_VERSION)
+ 			wl_pointer_send_axis_discrete(resource, event->axis,
+ 						      event->discrete);
+ 
+@@ -2075,6 +2078,10 @@
+ 		wl_resource_add_destroy_listener(surface->resource,
+ 						 &keyboard->focus_resource_listener);
+ 
++	if (keyboard->focus != surface) {
++		keyboard->input_serial_count = 0;
++		keyboard->input_serial_next = 0;
++	}
+ 	keyboard->focus = surface;
+ 	wl_signal_emit(&keyboard->focus_signal, keyboard);
+ }
+@@ -2398,6 +2405,18 @@
+ 	pointer->grab->interface->axis(pointer->grab, time, event);
+ }
+ 
++/* Preserve the normal grab/binding path. The metadata exists only during
++ * this synchronous axis delivery and is never reused by another operation. */
++WL_EXPORT void
++floe_notify_axis_value120(struct weston_seat *seat, const struct timespec *time,
++                          struct weston_pointer_axis_event *event, int32_t value120)
++{
++	struct weston_pointer *pointer = weston_seat_get_pointer(seat);
++	pointer->axis_value120 = value120;
++	notify_axis(seat, time, event);
++	pointer->axis_value120 = 0;
++}
++
+ WL_EXPORT void
+ notify_axis_source(struct weston_seat *seat, uint32_t source)
+ {
+@@ -2712,10 +2731,29 @@
+ 	}
+ 
+ 	keyboard->grab_serial = wl_display_get_serial(compositor->wl_display);
++	if (keyboard->focus && keyboard->focus->resource) {
++		keyboard->input_serials[keyboard->input_serial_next] = keyboard->grab_serial;
++		keyboard->input_serial_next = (keyboard->input_serial_next + 1) % 32;
++		if (keyboard->input_serial_count < 32)
++			keyboard->input_serial_count++;
++	}
+ 	if (state == WL_KEYBOARD_KEY_STATE_PRESSED) {
+ 		keyboard->grab_time = *time;
+ 		keyboard->grab_key = key;
+ 	}
++}
++
++WL_EXPORT bool
++weston_keyboard_has_input_serial(struct weston_keyboard *keyboard,
++                                 struct wl_client *client, uint32_t serial)
++{
++	if (!keyboard || !keyboard->focus || !keyboard->focus->resource ||
++	    wl_resource_get_client(keyboard->focus->resource) != client)
++		return false;
++	for (unsigned int i = 0; i < keyboard->input_serial_count; i++)
++		if (keyboard->input_serials[i] == serial)
++			return true;
++	return false;
+ }
+ 
+ WL_EXPORT void
+@@ -4322,7 +4360,7 @@
+ 	wl_signal_init(&seat->tablet_tool_added_signal);
+ 
+ 	seat->global = wl_global_create(ec->wl_display, &wl_seat_interface,
+-					MIN(wl_seat_interface.version, 7),
++					MIN(wl_seat_interface.version, 8),
+ 					seat, bind_seat);
+ 
+ 	seat->compositor = ec;
+--- a/libweston/desktop/seat.c
++++ b/libweston/desktop/seat.c
+@@ -442,7 +442,7 @@
+ 		}
+ 	}
+ 
+-	if ((keyboard == NULL || keyboard->grab_serial != serial) &&
++	if (!weston_keyboard_has_input_serial(keyboard, client, serial) &&
+ 	    (pointer == NULL || pointer->grab_serial != serial) &&
+ 	    (touch == NULL || touch->grab_serial != serial) &&
+ 	    !tool_found) {

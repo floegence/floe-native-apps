@@ -18,6 +18,12 @@ def prepare(component, evidence, environment, shell, authentication=None):
     loader = component / 'lib' / ('ld-musl-aarch64.so.1' if platform.machine() == 'aarch64' else 'ld-musl-x86_64.so.1')
     libraries = ':'.join(str(component / path) for path in
                          ('lib', 'usr/lib', 'usr/lib/weston', 'usr/lib/libweston-14'))
+    derived = os.environ.get('FLOE_PROBE_WESTON_LIBRARY')
+    if derived:
+        derived = Path(derived).resolve(strict=True)
+        if not (derived / 'libweston-14.so.0').is_file():
+            raise RuntimeError('Derived native compositor library is unavailable')
+        libraries = str(derived) + ':' + libraries
 
     def command(relative):
         return [str(loader), '--library-path', libraries, str(component / relative)]
@@ -73,5 +79,6 @@ def prepare(component, evidence, environment, shell, authentication=None):
 
     frames = [str(loader), '--library-path', libraries, str(Path(shell).parent / 'frame-probe')]
     return arguments, server_environment, frames, authorize, {'version': version,
+        'derived_weston_sha256': hashlib.sha256((derived / 'libweston-14.so.0').read_bytes()).hexdigest() if derived else None,
         'original_xwayland_sha256': hashlib.sha256(data).hexdigest(),
         'prepared_xwayland_sha256': hashlib.sha256(binary.read_bytes()).hexdigest()}

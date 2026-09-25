@@ -49,3 +49,14 @@ The focus browser fixture uses npm-published jQuery 3.7.1 and jQuery UI 1.13.3
 (MIT), pinned with package integrity in `qualification/package-lock.json`. It
 executes the original reviewed Xpra window constructors and their real jQuery UI
 listeners, including decoration drag, together with the published controllers.
+
+## Weston native qualification
+
+`native/patches/weston-14-input-events.patch` is a reviewed modification of
+Weston 14.0.2 source, licensed under [the original Weston notices](licenses/weston-14-COPYING.txt).
+The adjacent JSON records the original archive, original source hashes and patch
+hash. `qualification/desktop_compatibility/build_weston.sh` derives a private
+library from that verified source without modifying publisher archives or an
+activated installation. Native qualification records the compiler, packages,
+derived source and library hashes. These unpublished fixtures do not add a
+released component or redistribute the third-party library with this module.

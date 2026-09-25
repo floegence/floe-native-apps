@@ -11,6 +11,7 @@
 #include <libweston/shell-utils.h>
 #include <linux/input-event-codes.h>
 #include <inttypes.h>
+#include <math.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <stdarg.h>
@@ -32,6 +33,9 @@ void notify_button(struct weston_seat *, const struct timespec *, int32_t,
 void notify_motion_absolute(struct weston_seat *, const struct timespec *,
                             struct weston_coord_global);
 void notify_pointer_frame(struct weston_seat *);
+void floe_notify_axis_value120(struct weston_seat *, const struct timespec *,
+                               struct weston_pointer_axis_event *, int32_t);
+void notify_axis_source(struct weston_seat *, uint32_t);
 
 struct probe {
     struct weston_compositor *compositor;
@@ -65,6 +69,8 @@ struct probe {
     uint64_t scene;
     bool keys[2080];
     bool buttons[8];
+    double wheel_remainder[2];
+    int32_t wheel_detents[2];
 };
 struct probe_window {
     struct wl_list link;
@@ -162,6 +168,8 @@ static void release_input(struct probe *p) {
         notify_button(&p->seat, &time, BTN_LEFT + button, WL_POINTER_BUTTON_STATE_RELEASED);
     }
     notify_pointer_frame(&p->seat);
+    memset(p->wheel_remainder, 0, sizeof p->wheel_remainder);
+    memset(p->wheel_detents, 0, sizeof p->wheel_detents);
 }
 
 static uint64_t current_window(struct probe *p) {
@@ -174,6 +182,16 @@ static uint64_t current_window(struct probe *p) {
         }
     }
     return current;
+}
+static void window_state(struct probe *p, struct probe_window *window) {
+    struct weston_surface *surface = weston_desktop_surface_get_surface(window->desktop);
+    const struct weston_xwayland_surface_api *api = weston_xwayland_surface_get_api(p->compositor);
+    bool x11 = api && api->is_xwayland_surface(surface);
+    /* X11's reported PID is advisory metadata; it is not SO_PEERCRED and must
+     * never authorize a text context. Wayland PID comes from the native peer. */
+    emit(p, "window-state %" PRIu64 " %" PRIu64 " %s %d %d %d\n", window->identity,
+        window->parent ? window->parent->identity : 0, x11 ? "x11" : "wayland",
+        (int)weston_desktop_surface_get_pid(window->desktop), window->width, window->height);
 }
 static void scene_changed(struct probe *p) {
     emit(p, "scene %" PRIu64 " %" PRIu64 "\n", ++p->scene, current_window(p));
@@ -393,7 +411,10 @@ static void surface_removed(struct weston_desktop_surface *desktop, void *data) 
     struct probe_window *window = weston_desktop_surface_get_user_data(desktop);
     struct probe_window *parent = window->parent, *child;
     wl_list_for_each(child, &p->windows, link)
-        if (child->parent == window) child->parent = NULL;
+        if (child->parent == window) {
+            child->parent = NULL;
+            if (weston_view_is_mapped(child->view)) window_state(p, child);
+        }
     struct weston_surface *surface = weston_desktop_surface_get_surface(desktop);
     struct text_context *ctx;
     wl_list_for_each(ctx, &p->contexts, link) {
@@ -444,6 +465,7 @@ static void surface_parent(struct weston_desktop_surface *desktop,
     weston_desktop_surface_set_size(desktop, parent ? 0 : 1000, parent ? 0 : 700);
     if (weston_view_is_mapped(window->view)) {
         position_window(window);
+        window_state(p, window);
         struct probe_window *selected;
         wl_list_for_each(selected, &p->windows, link) {
             if (weston_desktop_surface_get_surface(selected->desktop) == p->current) {
@@ -471,6 +493,7 @@ static void surface_committed(struct weston_desktop_surface *desktop,
     if (mapped && !changed) return;
     window->width = surface->width; window->height = surface->height; window->geometry = geometry;
     position_window(window);
+    window_state(p, window);
     if (mapped) {
         weston_view_update_transform(view);
         if (p->current == surface) {
@@ -563,7 +586,8 @@ static void command(struct probe *p, char *line) {
          * permit an input payload to grant capture or replace a connection. */
         line += prefix;
         if (strncmp(line, "key ", 4) && strncmp(line, "button ", 7) &&
-            strncmp(line, "motion ", 7) && strncmp(line, "text ", 5) && strcmp(line, "close")) return;
+            strncmp(line, "motion ", 7) && strncmp(line, "scroll ", 7) &&
+            strncmp(line, "text ", 5) && strcmp(line, "close")) return;
     }
     if (sscanf(line, "capture-authorize %u", &key) == 1) {
         p->capture_pid = key;
@@ -575,7 +599,32 @@ static void command(struct probe *p, char *line) {
         p->buttons[key - BTN_LEFT] = state;
         notify_button(&p->seat, &time, key, state);
         notify_pointer_frame(&p->seat);
-    } else if (sscanf(line, "motion %lf %lf", &x, &y) == 2) {
+    } else if (sscanf(line, "scroll %lf %lf", &x, &y) == 2 &&
+               isfinite(x) && isfinite(y) && fabs(x) <= 4096 && fabs(y) <= 4096) {
+        /* These are complete wheel operations, without a host kinetic gesture
+         * or inferred finger lifetime. Keep fractional axes; do not emit a
+         * discrete detent or synthesize momentum after the client stops. */
+        notify_axis_source(&p->seat, WL_POINTER_AXIS_SOURCE_WHEEL);
+        double deltas[2] = { y, x };
+        for (unsigned int axis = 0; axis < 2; axis++) {
+            /* 120 CSS pixels form one wheel detent. value120 retains sub-step
+             * delivery; sub-pixel remainder belongs only to this target. */
+            p->wheel_remainder[axis] += deltas[axis];
+            int32_t units = (int32_t)p->wheel_remainder[axis];
+            p->wheel_remainder[axis] -= units;
+            if (!units) continue;
+            p->wheel_detents[axis] += units;
+            int32_t detents = p->wheel_detents[axis] / 120;
+            p->wheel_detents[axis] -= detents * 120;
+            struct weston_pointer_axis_event event = {
+                .axis = axis, .value = units / 12.0,
+                .has_discrete = detents != 0, .discrete = detents,
+            };
+            floe_notify_axis_value120(&p->seat, &time, &event, units);
+        }
+        notify_pointer_frame(&p->seat);
+    } else if (sscanf(line, "motion %lf %lf", &x, &y) == 2 &&
+               isfinite(x) && isfinite(y) && x >= 0 && y >= 0 && x <= 4096 && y <= 4096) {
         notify_motion_absolute(&p->seat, &time, (struct weston_coord_global){ .c = {x, y} });
         notify_pointer_frame(&p->seat);
         struct weston_pointer *pointer = weston_seat_get_pointer(&p->seat);
@@ -711,6 +760,7 @@ WL_EXPORT int wet_shell_init(struct weston_compositor *compositor, int *argc, ch
     wl_global_create(compositor->wl_display, &zwp_text_input_manager_v3_interface, 1, p, manager_bind);
     p->control_source = wl_event_loop_add_fd(wl_display_get_event_loop(compositor->wl_display), p->control,
                                             WL_EVENT_READABLE, control_ready, p);
+    emit(p, "native-version 1\n");
     emit(p, "ready\n");
     return 0;
 }

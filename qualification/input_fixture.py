@@ -84,8 +84,9 @@ elif kind in ('gtk4', 'gtk4-entry'):
         if os.environ.get('FLOE_TEST_WINDOW_ACTIONS'):
             from gi.repository import Gdk
             Gtk.Settings.get_default().set_property('gtk-cursor-blink', False)
+            Gtk.Settings.get_default().set_property('gtk-enable-animations', False)
             state = {'popup_clicks': 0, 'popup_closed': 0, 'dialog_clicks': 0, 'dialog_closed': 0,
-                     'control_down': False, 'control_releases': 0}
+                     'control_down': False, 'control_releases': 0, 'scroll_x': 0, 'scroll_y': 0, 'keys': []}
             state_path = receipt.with_suffix('.windows.json')
             def write_state():
                 pending = state_path.with_suffix('.pending')
@@ -93,9 +94,12 @@ elif kind in ('gtk4', 'gtk4-entry'):
                 pending.replace(state_path)
             css = Gtk.CssProvider()
             css.load_from_data(b'.floe-popup { background: #13b749; padding: 20px; } '
-                               b'.floe-dialog { background: #bf31bd; padding: 20px; }')
+                               b'.floe-dialog { background: #bf31bd; padding: 20px; } '
+                               b'.floe-scroll text { background: #b3801a; }')
             Gtk.StyleContext.add_provider_for_display(window.get_display(), css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
             def pressed(_controller, keyval, _keycode, _state):
+                state['keys'] = (state['keys'] + [keyval])[-128:]
+                write_state()
                 if keyval == Gdk.KEY_Control_L:
                     state['control_down'] = True
                     write_state()
@@ -136,6 +140,25 @@ elif kind in ('gtk4', 'gtk4-entry'):
                     button.connect('clicked', clicked)
                     dialog.connect('close-request', closed)
                     dialog.set_child(button)
+                    dialog.present()
+                elif keyval == Gdk.KEY_F4:
+                    dialog = Gtk.Window(title='Floe scroll fixture', transient_for=window, modal=True)
+                    dialog.set_default_size(600, 400)
+                    scroll = Gtk.ScrolledWindow()
+                    content = Gtk.TextView()
+                    content.get_buffer().set_text(('Scroll qualification ' * 20 + '\n') * 100)
+                    content.add_css_class('floe-scroll')
+                    scroll.set_child(content)
+                    for axis, adjustment in (('x', scroll.get_hadjustment()), ('y', scroll.get_vadjustment())):
+                        def changed(value, axis=axis):
+                            state['scroll_' + axis] = value.get_value()
+                            write_state()
+                        adjustment.connect('value-changed', changed)
+                        def bounds(value, axis=axis):
+                            state['scroll_bounds_' + axis] = [value.get_upper(), value.get_page_size()]
+                            write_state()
+                        adjustment.connect('changed', bounds)
+                    dialog.set_child(scroll)
                     dialog.present()
                 else:
                     return False

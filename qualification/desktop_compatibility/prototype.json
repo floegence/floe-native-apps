@@ -161,6 +161,11 @@
       "case": "Snap and Flatpak regression after native window-family changes",
       "result": "Strict Snap Firefox amd64 and concurrent Flatpak GTK/Qt arm64 again pass 64 repeated Unicode commits, 14000-byte text, subsequent Enter, visible remote Save As, exact saved bytes and normal close with original portable services.",
       "limits": "Input adapters and document facade remain prototype-specific; this is not a production release claim."
+    },
+    {
+      "case": "Typed native seat and window registry on native amd64 and arm64",
+      "result": "Actual GTK receives first diagonal wheel, reverse wheel and eight sub-pixel increments. Authenticated per-operation requests drive native keyboard popup, modal dialog, Wayland/Xwayland windows, first-frame admission and reconnect. One nonblocking socket owner handles scene, input and capture barriers. EOF and stalled observer preserve applications and release Control.",
+      "limits": "Unpublished native component. Complete process/sandbox/context admission, prepared durable helper and release packaging remain required."
     }
   ],
   "rejected_assumptions": [
@@ -174,6 +179,8 @@
     "XDG_DESKTOP_PORTAL_DIR overrides both backend descriptions and portal configuration; separating them silently restores fallback interfaces",
     "Portal 1.20 validates the bwrap process through metadata under the actual Flatpak launcher runtime, not an unrelated service or host runtime directory; the private portal resolves the original instance metadata without copying or fabricating it",
     "WESTON_LAYER_POSITION_HIDDEN still renders. It requires an opaque background; removing the layer instead loses native mapping/callback behavior. The private shell covers inactive surfaces and clears prior pixels without a user desktop.",
-    "xdg_popup commits are not top-level shell commits. Damage follows the native desktop parent chain; transient toplevel parent metadata has a separate shell callback and must be registered explicitly."
+    "xdg_popup commits are not top-level shell commits. Damage follows the native desktop parent chain; transient toplevel parent metadata has a separate shell callback and must be registered explicitly.",
+    "Weston 14 accepts only the last keyboard serial for popup grabs: a release arriving before a press-triggered GTK request dismisses the popup. Actual protocol traces prove the failure. The bounded per-focus keyboard serial history fixes this without delaying or replaying keys.",
+    "Weston 14 advertises wl_seat version 7 and cannot deliver high-resolution wheel metadata. GTK 4.14 discards the first smooth scroll delta in the tested scrolled window. The reviewed source patch enables standard value120 on seat version 8, with native legacy detents and per-target fractional remainder."
   ]
 }

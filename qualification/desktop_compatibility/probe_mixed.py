@@ -12,7 +12,6 @@ import socket
 import subprocess
 import sys
 import tempfile
-import threading
 import time
 
 from application_processes import identity
@@ -29,8 +28,8 @@ def main():
     result = {"passed": False, "evidence": str(evidence)}
     frame_socket, frame_process = None, None
     control = None
-    consume_control = threading.Event()
-    consume_control.set()
+    from control_probe import ControlWire, ControlProbe
+    wire = ControlWire(left, events)
     capture_command = [str(root / 'frame-probe/frame-probe')]
 
     def wait(predicate, reason):
@@ -56,7 +55,7 @@ def main():
             {**environment, "FLOE_PROBE_FRAME_FD": str(child_socket.fileno())},
             "frame-capture", stdin=subprocess.PIPE, pass_fds=(child_socket.fileno(),))
         child_socket.close()
-        left.sendall(f"capture-authorize {frame_process.pid}\n".encode())
+        wire.send(f"capture-authorize {frame_process.pid}\n")
         wait(lambda: f"capture-authorized {frame_process.pid}" in events, "Frame capture was not authorized")
         frame_process.stdin.write(b"x")
         frame_process.stdin.close()
@@ -70,16 +69,6 @@ def main():
         x0, y0, x1, y1 = frame['marker_bounds']
         control.send(frame['window'], f'motion {(x0 + x1) / 2} {(y0 + y1) / 2}\nbutton 272 1\nbutton 272 0\n'.encode())
 
-    def controls():
-        try:
-            with left.makefile("r") as stream:
-                for line in stream:
-                    consume_control.wait()
-                    events.append(line.strip())
-                    if control:
-                        control.observe(line.strip())
-        except ConnectionResetError:
-            events.append('control-reset')
 
     try:
         config = evidence / "bus.conf"
@@ -109,7 +98,6 @@ def main():
                            {**server_environment, "FLOE_PROBE_CONTROL_FD": str(right.fileno())},
                            "compositor", pass_fds=(right.fileno(),))
         right.close()
-        threading.Thread(target=controls, daemon=True).start()
         wait(lambda: (runtime / "wayland-0").exists(), "No private compositor socket")
         pattern = r"xserver listening on display (:[0-9]+)"
         log = evidence / "compositor.log"
@@ -127,13 +115,12 @@ def main():
             result['x11_unauthenticated_client_rejected'] = True
         receipts = [evidence / "wayland.json", evidence / "xwayland.json"]
         wayland = start(["python3", str(root / "input_fixture.py"), "gtk4", str(receipts[0])],
-                        {**environment, "GDK_BACKEND": "wayland", 'FLOE_TEST_WINDOW_COLOR': '13579b',
+                        {**environment, "WAYLAND_DEBUG": os.environ.get("FLOE_PROBE_PROTOCOL_DEBUG", ""), "GDK_BACKEND": "wayland", 'FLOE_TEST_WINDOW_COLOR': '13579b',
                          'FLOE_TEST_WINDOW_ACTIONS': '1'}, "wayland")
         wait(lambda: receipts[0].exists() and any(e.startswith("frame ") for e in events),
              "No mapped Wayland fixture frame")
         start_capture()
-        from control_probe import ControlProbe
-        control = ControlProbe(evidence, left, events, frame_socket)
+        control = ControlProbe(evidence, wire, frame_socket)
         control.reconnect()
         first = int(next(e.split()[1] for e in events if e.startswith('window-instance ')))
         before = control.send(first, b'key 45 1\nkey 45 0\n')
@@ -157,11 +144,31 @@ def main():
         wait(lambda: json.loads(actions.read_text())['dialog_closed'] == 1, 'Transient dialog did not receive the native close')
         paint('dialog-restored', (19, 87, 155))
         result['popup_and_dialog'] = json.loads(actions.read_text())
+        control.send(first, b'key 62 1\nkey 62 0\n')
+        scrolling = paint('scroll-dialog', marker=(179, 128, 26), required=((19, 87, 155),))
+        x0, y0, x1, y1 = scrolling['marker_bounds']
+        control.send(scrolling['window'], f'motion {(x0 + x1) / 2 - 30} {(y0 + y1) / 2 - 30}\nscroll 1.25 7.5\n'.encode())
+        wait(lambda: all(json.loads(actions.read_text())['scroll_' + axis] > 0 for axis in ('x', 'y')),
+             'Native fractional diagonal scroll did not move the actual GTK adjustments')
+        forward = json.loads(actions.read_text())
+        control.send(scrolling['window'], b'scroll -1.75 -2.5\n')
+        wait(lambda: all(json.loads(actions.read_text())['scroll_' + axis] < forward['scroll_' + axis]
+                         for axis in ('x', 'y')), 'Native reverse scroll did not reverse both GTK adjustments')
+        reverse = json.loads(actions.read_text())
+        result['actual_scroll'] = {key: [forward['scroll_' + key], reverse['scroll_' + key]] for key in ('x', 'y')}
+        control.send(scrolling['window'], b'scroll 0.25 0.25\n' * 8)
+        wait(lambda: all(json.loads(actions.read_text())['scroll_' + axis] > reverse['scroll_' + axis]
+                         for axis in ('x', 'y')), 'Native sub-pixel wheel remainder was lost')
+        fractional = json.loads(actions.read_text())
+        for axis in ('x', 'y'):
+            result['actual_scroll'][axis].append(fractional['scroll_' + axis])
+        control.send(scrolling['window'], b'close\n')
+        paint('scroll-restored', (19, 87, 155), absent=((179, 128, 26),))
         xwayland = start(["python3", str(root / "input_fixture.py"), "gtk4", str(receipts[1])],
                          {**environment, "GDK_BACKEND": "x11", "DISPLAY": display,
                           'FLOE_TEST_WINDOW_COLOR': '9b3113'}, "xwayland")
-        wait(lambda: receipts[1].exists() and events.count("window-added") == 3 and
-             sum(e.startswith("frame ") for e in events) == 3, "No distinct mapped Xwayland fixture")
+        wait(lambda: receipts[1].exists() and events.count("window-added") == 4 and
+             sum(e.startswith("frame ") for e in events) == 4, "No distinct mapped Xwayland fixture")
         second = int([e.split()[1] for e in events if e.startswith('window-instance ')][-1])
         paint("mixed", (155, 49, 19))
         control.send(second, b"motion 250 180\nbutton 272 1\nbutton 272 0\nkey 48 1\nkey 48 0\n")
@@ -221,14 +228,14 @@ def main():
         wait(lambda: "window-restored" in events, "Closing Xwayland did not restore Wayland")
         paint("restored", (19, 87, 155))
         identities = [int(e.split()[1]) for e in events if e.startswith("window-instance ")]
-        assert len(identities) == 3 and len(set(identities)) == 3
+        assert len(identities) == 4 and len(set(identities)) == 4
         wait(lambda: "connection-ready 2" in events, "Connection replacement was not admitted")
         # A retired native window and an old viewer generation must both reject
         # their late input. The following live key proves the stream progressed.
         generation = control.native.generation
         stale = (f"input 1 {first} {generation} key 45 1\ninput 1 {first} {generation} key 45 0\n"
                  f"input 2 {second} {generation} key 45 1\ninput 2 {second} {generation} key 45 0\n")
-        left.sendall(stale.encode())
+        wire.send(stale)
         control.send(first, b"key 46 1\nkey 46 0\n")
         wait(lambda: json.loads(receipts[0].read_text()) == ["ac", ""], "Restored Wayland window did not receive input")
         assert events.count(f"input-rejected 1 {identities[0]}") == 2
@@ -236,11 +243,11 @@ def main():
         result["rejected_stale_input"] = {"old_connection": 2, "retired_window": 2}
         control.close()
         control = None
-        left.sendall(b'key 29 1\n')
+        wire.send('key 29 1\n')
         wait(lambda: json.loads(actions.read_text())['control_down'], 'Native key press was not received')
         releases = json.loads(actions.read_text())['control_releases']
+        wire.stop_reading()
         if control_loss == 'stall':
-            consume_control.clear()
             left.settimeout(5)
             try:
                 left.sendall(b'scene-query 900000\n' * 40000)
@@ -252,10 +259,8 @@ def main():
                 raise AssertionError('Stalled native observer froze the compositor control channel') from None
             wait(lambda: json.loads(actions.read_text())['control_releases'] == releases + 1,
                  'Stalled native observer did not revoke its held modifier')
-            consume_control.set()
         else:
             left.shutdown(socket.SHUT_RDWR)
-        left.close()
         try:
             compositor.wait(timeout=1)
         except subprocess.TimeoutExpired:
@@ -266,15 +271,15 @@ def main():
         result['native_controller_loss'] = {'mode': control_loss, 'application_preserved': True, 'modifier_released': True}
         result["actual"] = [json.loads(path.read_text()) for path in receipts]
         protocols = [line.split()[2] for line in events if line.startswith('window-protocol ')]
-        assert protocols == ['wayland', 'wayland', 'x11'], 'Compositor did not confirm both actual surface protocols'
+        assert protocols == ['wayland', 'wayland', 'wayland', 'x11'], 'Compositor did not confirm both actual surface protocols'
         result['actual_protocols'] = protocols
         result["passed"] = True
     except Exception as error:
         result["error"] = str(error)
     finally:
-        consume_control.set()
         if control:
             control.close()
+        wire.close()
         if frame_socket:
             frame_socket.close()
         for process, ticks, _name in reversed(processes):

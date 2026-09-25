@@ -11,121 +11,103 @@ import secrets
 import socket
 import struct
 from threading import Event, Thread
-from types import SimpleNamespace
 
 from gi.repository import GLib
 from desktop_attachment import DesktopAttachment
 from desktop_capture import NativeFrames
 from desktop_control import DesktopControl, GLibLoop, encode_message
+from desktop_native import NativeChannel, NativeDesktop
 
 
-class NativeFixture:
-    def __init__(self, channel, frames, loop):
-        self.channel, self.target, self.generation = channel, None, 0
-        self.attachment, self.capture_observer = None, None
-        self.query_id, self.queries = 0, {}
-        self.frames = NativeFrames(frames, loop, self.query_scene)
-
-    def query_scene(self, completed):
-        assert not self.queries
-        self.query_id += 1
-        self.queries[self.query_id] = completed
-        self.channel.sendall(f'scene-query {self.query_id}\n'.encode())
-
-    def observe(self, line):
-        if line.startswith('scene-at '):
-            _, query, generation, window = line.split()
-            completed = self.queries.pop(int(query), None)
-            if completed:
-                completed(int(window), int(generation))
-            return
-        if line.startswith('damage '):
-            if self.attachment:
-                self.attachment.damage()
-            return
-        if not line.startswith('scene '):
-            return
-        _, generation, window = line.split()
-        generation, window = int(generation), int(window)
-        if generation <= self.generation:
-            return
-        self.generation = generation
-        self.target = SimpleNamespace(window=window, generation=generation) if window else None
-        if self.attachment:
-            self.attachment.scene_changed()
-
-    def bind(self, epoch):
-        self.epoch = epoch
-        self.channel.sendall(f'connection {epoch}\n'.encode())
-
-    def release(self, epoch):
-        # Input revocation must not detach a still-authenticated connection.
-        self.channel.sendall(f'release {epoch}\n'.encode())
-        self.cancel_capture()
-
-    def unbind(self, epoch):
-        self.channel.sendall(f'detach {epoch}\n'.encode())
-        self.cancel_capture()
-
-    def cancel_capture(self):
-        self.frames.cancel()
-
-    def snapshot(self):
-        return {'state': 'running' if self.target else 'waiting',
-                'window': self.target.window if self.target else None, 'generation': self.generation}
-
-    def capture(self, target, completed):
-        def captured(description, data, error):
-            completed(description, data, error)
-            if self.capture_observer:
-                self.capture_observer(error)
-        self.frames.capture(target, captured)
-
-    def validate_input(self, operation):
-        if not isinstance(operation, dict) or operation.get('kind') != 'fixture':
-            raise ValueError('Unknown fixture input')
-        lines = operation.get('commands', '').splitlines()
-        if not 0 < len(lines) <= 128 or any(not line.startswith(('key ', 'button ', 'motion ')) for line in lines):
-            raise ValueError('Unknown fixture native command')
-        return dict(operation)
-
-    def deliver(self, epoch, target, operation):
-        packet = ''.join(f'input {epoch} {target.window} {target.generation} {line}\n'
-                         for line in operation['commands'].splitlines())
-        self.channel.sendall(packet.encode())
-
-    def close_window(self, window):
-        if not self.target or self.target.window != window:
-            raise ValueError('Fixture target is no longer selected')
-        self.channel.sendall(f'input {self.epoch} {window} {self.target.generation} close\n'.encode())
-
-    def select(self, window):
-        self.channel.sendall(f'select {self.epoch} {window}\n'.encode())
-
-
-class ControlProbe:
-    def __init__(self, directory, channel, events, frames):
-        self.request_id, self.client = 0, None
-        self.frames, self.responses, self.events = deque(), {}, []
-        self.directory = Path(directory) / 'helper'
-        self.directory.mkdir(mode=0o700)
-        self.token = secrets.token_hex(32)
-        self.loop = GLibLoop()
-        self.native = NativeFixture(channel, frames, self.loop)
-        for line in tuple(events):
-            self.native.observe(line)
-        self.attachment = DesktopAttachment(self.native, GLib.timeout_add, GLib.source_remove)
-        self.native.attachment = self.attachment
-        self.server = DesktopControl(self.directory, self.directory.name, self.token, self.attachment, self.loop)
+class ControlWire:
+    """Exercise the real native socket owner from compositor startup onward."""
+    def __init__(self, connection, events):
+        self.events, self.loop = events, GLibLoop()
+        self.native = NativeDesktop(lambda value: self.channel.send(value), None)
+        self.channel = NativeChannel(connection, self.loop, self.observe, self.native.lost)
         self.mainloop = GLib.MainLoop()
         self.thread = Thread(target=self.mainloop.run, daemon=True)
         self.thread.start()
 
     def observe(self, line):
+        self.events.append(line)
+        self.native.observe(line)
+
+    def invoke(self, callback):
+        completed, result = Event(), []
         def apply():
-            self.native.observe(line)
+            try:
+                result.append(callback())
+            except Exception as error:
+                result.append(error)
+            completed.set()
             return False
         GLib.idle_add(apply)
+        assert completed.wait(5)
+        if isinstance(result[0], Exception):
+            raise result[0]
+        return result[0]
+
+    def send(self, commands):
+        self.invoke(lambda: self.channel.send(commands))
+
+    def stop_reading(self):
+        # This is solely the deliberate stalled-observer qualification. Drain
+        # commands before giving the fixture its socket for that destructive
+        # channel test; production never changes or replaces the socket owner.
+        completed = Event()
+        def stop():
+            if self.channel.output:
+                return True
+            self.loop.watch(self.channel.socket.fileno())
+            self.mainloop.quit()
+            completed.set()
+            return False
+        GLib.idle_add(stop)
+        assert completed.wait(5)
+        self.thread.join(timeout=5)
+        self.channel.socket.setblocking(True)
+
+    def close(self):
+        if self.thread.is_alive():
+            def stop():
+                self.channel.close()
+                self.mainloop.quit()
+            self.invoke(stop)
+            self.thread.join(timeout=5)
+        else:
+            self.channel.close()
+
+
+class ObservedFrames(NativeFrames):
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.observer = None
+
+    def capture(self, target, completed):
+        def captured(description, data, error):
+            completed(description, data, error)
+            if self.observer:
+                self.observer(error)
+        super().capture(target, captured)
+
+
+class ControlProbe:
+    def __init__(self, directory, wire, frames):
+        self.request_id, self.client = 0, None
+        self.trace = []
+        self.frames, self.responses, self.events = deque(), {}, []
+        self.directory = Path(directory) / 'helper'
+        self.directory.mkdir(mode=0o700)
+        self.token = secrets.token_hex(32)
+        self.wire, self.loop, self.native = wire, wire.loop, wire.native
+        self.pointer = (0, 0)
+        def start():
+            self.native.frames = ObservedFrames(frames, self.loop, self.native.query_scene)
+            self.attachment = DesktopAttachment(self.native, GLib.timeout_add, GLib.source_remove)
+            self.native.attachment = self.attachment
+            self.server = DesktopControl(self.directory, self.directory.name, self.token, self.attachment, self.loop)
+        wire.invoke(start)
 
     def reconnect(self):
         if self.client:
@@ -159,6 +141,7 @@ class ControlProbe:
         kind, body = self.receive()
         assert kind == 1
         message = json.loads(body)
+        self.trace.append({'received': message})
         if message.get('event') == 'frame':
             kind, data = self.receive()
             assert kind == 2 and len(data) == message['bytes']
@@ -176,14 +159,31 @@ class ControlProbe:
 
     def request(self, method, **values):
         self.request_id += 1
+        self.trace.append({'sent': {'id': self.request_id, 'method': method, **values}})
         self.client.sendall(encode_message({'id': self.request_id, 'method': method, **values}))
         return self.request_id
 
     def send(self, window, commands):
         if commands == b'close\n':
             return self.request('close_window', window=window)
-        return self.request('input', connection=self.generation, window=window,
-            generation=self.native.generation, operation={'kind': 'fixture', 'commands': commands.decode()})
+        for line in commands.decode().splitlines():
+            parts = line.split()
+            if parts[0] == 'motion':
+                self.pointer = tuple(float(v) for v in parts[1:])
+                value = {'kind': 'move', 'x': self.pointer[0], 'y': self.pointer[1]}
+            elif parts[0] == 'key':
+                value = {'kind': 'key', 'code': int(parts[1]), 'pressed': parts[2] == '1'}
+            elif parts[0] == 'button':
+                value = {'kind': 'button', 'button': {272: 0, 273: 2, 274: 1}[int(parts[1])],
+                         'pressed': parts[2] == '1', 'x': self.pointer[0], 'y': self.pointer[1]}
+            elif parts[0] == 'scroll':
+                value = {'kind': 'scroll', 'dx': float(parts[1]), 'dy': float(parts[2]),
+                         'x': self.pointer[0], 'y': self.pointer[1]}
+            else:
+                raise ValueError('Unknown fixture instruction')
+            request = self.request('input', connection=self.generation, window=window,
+                                   generation=self.native.generation, operation=value)
+        return request
 
     def paint(self, stage, expected=None, marker=None, required=(), absent=()):
         from PIL import Image
@@ -232,12 +232,12 @@ class ControlProbe:
         ready = Event()
         def captured(error):
             if not error:
-                self.native.capture_observer = None
+                self.native.frames.observer = None
                 assert self.attachment.awaiting is not None
                 ready.set()
         def block():
             self.server.current.socket.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 4096)
-            self.native.capture_observer = captured
+            self.native.frames.observer = captured
             self.attachment.damage()
             return False
         GLib.idle_add(block)
@@ -246,14 +246,10 @@ class ControlProbe:
     def close(self):
         if self.client:
             self.client.close()
-        stopped = Event()
         def stop():
             self.server.close()
             self.attachment.close()
             self.native.frames.close()
-            self.mainloop.quit()
-            stopped.set()
-            return False
-        GLib.idle_add(stop)
-        assert stopped.wait(5)
-        self.thread.join(timeout=5)
+            self.native.attachment = None
+        self.wire.invoke(stop)
+        (self.directory / 'control-receipts.json').write_text(json.dumps(self.trace, indent=2) + '\n')

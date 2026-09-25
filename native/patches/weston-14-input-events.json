@@ -1,0 +1,25 @@
+{
+  "status": "unpublished native qualification source; not an activated component",
+  "project": "Weston",
+  "version": "14.0.2",
+  "source": "https://gitlab.freedesktop.org/wayland/weston/-/releases/14.0.2/downloads/weston-14.0.2.tar.xz",
+  "source_sha512": "e8214ec893e6c3ae94eb3c92feba104b0201843e9143f726a3e9a4d396d02523c94da706c1348cf934bc339fb1a4bc1fecdb865f0ea914115fd346d9eda091f5",
+  "license": "MIT",
+  "original_sources_sha256": {
+    "COPYING": "fdb65868f65d0fbdb05c2d3b779e10ce9969fa0c4b9262ba4f260e87086ab860",
+    "include/libweston/libweston.h": "226cf3bc0f4e29e7e7752702172edbb3216b8db31762b27084034c527e6c2cd3",
+    "libweston/input.c": "8c12c64b3eb0767a7239f423b539cf82927cc40a88a9924086386bee604b48d1",
+    "libweston/desktop/seat.c": "1e70de708eda28d19c75d52b1ad3f036294ad6ea795d509ba824019a77e8adbe"
+  },
+  "patch": "weston-14-input-events.patch",
+  "patch_sha256": "969520d5cc69d67a6c017bc68e6c4dde07f94f6f70b7fcfd48d26efbf37f27f1",
+  "changes": [
+    "Validate keyboard popup grabs against the last 32 actual keyboard event serials of the same client and focus lifetime; release cannot invalidate the preceding press",
+    "Advertise wl_seat version 8 and carry value120 wheel metadata through the existing native grab and axis dispatch"
+  ],
+  "abi": "Fields append to core-allocated pointer/keyboard objects; existing member offsets and axis event layout remain unchanged. The native shell requires floe_notify_axis_value120 from this derived library.",
+  "limitations": [
+    "No raw upstream Weston or earlier system shell fallback",
+    "Complete packaged helper and component qualification remain required before release"
+  ]
+}
