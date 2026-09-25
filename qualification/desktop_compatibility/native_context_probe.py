@@ -9,6 +9,7 @@ from threading import Condition
 from gi.repository import Gio, GLib
 from marker_probe import MarkerTransactions, marker_command
 from application_processes import ProcessTree, identity
+from application_peer import ApplicationPeer
 
 INTERFACE = "org.floegence.ClientInput"
 PATH = "/org/floegence/ClientInput"
@@ -21,8 +22,9 @@ XML = '''<node><interface name="org.floegence.ClientInput">
 
 
 class NativeContextProbe:
-    def __init__(self, connection, service, record):
+    def __init__(self, connection, service, record, runtime):
         self.connection, self.record = connection, record
+        self.runtime = runtime
         self.owner, self.owner_start = os.getpid(), identity(os.getpid())[1]
         self.tree, self.peers = ProcessTree(self.owner, self.owner_start), {}
         self.clients, self.transactions = {}, MarkerTransactions()
@@ -64,9 +66,9 @@ class NativeContextProbe:
                     pid = credentials["ProcessID"]
                     if credentials["UnixUserID"] != os.getuid() or sender in self.peers:
                         raise ValueError("Native input client is outside the fixture tree")
-                    peer = self.tree.admit(pid)
+                    peer = ApplicationPeer(self.tree, pid, self.runtime)
                     self.peers[sender] = peer
-                    self.clients[sender] = (peer.pid, peer.started)
+                    self.clients[sender] = (peer.process.pid, peer.process.started)
                     self.record({"native": "registered", "sender": sender, "pid": pid})
                     invocation.return_value(None)
                     return
@@ -132,6 +134,8 @@ class NativeContextProbe:
         self.revoke()
         self.connection.signal_unsubscribe(self.subscription)
         self.connection.unregister_object(self.registration)
+        for peer in self.peers.values():
+            peer.close()
         self.tree.close()
         self.peers.clear()
         self.clients.clear()

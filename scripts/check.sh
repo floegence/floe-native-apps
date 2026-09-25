@@ -19,7 +19,7 @@ go mod verify
 go vet ./...
 go test -race -count=1 ./...
 go tool actionlint -shellcheck= -pyflakes=
-python3 -m unittest application_status_test application_processes_test application_scope_test launch_plan_test desktop_control_test desktop_capture_test desktop_attachment_test desktop_native_test input_context_test input_dispatch_test input_logging_test input_xim_test input_xpra_test display_test
+python3 -m unittest application_status_test application_processes_test application_peer_test application_scope_test launch_plan_test desktop_control_test desktop_capture_test desktop_attachment_test desktop_native_test input_context_test input_dispatch_test input_logging_test input_xim_test input_xpra_test display_test
 python3 -m unittest discover -s qualification/desktop_compatibility -p '*_test.py'
 python3 - <<'PY'
 import ast

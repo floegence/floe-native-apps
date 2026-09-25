@@ -41,6 +41,12 @@
       "original_source_sha512": "e8214ec893e6c3ae94eb3c92feba104b0201843e9143f726a3e9a4d396d02523c94da706c1348cf934bc339fb1a4bc1fecdb865f0ea914115fd346d9eda091f5",
       "use": "Original signed APK candidate, native shell ABI and private software-only Xwayland relocation; no production catalog activation",
       "license": "MIT"
+    },
+    {
+      "project": "xdg-desktop-portal",
+      "version": "1.20.3",
+      "source": "https://github.com/flatpak/xdg-desktop-portal/blob/1.20.3/src/xdp-app-info-flatpak.c",
+      "use": "Reviewed official Flatpak proxy metadata and bwrap child identity lookup; no third-party source copied"
     }
   ],
   "unproven_release_requirements": [
@@ -176,6 +182,11 @@
       "case": "Actual GTK4 popup geometry on native amd64 and arm64",
       "result": "Original resize/reposition retains stale input generation and deterministically fails; native child-surface geometry invalidation advances the scene, rejects old pixels, and the resized popup receives an actual click",
       "limits": "This proves compositor geometry and input admission, not complete package support"
+    },
+    {
+      "case": "Official Flatpak proxy/native process admission, arm64 KWrite",
+      "result": "Distinct D-Bus proxy and Wayland client match through original /.flatpak-info, instance bwrapinfo.json, live supervisor-owned processes and actual PID namespace. Unicode stress and official remote Save As preserve exact bytes.",
+      "limits": "Identity primitive is qualified; complete native text-context selection and prepared helper wiring remain unfinished."
     }
   ],
   "rejected_assumptions": [

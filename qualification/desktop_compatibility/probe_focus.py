@@ -73,7 +73,7 @@ def main():
             service = "org.floegence.QtFixture"
             environment.update(QT_IM_MODULE="floe-prototype", QT_PLUGIN_PATH=str(root / "qt-probe"),
                                FLOE_PROBE_NATIVE_SERVICE=service)
-            ibus = NativeContextProbe(connection, service, lambda event: events.append(json.dumps(event)))
+            ibus = NativeContextProbe(connection, service, lambda event: events.append(json.dumps(event)), runtime)
         if input_kind == "ibus":
             os.environ["IBUS_ADDRESS"] = "unix:abstract=/tmp/ibus/dbus-" + evidence.name
             environment.update(IBUS_ADDRESS=os.environ["IBUS_ADDRESS"], GTK_IM_MODULE="ibus",

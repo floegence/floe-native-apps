@@ -169,6 +169,21 @@ def main():
             left.sendall(b"motion 330 300\nbutton 272 1\nbutton 272 0\n")
             if input_kind == "module":
                 wait_until(lambda: len(native.clients) == 1, "No sandbox native Qt input context")
+                from application_peer import ApplicationPeer
+                focus = next(e['control'].split() for e in reversed(events)
+                             if e.get('control', '').startswith('focus ') and e['control'].endswith(' 1'))
+                surface = ApplicationPeer(native.tree, int(focus[3]), runtime)
+                try:
+                    sender = next(iter(native.clients))
+                    proxy = native.peers[sender]
+                    assert proxy.matches(surface), 'Bus proxy does not own the actual native surface'
+                    assert proxy.process.pid != surface.process.pid, 'Flatpak fixture did not exercise its bus proxy'
+                    outcome['sandbox_peer'] = {'bus_pid': proxy.process.pid, 'native_pid': surface.process.pid,
+                        'child_pid': proxy.child.pid, 'child_started': proxy.child.started,
+                        'instance': proxy.package.instance, 'revision': proxy.package.revision,
+                        'surface': int(focus[4]), 'matched': True}
+                finally:
+                    surface.close()
             elif input_kind == "ibus":
                 wait_until(lambda: ibus.active is not None and any(e.get("ibus") == "context" and e.get("client") != "fake" for e in events),
                            "No sandbox toolkit input context")
@@ -289,7 +304,7 @@ def main():
             assert app_id == "org.kde.kwrite"
             from native_context_probe import NativeContextProbe
             shutil.copytree(root / "qt-probe/platforminputcontexts", fixture_state / "input-module/platforminputcontexts")
-            native = NativeContextProbe(connection, app_id + ".FloeFixtureInput", record)
+            native = NativeContextProbe(connection, app_id + ".FloeFixtureInput", record, runtime)
         if input_kind == "ibus":
             environment["QT_IM_MODULE"] = "ibus"
         else:
