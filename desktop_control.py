@@ -258,6 +258,7 @@ class Peer:
         if self.closed:
             return
         budget = MAX_MESSAGE
+        frame_drained = False
         try:
             while self.output and budget > 0:
                 data, frame = self.output[0]
@@ -273,6 +274,7 @@ class Peer:
                     self.output.popleft()
                     if frame:
                         self.frame_pending = False
+                        frame_drained = True
                 else:
                     self.output[0] = (data[count:], frame)
         except BlockingIOError:
@@ -280,6 +282,8 @@ class Peer:
         except OSError:
             self.close()
         self.watch()
+        if frame_drained and not self.closed and self.server.current is self:
+            self.server.application.writable(self)
 
     def close(self):
         if self.closed:

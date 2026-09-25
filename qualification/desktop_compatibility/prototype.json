@@ -121,6 +121,21 @@
       "case": "Authenticated bounded helper attachment on native amd64 and arm64",
       "result": "Production local transport with kernel peer credentials and instance token wraps the private combined compositor. Actual Wayland and Xwayland widgets accept input while capture and viewer frame delivery are blocked. Reattachment preserves both applications and clears an unreleased Control modifier; stale window/connection input is rejected.",
       "limits": "The transport is implemented. The native shell remains an unpublished fixture; production target/frame admission, launch realization, input adapters and portal identity are not complete."
+    },
+    {
+      "case": "One ordered scheduler with actual Wayland Qt completions",
+      "result": "64 Unicode commits with 128 intervening pointer/key operations submitted without per-operation fixture waits; toolkit event-loop completion releases later input. Exact two-field text, cancelled markers before/after replacement and original-peer marker retirement pass.",
+      "limits": "Native module and surface admission remain fixture-specific; standard Wayland text-input acknowledgement and sandbox ABI qualification are not claimed."
+    },
+    {
+      "case": "Native process peer authority on amd64 and arm64",
+      "result": "Shared PID/start/pidfd ancestry verification rejects unrelated/exited peers; sole supervisor lifetime checks pass. Flatpak GTK/Qt input and exact save receipts pass with the shared observer.",
+      "limits": "Production portal permission and FD forwarding remain incomplete."
+    },
+    {
+      "case": "Helper decoded-frame admission on amd64 and arm64",
+      "result": "Actual captured mixed Wayland/Xwayland pixels traverse authenticated bounded helper transport. Input before first decode/ack and after reconnection is rejected; acknowledged native targets accept actual widget input. Blocked frames preserve input, reconnection releases modifiers, old connection/window generations fail.",
+      "limits": "Pixel decoding is performed by the native fixture client, not browser automation. The fixture supplies captures to the reusable attachment implementation; production native scene/capture backend, browser renderer and complete launch realization remain incomplete."
     }
   ],
   "rejected_assumptions": [

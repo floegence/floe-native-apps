@@ -1,6 +1,6 @@
 """Xpra admission adapter for the shared native input scheduler."""
 from weakref import WeakKeyDictionary
-from input_order import OrderedInput
+from input_order import OrderedInput, valid_text
 
 
 class InputDispatch:
@@ -51,11 +51,7 @@ class InputDispatch:
                 self.invalidate(protocol)
                 protocol.close()
                 return
-            try:
-                valid = packet[3] and len(packet[3].encode('utf-8')) <= 16000 and '\x00' not in packet[3]
-            except UnicodeEncodeError:
-                valid = False
-            if not valid:
+            if not valid_text(packet[3]):
                 self.reject(protocol, packet[1], 'INPUT_TEXT_INVALID')
                 return
             # Retain the native object, not just a reusable Xpra window number.

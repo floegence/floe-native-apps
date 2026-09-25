@@ -59,6 +59,9 @@ class Application:
         self.commands.append((owner, request))
         owner.send({'id': request['id'], 'result': 'received'})
 
+    def writable(self, owner):
+        pass
+
 
 class ControlTests(unittest.TestCase):
     def setUp(self):

@@ -7,6 +7,15 @@ completion can release following input; transport writes never complete text.
 from collections import deque
 
 
+def valid_text(text):
+    if not isinstance(text, str):
+        return False
+    try:
+        return bool(text) and len(text.encode('utf-8')) <= 16000 and '\x00' not in text
+    except UnicodeEncodeError:
+        return False
+
+
 class OrderedInput:
     def __init__(self, available, admit, result, overflow, timeout_add, timeout_remove):
         self.available, self.admit, self.result, self.overflow = available, admit, result, overflow

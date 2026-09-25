@@ -48,55 +48,46 @@ def main():
 
     def capture(stage):
         nonlocal frame_socket, frame_process, frame_sequence, pixels
-        if os.environ.get("FLOE_PROBE_FRAMES"):
-            if frame_socket is None:
-                frame_socket, child_socket = socket.socketpair()
-                frame_socket.settimeout(10)
-                frame_process = start(["python3", "-c", "import os,sys; os.read(0,1); os.execv(sys.argv[1],sys.argv[1:])",
-                                       *capture_command],
-                    {**environment, "FLOE_PROBE_FRAME_FD": str(child_socket.fileno())},
-                    "frame-capture", stdin=subprocess.PIPE, pass_fds=(child_socket.fileno(),))
-                child_socket.close()
-                left.sendall(f"capture-authorize {frame_process.pid}\n".encode())
-                wait(lambda: f"capture-authorized {frame_process.pid}" in events, "Frame capture was not authorized")
-                frame_process.stdin.write(b"x")
-                frame_process.stdin.close()
-            def read_bytes(length):
-                chunks, total = [], 0
-                while total < length:
-                    chunk = frame_socket.recv(length - total)
-                    if not chunk:
-                        raise RuntimeError("Frame capture disconnected")
-                    chunks.append(chunk)
-                    total += len(chunk)
-                return b"".join(chunks)
-            frame_sequence += 1
-            frame_socket.sendall(struct.pack("=I", frame_sequence))
-            sequence, status, width, height, fmt, length = struct.unpack("=6I", read_bytes(24))
-            assert sequence == frame_sequence and status == 1
-            assert 0 < width <= 4096 and 0 < height <= 4096 and length == width * height * 4
-            pixels = read_bytes(length)
-            assert len(set(pixels)) > 16, "Captured frame does not contain real painted content"
-            result.setdefault("frames", []).append({"stage": stage, "sequence": sequence, "width": width,
-                "height": height, "format": fmt, "sha256": hashlib.sha256(pixels).hexdigest()})
-            from PIL import Image
-            Image.frombytes("RGBA", (width, height), pixels, "raw", "BGRA").convert("RGB").save(evidence / (stage + ".png"))
-            return
-        directory = evidence / stage
-        directory.mkdir()
-        process = start(["python3", "-c", "import os; os.read(0,1); os.execl('/usr/bin/weston-screenshooter','weston-screenshooter')"],
-                        {**environment, "XDG_PICTURES_DIR": str(directory)}, "capture-" + stage, stdin=subprocess.PIPE)
-        left.sendall(f"capture-authorize {process.pid}\n".encode())
-        wait(lambda: f"capture-authorized {process.pid}" in events, "Capture was not authorized")
-        process.stdin.write(b"x")
-        process.stdin.close()
-        process.wait(timeout=10)
-        assert process.returncode == 0 and len(list(directory.glob("*.png"))) == 1
+        if frame_socket is None:
+            frame_socket, child_socket = socket.socketpair()
+            frame_socket.settimeout(10)
+            frame_process = start(["python3", "-c", "import os,sys; os.read(0,1); os.execv(sys.argv[1],sys.argv[1:])",
+                                   *capture_command],
+                {**environment, "FLOE_PROBE_FRAME_FD": str(child_socket.fileno())},
+                "frame-capture", stdin=subprocess.PIPE, pass_fds=(child_socket.fileno(),))
+            child_socket.close()
+            left.sendall(f"capture-authorize {frame_process.pid}\n".encode())
+            wait(lambda: f"capture-authorized {frame_process.pid}" in events, "Frame capture was not authorized")
+            frame_process.stdin.write(b"x")
+            frame_process.stdin.close()
+        def read_bytes(length):
+            chunks, total = [], 0
+            while total < length:
+                chunk = frame_socket.recv(length - total)
+                if not chunk:
+                    raise RuntimeError("Frame capture disconnected")
+                chunks.append(chunk)
+                total += len(chunk)
+            return b"".join(chunks)
+        frame_sequence += 1
+        frame_socket.sendall(struct.pack("=I", frame_sequence))
+        sequence, status, width, height, fmt, length = struct.unpack("=6I", read_bytes(24))
+        assert sequence == frame_sequence and status == 1
+        assert 0 < width <= 4096 and 0 < height <= 4096 and length == width * height * 4
+        pixels = read_bytes(length)
+        assert len(set(pixels)) > 16, "Captured frame does not contain real painted content"
+        result.setdefault("frames", []).append({"stage": stage, "sequence": sequence, "width": width,
+            "height": height, "format": fmt, "sha256": hashlib.sha256(pixels).hexdigest()})
+        from PIL import Image
+        Image.frombytes("RGBA", (width, height), pixels, "raw", "BGRA").convert("RGB").save(evidence / (stage + ".png"))
+        return
 
     def controls():
         with left.makefile("r") as stream:
             for line in stream:
                 events.append(line.strip())
+                if control:
+                    control.observe(line.strip())
 
     try:
         config = evidence / "bus.conf"
@@ -149,8 +140,12 @@ def main():
              "No mapped Wayland fixture frame")
         capture("wayland")
         from control_probe import ControlProbe
-        control = ControlProbe(evidence, left)
+        control = ControlProbe(evidence, left, events)
         first = int(next(e.split()[1] for e in events if e.startswith('window-instance ')))
+        before = control.send(first, b'key 45 1\nkey 45 0\n')
+        assert control.response(before)['error'] == 'INPUT_TARGET_UNAVAILABLE'
+        control.paint(pixels)
+        result['first_frame_admission'] = True
         control.send(first, b"motion 250 180\nbutton 272 1\nbutton 272 0\nkey 30 1\nkey 30 0\n")
         wait(lambda: json.loads(receipts[0].read_text()) == ["a", ""], "No actual Wayland seat input")
         xwayland = start(["python3", str(root / "input_fixture.py"), "gtk4", str(receipts[1])],
@@ -159,6 +154,7 @@ def main():
              sum(e.startswith("frame ") for e in events) == 2, "No distinct mapped Xwayland fixture")
         capture("mixed")
         second = int([e.split()[1] for e in events if e.startswith('window-instance ')][-1])
+        control.paint(pixels)
         control.send(second, b"motion 250 180\nbutton 272 1\nbutton 272 0\nkey 48 1\nkey 48 0\n")
         wait(lambda: json.loads(receipts[1].read_text()) == ["b", ""], "No actual Xwayland seat input")
         if frame_socket:
@@ -184,11 +180,14 @@ def main():
             control.send(second, b"key 29 1\n")
             assert control.reconnect() == 2
             result['authenticated_helper_reconnected'] = True
+            before = control.send(second, b'key 45 1\nkey 45 0\n')
+            assert control.response(before)['error'] == 'INPUT_TARGET_UNAVAILABLE'
+            capture("reattached")
+            control.paint(pixels)
             control.send(second, b"key 18 1\nkey 18 0\n")
             wait(lambda: json.loads(receipts[1].read_text()) == ["bde", ""],
                  "Attachment replacement retained the old Control modifier")
             result['modifier_released_on_reattach'] = True
-            capture("reattached")
         from Xlib import Xatom, display as xdisplay
         from unittest.mock import patch
         with patch.dict(os.environ, {'XAUTHORITY': environment.get('XAUTHORITY', '')}):
@@ -212,13 +211,15 @@ def main():
         assert xwayland.returncode == 0 and wayland.poll() is None
         wait(lambda: "window-restored" in events, "Closing Xwayland did not restore Wayland")
         capture("restored")
+        control.paint(pixels)
         identities = [int(e.split()[1]) for e in events if e.startswith("window-instance ")]
         assert len(identities) == 2 and identities[0] != identities[1]
         wait(lambda: "connection-ready 2" in events, "Connection replacement was not admitted")
         # A retired native window and an old viewer generation must both reject
         # their late input. The following live key proves the stream progressed.
-        stale = (f"input 1 {identities[0]} key 45 1\ninput 1 {identities[0]} key 45 0\n"
-                 f"input 2 {identities[1]} key 45 1\ninput 2 {identities[1]} key 45 0\n")
+        generation = control.native.generation
+        stale = (f"input 1 {identities[0]} {generation} key 45 1\ninput 1 {identities[0]} {generation} key 45 0\n"
+                 f"input 2 {identities[1]} {generation} key 45 1\ninput 2 {identities[1]} {generation} key 45 0\n")
         left.sendall(stale.encode())
         control.send(first, b"key 46 1\nkey 46 0\n")
         wait(lambda: json.loads(receipts[0].read_text()) == ["ac", ""], "Restored Wayland window did not receive input")

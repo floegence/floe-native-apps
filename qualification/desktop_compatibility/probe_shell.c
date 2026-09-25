@@ -47,6 +47,7 @@ struct probe {
     uint64_t next_window;
     uint64_t connection;
     uint64_t last_connection;
+    uint64_t scene;
     bool keys[2080];
     bool buttons[8];
 };
@@ -79,6 +80,18 @@ static void release_input(struct probe *p) {
         notify_button(&p->seat, &time, BTN_LEFT + button, WL_POINTER_BUTTON_STATE_RELEASED);
     }
     notify_pointer_frame(&p->seat);
+}
+
+static void scene_changed(struct probe *p) {
+    struct probe_window *window;
+    uint64_t current = 0;
+    wl_list_for_each(window, &p->windows, link) {
+        if (weston_desktop_surface_get_surface(window->desktop) == p->current) {
+            current = window->identity;
+            break;
+        }
+    }
+    dprintf(p->control, "scene %" PRIu64 " %" PRIu64 "\n", ++p->scene, current);
 }
 
 static void context_focus(struct text_context *ctx, struct weston_surface *surface) {
@@ -204,6 +217,7 @@ static void surface_removed(struct weston_desktop_surface *desktop, void *data) 
         }
     }
     dprintf(p->control, "window-removed\n");
+    scene_changed(p);
 }
 static void surface_committed(struct weston_desktop_surface *desktop,
                               struct weston_coord_surface offset, void *data) {
@@ -229,6 +243,7 @@ static void surface_committed(struct weston_desktop_surface *desktop,
     const struct weston_xwayland_surface_api *xwayland = weston_xwayland_surface_get_api(p->compositor);
     dprintf(p->control, "window-protocol %" PRIu64 " %s\n", window->identity,
         xwayland && xwayland->is_xwayland_surface(surface) ? "x11" : "wayland");
+    scene_changed(p);
 }
 static const struct weston_desktop_api desktop_api = {
     .struct_size = sizeof desktop_api,
@@ -238,7 +253,7 @@ static const struct weston_desktop_api desktop_api = {
 
 static void command(struct probe *p, char *line) {
     unsigned int key, state;
-    uint64_t connection, identity;
+    uint64_t connection, identity, generation;
     int prefix = 0;
     double x, y;
     struct timespec time;
@@ -259,7 +274,11 @@ static void command(struct probe *p, char *line) {
         }
         return;
     }
-    if (sscanf(line, "input %" SCNu64 " %" SCNu64 " %n", &connection, &identity, &prefix) == 2 && prefix > 0) {
+    if (sscanf(line, "release %" SCNu64, &connection) == 1) {
+        if (connection == p->connection) release_input(p);
+        return;
+    }
+    if (sscanf(line, "input %" SCNu64 " %" SCNu64 " %" SCNu64 " %n", &connection, &identity, &generation, &prefix) == 3 && prefix > 0) {
         struct probe_window *window;
         bool valid = false;
         wl_list_for_each(window, &p->windows, link) {
@@ -269,7 +288,7 @@ static void command(struct probe *p, char *line) {
                 break;
             }
         }
-        if (!connection || connection != p->connection || !valid) {
+        if (!connection || connection != p->connection || generation != p->scene || !valid) {
             dprintf(p->control, "input-rejected %" PRIu64 " %" PRIu64 "\n", connection, identity);
             return;
         }
