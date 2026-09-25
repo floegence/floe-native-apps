@@ -46,6 +46,9 @@ struct probe {
     size_t used;
     uint64_t next_window;
     uint64_t connection;
+    uint64_t last_connection;
+    bool keys[2080];
+    bool buttons[8];
 };
 struct probe_window {
     struct wl_list link;
@@ -61,6 +64,22 @@ struct text_context {
     uint32_t serial;
     bool enabled;
 };
+
+static void release_input(struct probe *p) {
+    struct timespec time;
+    weston_compositor_get_time(&time);
+    for (unsigned int key = 0; key < 2080; key++) {
+        if (!p->keys[key]) continue;
+        p->keys[key] = false;
+        notify_key(&p->seat, &time, key, WL_KEYBOARD_KEY_STATE_RELEASED, STATE_UPDATE_AUTOMATIC);
+    }
+    for (unsigned int button = 0; button < 8; button++) {
+        if (!p->buttons[button]) continue;
+        p->buttons[button] = false;
+        notify_button(&p->seat, &time, BTN_LEFT + button, WL_POINTER_BUTTON_STATE_RELEASED);
+    }
+    notify_pointer_frame(&p->seat);
+}
 
 static void context_focus(struct text_context *ctx, struct weston_surface *surface) {
     if (ctx->surface == surface) return;
@@ -169,7 +188,7 @@ static void surface_removed(struct weston_desktop_surface *desktop, void *data) 
     wl_list_for_each(ctx, &p->contexts, link) {
         if (ctx->surface == surface) { ctx->surface = NULL; ctx->enabled = false; }
     }
-    if (p->current == surface) p->current = NULL;
+    if (p->current == surface) { release_input(p); p->current = NULL; }
     dprintf(p->control, "window-retired %" PRIu64 "\n", window->identity);
     wl_list_remove(&window->link);
     weston_desktop_surface_unlink_view(window->view);
@@ -201,6 +220,7 @@ static void surface_committed(struct weston_desktop_surface *desktop,
     weston_view_update_transform(view);
     view->is_mapped = true;
     weston_surface_map(surface);
+    if (p->current != surface) release_input(p);
     p->current = surface;
     weston_seat_set_keyboard_focus(&p->seat, surface);
     weston_surface_damage(surface);
@@ -224,9 +244,18 @@ static void command(struct probe *p, char *line) {
     struct timespec time;
     weston_compositor_get_time(&time);
     if (sscanf(line, "connection %" SCNu64, &connection) == 1) {
-        if (connection > p->connection) {
+        if (connection > p->last_connection) {
+            release_input(p);
             p->connection = connection;
+            p->last_connection = connection;
             dprintf(p->control, "connection-ready %" PRIu64 "\n", connection);
+        }
+        return;
+    }
+    if (sscanf(line, "detach %" SCNu64, &connection) == 1) {
+        if (connection == p->connection) {
+            release_input(p);
+            p->connection = 0;
         }
         return;
     }
@@ -253,9 +282,11 @@ static void command(struct probe *p, char *line) {
     if (sscanf(line, "capture-authorize %u", &key) == 1) {
         p->capture_pid = key;
         dprintf(p->control, "capture-authorized %u\n", key);
-    } else if (sscanf(line, "key %u %u", &key, &state) == 2 && state <= 1)
+    } else if (sscanf(line, "key %u %u", &key, &state) == 2 && state <= 1 && key < 2080) {
+        p->keys[key] = state;
         notify_key(&p->seat, &time, key, state, STATE_UPDATE_AUTOMATIC);
-    else if (sscanf(line, "button %u %u", &key, &state) == 2 && state <= 1) {
+    } else if (sscanf(line, "button %u %u", &key, &state) == 2 && state <= 1 && key >= BTN_LEFT && key <= BTN_TASK) {
+        p->buttons[key - BTN_LEFT] = state;
         notify_button(&p->seat, &time, key, state);
         notify_pointer_frame(&p->seat);
     } else if (sscanf(line, "motion %lf %lf", &x, &y) == 2) {

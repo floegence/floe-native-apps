@@ -116,6 +116,11 @@
       "case": "Original portable desktop services with strict Snap amd64 and concurrent Flatpak GTK/Qt arm64",
       "result": "Private Alpine D-Bus, IBus 1.5.33, original IBus portal, xdg-desktop-portal 1.20.3 and GTK backend 1.15.3; schemas, MIME and image caches derived privately. Default combined display selection, Unicode stress, remote Save As, real document grants and exact saved bytes pass. Private bus rejects unrelated portal interfaces before dispatch",
       "limits": "First-party graphical shell, input engines/modules and document grant facade remain unpublished fixtures; production window/input/portal admission and full desktop/package matrix remain incomplete"
+    },
+    {
+      "case": "Authenticated bounded helper attachment on native amd64 and arm64",
+      "result": "Production local transport with kernel peer credentials and instance token wraps the private combined compositor. Actual Wayland and Xwayland widgets accept input while capture and viewer frame delivery are blocked. Reattachment preserves both applications and clears an unreleased Control modifier; stale window/connection input is rejected.",
+      "limits": "The transport is implemented. The native shell remains an unpublished fixture; production target/frame admission, launch realization, input adapters and portal identity are not complete."
     }
   ],
   "rejected_assumptions": [

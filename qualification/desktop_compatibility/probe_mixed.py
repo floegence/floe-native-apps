@@ -28,6 +28,7 @@ def main():
     processes, logs, events = [], [], []
     result = {"passed": False, "evidence": str(evidence)}
     frame_socket, frame_process, frame_sequence = None, None, 0
+    control, pixels = None, None
     capture_command = [str(root / 'frame-probe/frame-probe')]
 
     def wait(predicate, reason):
@@ -46,7 +47,7 @@ def main():
         return process
 
     def capture(stage):
-        nonlocal frame_socket, frame_process, frame_sequence
+        nonlocal frame_socket, frame_process, frame_sequence, pixels
         if os.environ.get("FLOE_PROBE_FRAMES"):
             if frame_socket is None:
                 frame_socket, child_socket = socket.socketpair()
@@ -147,14 +148,18 @@ def main():
         wait(lambda: receipts[0].exists() and any(e.startswith("frame ") for e in events),
              "No mapped Wayland fixture frame")
         capture("wayland")
-        left.sendall(b"motion 250 180\nbutton 272 1\nbutton 272 0\nkey 30 1\nkey 30 0\n")
+        from control_probe import ControlProbe
+        control = ControlProbe(evidence, left)
+        first = int(next(e.split()[1] for e in events if e.startswith('window-instance ')))
+        control.send(first, b"motion 250 180\nbutton 272 1\nbutton 272 0\nkey 30 1\nkey 30 0\n")
         wait(lambda: json.loads(receipts[0].read_text()) == ["a", ""], "No actual Wayland seat input")
         xwayland = start(["python3", str(root / "input_fixture.py"), "gtk4", str(receipts[1])],
                          {**environment, "GDK_BACKEND": "x11", "DISPLAY": display}, "xwayland")
         wait(lambda: receipts[1].exists() and events.count("window-added") == 2 and
              sum(e.startswith("frame ") for e in events) == 2, "No distinct mapped Xwayland fixture")
         capture("mixed")
-        left.sendall(b"motion 250 180\nbutton 272 1\nbutton 272 0\nkey 48 1\nkey 48 0\n")
+        second = int([e.split()[1] for e in events if e.startswith('window-instance ')][-1])
+        control.send(second, b"motion 250 180\nbutton 272 1\nbutton 272 0\nkey 48 1\nkey 48 0\n")
         wait(lambda: json.loads(receipts[1].read_text()) == ["b", ""], "No actual Xwayland seat input")
         if frame_socket:
             for index in range(8):
@@ -163,7 +168,8 @@ def main():
             # bounded capture process may block, but the application must not.
             frame_sequence += 1
             frame_socket.sendall(struct.pack("=I", frame_sequence))
-            left.sendall(b"key 32 1\nkey 32 0\n")
+            control.block_frame(pixels)
+            control.send(second, b"key 32 1\nkey 32 0\n")
             wait(lambda: json.loads(receipts[1].read_text()) == ["bd", ""],
                  "Frame backpressure blocked application input")
             # Closing in the middle of that response must free the one pending
@@ -175,6 +181,13 @@ def main():
             frame_socket = None
             frame_process.wait(timeout=5)
             assert frame_process.returncode == 0 and wayland.poll() is None and xwayland.poll() is None
+            control.send(second, b"key 29 1\n")
+            assert control.reconnect() == 2
+            result['authenticated_helper_reconnected'] = True
+            control.send(second, b"key 18 1\nkey 18 0\n")
+            wait(lambda: json.loads(receipts[1].read_text()) == ["bde", ""],
+                 "Attachment replacement retained the old Control modifier")
+            result['modifier_released_on_reattach'] = True
             capture("reattached")
         from Xlib import Xatom, display as xdisplay
         from unittest.mock import patch
@@ -194,26 +207,25 @@ def main():
         xconnection.close()
         assert xwayland.pid in pids, "X11 window does not identify the owned fixture"
         result["x11_window_pids"] = pids
-        left.sendall(b"close\n")
+        control.send(second, b"close\n")
         xwayland.wait(timeout=10)
         assert xwayland.returncode == 0 and wayland.poll() is None
         wait(lambda: "window-restored" in events, "Closing Xwayland did not restore Wayland")
         capture("restored")
         identities = [int(e.split()[1]) for e in events if e.startswith("window-instance ")]
         assert len(identities) == 2 and identities[0] != identities[1]
-        left.sendall(b"connection 1\nconnection 2\n")
         wait(lambda: "connection-ready 2" in events, "Connection replacement was not admitted")
         # A retired native window and an old viewer generation must both reject
         # their late input. The following live key proves the stream progressed.
         stale = (f"input 1 {identities[0]} key 45 1\ninput 1 {identities[0]} key 45 0\n"
                  f"input 2 {identities[1]} key 45 1\ninput 2 {identities[1]} key 45 0\n")
         left.sendall(stale.encode())
-        left.sendall(b"key 46 1\nkey 46 0\n")
+        control.send(first, b"key 46 1\nkey 46 0\n")
         wait(lambda: json.loads(receipts[0].read_text()) == ["ac", ""], "Restored Wayland window did not receive input")
         assert events.count(f"input-rejected 1 {identities[0]}") == 2
         assert events.count(f"input-rejected 2 {identities[1]}") == 2
         result["rejected_stale_input"] = {"old_connection": 2, "retired_window": 2}
-        left.sendall(b"close\n")
+        control.send(first, b"close\n")
         wayland.wait(timeout=10)
         assert wayland.returncode == 0
         result["actual"] = [json.loads(path.read_text()) for path in receipts]
@@ -224,6 +236,8 @@ def main():
     except Exception as error:
         result["error"] = str(error)
     finally:
+        if control:
+            control.close()
         if frame_socket:
             frame_socket.close()
         for process, ticks, _name in reversed(processes):
