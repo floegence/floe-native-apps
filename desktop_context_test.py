@@ -144,6 +144,36 @@ class ContextTests(unittest.TestCase):
         self.contexts.commit(token, 'late', self.completed.append)
         self.assertEqual(self.completed, [None, 'INPUT_CONTEXT_UNAVAILABLE'])
 
+    def test_qualified_ibus_context_can_use_the_same_native_transaction(self):
+        self.contexts.unregister(':1.7')
+        peer = Peer(self.tree, 120, '/private/runtime')
+        ibus = SimpleNamespace(select=lambda surface: ('ibus:1.9', peer),
+                               valid=lambda token: peer.matches(token.surface_peer))
+        self.contexts.ibus = ibus
+        token, code = self.begin()
+        self.assertIs(token.adapter, ibus)
+        self.assertEqual(self.contexts.take('ibus:1.9', code, 19), (1, '同🙂'))
+        self.contexts.released('ibus:1.9', code)
+        self.assertTrue(self.contexts.done('ibus:1.9', 1))
+        self.assertTrue(peer.closed)
+
+    def test_selected_module_never_replays_through_ibus(self):
+        self.contexts.ibus = SimpleNamespace(select=lambda _: self.fail('Unexpected input adapter fallback'))
+        _, code = self.begin()
+        self.assertIsNone(self.contexts.take(':1.7', code, 20))
+        self.assertEqual(self.completed, ['INPUT_TARGET_UNAVAILABLE'])
+
+    def test_ibus_origin_revocation_blocks_a_late_marker(self):
+        self.contexts.unregister(':1.7')
+        peer = Peer(self.tree, 120, '/private/runtime')
+        ibus = SimpleNamespace(select=lambda surface: ('ibus:1.9', peer), valid=lambda token: True)
+        self.contexts.ibus = ibus
+        _, code = self.begin()
+        ibus.valid = lambda token: False
+        self.assertIsNone(self.contexts.take('ibus:1.9', code, 19))
+        self.assertEqual(self.completed, ['INPUT_TARGET_UNAVAILABLE'])
+        self.assertTrue(peer.closed)
+
 
 if __name__ == '__main__':
     unittest.main()
