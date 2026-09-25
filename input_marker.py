@@ -1,8 +1,8 @@
-"""Bounded transaction-identity experiment, not a production input scheduler.
+"""Bounded native marker identities beneath the shared input scheduler.
 
 Cancellation leaves a payload-free tombstone until its native key release. A
 different generation cannot reuse an unobserved marker. No timer retires slots.
-Window/process/context admission still belongs to the unimplemented helper.
+Window/process/context admission belongs to the native context owner.
 """
 from __future__ import annotations
 
@@ -51,6 +51,14 @@ class MarkerTransactions:
             self.generation += 1
             for transaction in self.slots.values():
                 transaction.text = None
+
+    def remove_owner(self, owner):
+        # Unique bus names cannot reconnect. Once their connection is gone no
+        # late event from that owner can consume or release another's slot.
+        with self.lock:
+            self.slots = {code: transaction for code, transaction in self.slots.items()
+                          if transaction.owner != owner}
+            self.lock.notify_all()
 
     def key(self, code, released, focused, owner=None):
         with self.lock:

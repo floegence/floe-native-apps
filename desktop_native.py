@@ -127,6 +127,7 @@ class NativeDesktop:
     def __init__(self, send, frames):
         self.send, self.frames = send, frames
         self.attachment, self.target = None, None
+        self.contexts = None
         self.windows, self.declared, self.last_window, self.generation = {}, set(), 0, 0
         self.surfaces, self.last_surface, self.focus = set(), 0, None
         self.epoch, self.last_epoch = 0, 0
@@ -355,4 +356,8 @@ class NativeDesktop:
         # A mapped surface or text-input serial is not toolkit completion.
         # Only a registered adapter with an explicit completion contract may
         # enter the shared scheduler. There is deliberately no guessed adapter.
+        if self.contexts:
+            token = self.contexts.context_for(target)
+            if token:
+                return self.contexts, token
         return None

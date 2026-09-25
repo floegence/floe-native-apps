@@ -1,4 +1,8 @@
-"""Actual native toolkit focus/confirmed-text ordering on a private compositor."""
+"""Standard text-input and IBus ordering experiments on the pinned compositor.
+
+Qt module qualification uses context_probe and the real authenticated helper.
+This fixture retains the standard-protocol experiments and their actual receipts.
+"""
 import json
 import os
 from pathlib import Path
@@ -18,6 +22,7 @@ def main():
     root, toolkit = Path(sys.argv[1]).resolve(), sys.argv[2]
     assert toolkit in ("gtk4", "qt6")
     input_kind = os.environ.get("FLOE_PROBE_INPUT", "native")
+    assert input_kind in ("native", "ibus")
     evidence = Path(tempfile.mkdtemp(prefix="focus-" + toolkit + "-" + input_kind + "-", dir=root))
     runtime = Path(tempfile.mkdtemp(prefix="floe-focus-", dir=f"/run/user/{os.getuid()}"))
     receipt = evidence / "received.json"
@@ -67,13 +72,6 @@ def main():
         connection = Gio.DBusConnection.new_for_address_sync(address, flags, None, None)
         connection.set_exit_on_close(False)
         ibus = None
-        if input_kind == "module":
-            assert toolkit == "qt6"
-            from native_context_probe import NativeContextProbe
-            service = "org.floegence.QtFixture"
-            environment.update(QT_IM_MODULE="floe-prototype", QT_PLUGIN_PATH=str(root / "qt-probe"),
-                               FLOE_PROBE_NATIVE_SERVICE=service)
-            ibus = NativeContextProbe(connection, service, lambda event: events.append(json.dumps(event)), runtime)
         if input_kind == "ibus":
             os.environ["IBUS_ADDRESS"] = "unix:abstract=/tmp/ibus/dbus-" + evidence.name
             environment.update(IBUS_ADDRESS=os.environ["IBUS_ADDRESS"], GTK_IM_MODULE="ibus",
@@ -92,9 +90,12 @@ def main():
             from ibus_probe import IBusProbe
             ibus = IBusProbe(lambda event: events.append(json.dumps(event)))
             ibus.activate()
-        start(["weston", "--backend=headless", "--renderer=pixman", "--shell=" + str(root / "probe/probe-shell.so"),
-               "--socket=wayland-0", "--width=1000", "--height=700", "--idle-time=0", "--no-config"],
-              {**environment, "FLOE_PROBE_CONTROL_FD": str(right.fileno())}, "compositor", pass_fds=(right.fileno(),))
+        from portable_probe import prepare
+        command, server_environment, capture_command, _authorize, result['portable'] = prepare(
+            os.environ['FLOE_PROBE_COMPONENT'], evidence, environment,
+            root / 'alpine-wayland-probe/probe-shell.so')
+        start(command, {**server_environment, "FLOE_PROBE_CONTROL_FD": str(right.fileno())},
+              "compositor", pass_fds=(right.fileno(),))
         right.close()
         threading.Thread(target=controls, daemon=True).start()
         wait(lambda: (runtime / "wayland-0").exists(), "Private display unavailable")
@@ -102,18 +103,13 @@ def main():
         def context_ready():
             if ibus is None:
                 return any(e.startswith("context ") and e.endswith(" 1") for e in events)
-            return bool(ibus.clients) if input_kind == "module" else ibus.active is not None
+            return ibus.active is not None
         wait(lambda: receipt.exists() and context_ready(), "No native focused input context")
         captured = evidence / "loaded"
         captured.mkdir()
-        capture = start(["python3", "-c", "import os; os.read(0,1); os.execl('/usr/bin/weston-screenshooter','weston-screenshooter')"],
-                        {**environment, "XDG_PICTURES_DIR": str(captured)}, "capture", stdin=subprocess.PIPE)
-        left.sendall(f"capture-authorize {capture.pid}\n".encode())
-        wait(lambda: f"capture-authorized {capture.pid}" in events, "Capture was not authorized")
-        capture.stdin.write(b"x")
-        capture.stdin.close()
-        capture.wait(timeout=10)
-        assert capture.returncode == 0 and len(list(captured.glob("*.png"))) == 1
+        from capture_probe import capture
+        result['frame'] = capture(capture_command, environment, start, left,
+            lambda pid: wait(lambda: f'capture-authorized {pid}' in events, 'Capture not authorized'), captured)
         # One ordered native input stream; no document feedback or time delay
         # is inserted between the text, pointer focus change and next text.
         if ibus is None:
@@ -131,37 +127,19 @@ def main():
         expected = ["甲🙂", "乙𠮷"]
         wait(lambda: json.loads(receipt.read_text()) == expected, "Text crossed native input contexts")
         if ibus is not None:
-            ordered = None
-            if input_kind == 'module':
-                ibus.wait_completed(5)
-                from ordered_probe import OrderedProbe
-                ordered = OrderedProbe(left, ibus)
             # Exercise slot reuse and actual toolkit event ordering without
             # waiting for fixture document feedback between each operation.
             for index in range(64):
-                if input_kind != "module":
-                    ibus.transactions.wait_drained(5)
+                ibus.transactions.wait_drained(5)
                 field = index % 2
                 command = f"motion {250 if field == 0 else 750} 180\nbutton 272 1\nbutton 272 0\n"
                 # Put each field's caret at its end; a click must not make this
                 # test dependent on the current text's rendered glyph width.
                 command += "key 29 1\nkey 107 1\nkey 107 0\nkey 29 0\n"
-                if ordered:
-                    ordered.enqueue('native', command.encode())
-                    ordered.enqueue('text', '同🙂')
-                    ordered.enqueue('native', b"key 28 1\nkey 28 0\n")
-                else:
-                    left.sendall(command.encode() + ibus.enqueue("同🙂"))
-                    ibus.transactions.wait_drained(5)
-                    left.sendall(b"key 28 1\nkey 28 0\n")
+                left.sendall(command.encode() + ibus.enqueue("同🙂"))
+                ibus.transactions.wait_drained(5)
+                left.sendall(b"key 28 1\nkey 28 0\n")
                 expected[field] += "同🙂\n"
-            if ordered:
-                try:
-                    ordered.flush()
-                    assert len(ordered.completed) == 64
-                    result['production_ordered_queue'] = {'commits': 64, 'intervening_operations': 128}
-                finally:
-                    ordered.close()
             wait(lambda: json.loads(receipt.read_text()) == expected,
                  "Repeated focus changes or subsequent Enter crossed a native transaction")
             wait(lambda: not ibus.transactions.slots, "Native marker releases were not observed")

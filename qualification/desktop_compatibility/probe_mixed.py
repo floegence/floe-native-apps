@@ -248,6 +248,10 @@ def main():
         assert events.count(f"input-rejected 1 {identities[0]}") == 2
         assert events.count(f"input-rejected 2 {second}") == 2
         result["rejected_stale_input"] = {"old_connection": 2, "retired_window": 2}
+        if os.environ.get('FLOE_PROBE_CONTEXT'):
+            from context_probe import qualify
+            result['native_context'] = qualify(root, evidence, environment, control, wire, start, wait, paint)
+            paint('context-restored', (19, 87, 155))
         control.close()
         control = None
         wire.send('key 29 1\n')
@@ -278,7 +282,8 @@ def main():
         result['native_controller_loss'] = {'mode': control_loss, 'application_preserved': True, 'modifier_released': True}
         result["actual"] = [json.loads(path.read_text()) for path in receipts]
         protocols = [line.split()[2] for line in events if line.startswith('window-protocol ')]
-        assert protocols == ['wayland', 'wayland', 'wayland', 'x11'], 'Compositor did not confirm both actual surface protocols'
+        expected_protocols = ['wayland', 'wayland', 'wayland', 'x11'] + (['wayland'] if os.environ.get('FLOE_PROBE_CONTEXT') else [])
+        assert protocols == expected_protocols, 'Compositor did not confirm actual surface protocols'
         result['actual_protocols'] = protocols
         result["passed"] = True
     except Exception as error:

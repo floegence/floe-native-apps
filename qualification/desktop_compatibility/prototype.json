@@ -187,6 +187,11 @@
       "case": "Official Flatpak proxy/native process admission, arm64 KWrite",
       "result": "Distinct D-Bus proxy and Wayland client match through original /.flatpak-info, instance bwrapinfo.json, live supervisor-owned processes and actual PID namespace. Unicode stress and official remote Save As preserve exact bytes.",
       "limits": "Identity primitive is qualified; complete native text-context selection and prepared helper wiring remain unfinished."
+    },
+    {
+      "case": "Native surface-bound Qt confirmed text, native amd64 and arm64",
+      "result": "Authenticated attachment, actual wl_surface ID, live application/sandbox peer, bounded native markers and the shared scheduler deliver 64 alternating-field Unicode/Enter transactions plus 14000 bytes, with exact actual Qt document receipts. Flatpak KWrite uses the same context service and saves exact bytes through its remote official portal.",
+      "limits": "amd64 runs in an unprivileged disposable Ubuntu24 distribution fixture; arm64 runs directly in the task VM. GTK IBus production context provenance, pinned module baseline/distribution and full helper preparation remain incomplete."
     }
   ],
   "rejected_assumptions": [
@@ -202,6 +207,7 @@
     "WESTON_LAYER_POSITION_HIDDEN still renders. It requires an opaque background; removing the layer instead loses native mapping/callback behavior. The private shell covers inactive surfaces and clears prior pixels without a user desktop.",
     "xdg_popup commits are not top-level shell commits. Damage follows the native desktop parent chain; transient toplevel parent metadata has a separate shell callback and must be registered explicitly.",
     "Weston 14 accepts only the last keyboard serial for popup grabs: a release arriving before a press-triggered GTK request dismisses the popup. Actual protocol traces prove the failure. The bounded per-focus keyboard serial history fixes this without delaying or replaying keys.",
-    "Weston 14 advertises wl_seat version 7 and cannot deliver high-resolution wheel metadata. GTK 4.14 discards the first smooth scroll delta in the tested scrolled window. The reviewed source patch enables standard value120 on seat version 8, with native legacy detents and per-target fractional remainder."
+    "Weston 14 advertises wl_seat version 7 and cannot deliver high-resolution wheel metadata. GTK 4.14 discards the first smooth scroll delta in the tested scrolled window. The reviewed source patch enables standard value120 on seat version 8, with native legacy detents and per-target fractional remainder.",
+    "A minimal Xwayland fixture needs the standard X11 socket directory; the native amd64 distribution fixture supplies a private tmpfs at /tmp/.X11-unix. Production resource realization must handle this prerequisite without depending on a pre-existing desktop."
   ]
 }

@@ -134,8 +134,8 @@ def main():
                 command = command.replace("flatpak run ", "flatpak run --nofilesystem=host --nofilesystem=home ", 1)
             overrides = ["GSETTINGS_BACKEND=memory"]
             if input_kind == "module":
-                overrides += ["QT_IM_MODULE=floe-prototype", "QT_PLUGIN_PATH=" + str(fixture_state / "input-module"),
-                              "FLOE_PROBE_NATIVE_SERVICE=" + app_id + ".FloeFixtureInput"]
+                overrides += ["QT_IM_MODULE=floe-client-wayland", "QT_PLUGIN_PATH=" + str(fixture_state / "input-module"),
+                              "FLOE_NATIVE_DESKTOP_INPUT=" + app_id + ".FloeClientInput"]
             if os.environ.get("FLOE_PROBE_TRACE"):
                 overrides.append("WAYLAND_DEBUG=client")
             for key, leaf in (("XDG_DATA_HOME", "data"), ("XDG_CONFIG_HOME", "config"),
@@ -169,58 +169,33 @@ def main():
             left.sendall(b"motion 330 300\nbutton 272 1\nbutton 272 0\n")
             if input_kind == "module":
                 wait_until(lambda: len(native.clients) == 1, "No sandbox native Qt input context")
-                from application_peer import ApplicationPeer
-                focus = next(e['control'].split() for e in reversed(events)
-                             if e.get('control', '').startswith('focus ') and e['control'].endswith(' 1'))
-                surface = ApplicationPeer(native.tree, int(focus[3]), runtime)
-                try:
-                    sender = next(iter(native.clients))
-                    proxy = native.peers[sender]
-                    assert proxy.matches(surface), 'Bus proxy does not own the actual native surface'
-                    assert proxy.process.pid != surface.process.pid, 'Flatpak fixture did not exercise its bus proxy'
-                    outcome['sandbox_peer'] = {'bus_pid': proxy.process.pid, 'native_pid': surface.process.pid,
-                        'child_pid': proxy.child.pid, 'child_started': proxy.child.started,
-                        'instance': proxy.package.instance, 'revision': proxy.package.revision,
-                        'surface': int(focus[4]), 'matched': True}
-                finally:
-                    surface.close()
             elif input_kind == "ibus":
                 wait_until(lambda: ibus.active is not None and any(e.get("ibus") == "context" and e.get("client") != "fake" for e in events),
                            "No sandbox toolkit input context")
             else:
                 wait_until(lambda: any(e.get("control", "").startswith("context ") and
                     e["control"].endswith(" 1") for e in events), "No native text-input context")
-            def text_command(value):
+            def submit_text(value):
                 if input_kind == "module":
-                    return native.enqueue(value)
-                if input_kind == "ibus":
-                    return ibus.enqueue(value)
-                return ("text " + value + "\n").encode()
+                    native.commit(value)
+                elif input_kind == "ibus":
+                    left.sendall(ibus.enqueue(value))
+                    ibus.transactions.wait_drained(5)
+                else:
+                    left.sendall(("text " + value + "\n").encode())
             text = "中文日本語한글🙂👩🏽‍💻e\u0301𠮷"
-            left.sendall(text_command(text))
-            if input_kind == "module":
-                native.wait_completed(5)
-            elif input_kind == "ibus":
-                wait_until(lambda: ibus.pending is None, "First native marker was not consumed")
+            submit_text(text)
             # A visible suffix distinguishes Enter delivery from the editors'
             # implicit final newline, without normalizing application bytes.
             suffix = b"key 38 1\nkey 38 0\nkey 30 1\nkey 30 0\nkey 31 1\nkey 31 0\nkey 20 1\nkey 20 0\n"
-            left.sendall(text_command(text))
-            if input_kind == "module":
-                native.wait_completed(5)
-            elif input_kind == "ibus":
-                ibus.transactions.wait_drained(5)
+            submit_text(text)
             left.sendall(b"key 28 1\nkey 28 0\n" + suffix)
             expected = text + text + "\nlast\n"
             if os.environ.get("FLOE_PROBE_STRESS"):
                 assert input_kind in ("module", "ibus")
                 contents = expected[:-1]
                 for value in [text] * 64 + ["界🙂" * 2000]:
-                    left.sendall(text_command(value))
-                    if native:
-                        native.wait_completed(5)
-                    else:
-                        ibus.transactions.wait_drained(5)
+                    submit_text(value)
                     left.sendall(b"key 28 1\nkey 28 0\n")
                     contents += value + "\n"
                 # GtkSourceView saves an implicit trailing newline even when
@@ -231,6 +206,9 @@ def main():
                 outcome["stress"] = {"repeated_commits": 64, "long_commit_bytes": 14000,
                                      "completion": "toolkit event loop" if native else "IBus marker release"}
             outcome["expected"] = expected
+            if native:
+                outcome['sandbox_peer'] = next(e['native_context'] for e in events if 'native_context' in e)
+                assert outcome['sandbox_peer']['bus_pid'] != outcome['sandbox_peer']['native_pid']
             if os.environ.get("FLOE_PROBE_SAVE_DIALOG"):
                 previous_context = ibus.active.input_path if ibus.active else None
                 frames = sum(e.get("control", "").startswith("frame ") for e in events)
@@ -302,9 +280,9 @@ def main():
             "GTK_IM_MODULE": "ibus" if input_kind == "ibus" else "wayland", "IBUS_ENABLE_SYNC_MODE": "1"}
         if input_kind == "module":
             assert app_id == "org.kde.kwrite"
-            from native_context_probe import NativeContextProbe
-            shutil.copytree(root / "qt-probe/platforminputcontexts", fixture_state / "input-module/platforminputcontexts")
-            native = NativeContextProbe(connection, app_id + ".FloeFixtureInput", record, runtime)
+            from context_probe import ToolkitDriver
+            shutil.copytree(root / "qt-native/platforminputcontexts", fixture_state / "input-module/platforminputcontexts")
+            native = ToolkitDriver(connection, left, runtime, app_id + ".FloeClientInput", record)
         if input_kind == "ibus":
             environment["QT_IM_MODULE"] = "ibus"
         else:
@@ -338,6 +316,8 @@ def main():
             with left.makefile("r") as stream:
                 for line in stream:
                     record({"control": line.strip()})
+                    if native:
+                        native.observe(line.strip())
 
         threading.Thread(target=controls, daemon=True).start()
         thread = threading.Thread(target=worker)

@@ -7,7 +7,7 @@ protocol dispatch alone does not count as a successful application receipt.
 import gi
 gi.require_version("IBus", "1.0")
 from gi.repository import IBus
-from marker_probe import FIRST_CODE, SLOT_COUNT, MarkerTransactions, marker_command
+from input_marker import FIRST_CODE, SLOT_COUNT, MarkerTransactions, marker_command
 
 
 class CommitEngine(IBus.Engine):

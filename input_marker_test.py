@@ -1,7 +1,7 @@
-"""Identity and cancellation properties of the unpublished marker experiment."""
+"""Native markers retain identity through cancellation and late key releases."""
 import unittest
 
-from marker_probe import FIRST_CODE, SLOT_COUNT, MarkerTransactions
+from input_marker import FIRST_CODE, SLOT_COUNT, MarkerTransactions
 
 
 class MarkerTests(unittest.TestCase):
