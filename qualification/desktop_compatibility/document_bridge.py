@@ -10,7 +10,7 @@ from pathlib import Path
 import xml.etree.ElementTree as ET
 
 from gi.repository import Gio, GLib
-from scope_bridge import identity
+from application_processes import identity
 
 NAME = "org.freedesktop.portal.Documents"
 PATH = "/org/freedesktop/portal/documents"

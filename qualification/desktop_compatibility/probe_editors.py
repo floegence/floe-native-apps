@@ -13,7 +13,7 @@ import threading
 import time
 
 from gi.repository import Gio, GLib
-from scope_bridge import identity
+from application_processes import identity
 from portal_probe import start_portals
 
 

@@ -8,7 +8,7 @@ from threading import Condition
 
 from gi.repository import Gio, GLib
 from marker_probe import MarkerTransactions, marker_command
-from scope_bridge import identity
+from application_processes import identity
 
 INTERFACE = "org.floegence.ClientInput"
 PATH = "/org/floegence/ClientInput"

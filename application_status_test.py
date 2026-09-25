@@ -10,6 +10,7 @@ import tempfile
 from types import ModuleType, SimpleNamespace
 import unittest
 from unittest.mock import patch
+import application_processes
 
 
 class LaunchContext:
@@ -52,21 +53,26 @@ class StatusTests(unittest.TestCase):
             patch.object(self.module.os, 'close'),
             patch.object(self.module.signal, 'signal'),
             patch.dict(self.module.os.environ, {}, clear=True),
+            patch.object(application_processes, 'identity', return_value=(self.module.os.getpid(), 10)),
+            patch.object(self.module.os, 'P_ALL', 0, create=True),
+            patch.object(self.module.os, 'WEXITED', 4, create=True),
+            patch.object(self.module.os, 'WNOWAIT', 0x1000000, create=True),
         ):
             item.start()
             self.addCleanup(item.stop)
 
     def run_launcher(self, statuses):
         remaining = iter(statuses)
-        def waitpid(_pid, _flags):
+        def waitid(*_args):
             # The process tree must remain running even after its direct
             # wrapper exits; only the final ECHILD permits an ended receipt.
             self.assertEqual(json.loads(self.receipt.read_text())['state'], 'running')
             try:
-                return next(remaining)
+                return SimpleNamespace(si_pid=next(remaining)[0])
             except StopIteration:
                 raise ChildProcessError from None
-        with patch.object(self.module.os, 'waitpid', side_effect=waitpid):
+        with patch.object(self.module.os, 'waitid', side_effect=waitid, create=True), \
+             patch.object(self.module.os, 'waitpid', side_effect=statuses):
             code = self.module.launch(Desktop(), str(self.receipt))
         return code, json.loads(self.receipt.read_text())
 

@@ -11,12 +11,14 @@ import os
 from pathlib import Path
 import signal
 import sys
+import threading
 
 import gi
 
 gi.require_version("Gio", "2.0")
 from gi.repository import Gio, GLib  # noqa: E402
 from launch_plan import Unavailable, revalidate, restored_environment  # noqa: E402
+from application_processes import LaunchChildren  # noqa: E402
 
 
 def write_receipt(path, state, **details):
@@ -26,14 +28,14 @@ def write_receipt(path, state, **details):
     os.replace(temporary, path)
 
 
-def terminate_children(_signal, _frame, observed=None):
+def terminate_children():
     """Explicit supervisor termination affects only this launcher's child tree.
 
     Kernel handles and a checked parent relationship prevent PID reuse from
     targeting another process. Newly adopted descendants are reaped in the next
-    pass. Normal viewer, window and consumer lifetimes never send this signal.
+    pass by the sole wait owner. Normal viewer, window and consumer lifetimes
+    never request this operation.
     """
-    signal.signal(signal.SIGTERM, signal.SIG_IGN)
     def terminate(parent):
         try:
             children = Path(f"/proc/{parent}/task/{parent}/children").read_text().split()
@@ -55,14 +57,7 @@ def terminate_children(_signal, _frame, observed=None):
                 pass
             finally:
                 os.close(descriptor)
-    while True:
-        terminate(os.getpid())
-        try:
-            pid, status = os.waitpid(-1, 0)
-            if observed:
-                observed(pid, status)
-        except ChildProcessError:
-            return
+    terminate(os.getpid())
 
 
 def launch(app, receipt, plan=None):
@@ -72,15 +67,20 @@ def launch(app, receipt, plan=None):
     pids = []
     root_statuses = {}
     stopped = False
+    scope = None
 
     def observed(pid, status):
         if pid in pids and pid not in root_statuses:
             root_statuses[pid] = os.waitstatus_to_exitcode(status)
 
     def terminate(number, frame):
+        del number, frame
         nonlocal stopped
         stopped = True
-        terminate_children(number, frame, observed)
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
+        terminate_children()
+
+    children = LaunchChildren(observed)
 
     try:
         if plan is not None:
@@ -98,6 +98,17 @@ def launch(app, receipt, plan=None):
         descriptor = os.pidfd_open(os.getpid())
         os.close(descriptor)
         signal.signal(signal.SIGTERM, terminate)
+        if plan is not None and 'user-systemd-scope' in plan['observation']['services']:
+            from application_scope import ScopeService
+            host_bus = os.environ.get('FLOE_NATIVE_HOST_BUS')
+            private_bus = os.environ.get('DBUS_SESSION_BUS_ADDRESS')
+            if not host_bus or not private_bus or host_bus == private_bus:
+                raise Unavailable('APPLICATION_HOST_SERVICE_UNAVAILABLE', 'host_services')
+            try:
+                scope = ScopeService(private_bus, host_bus, plan['observation']['package']['security_tag'],
+                    children, lambda event: print(json.dumps(event), flush=True))
+            except Exception:
+                raise Unavailable('APPLICATION_HOST_SERVICE_UNAVAILABLE', 'host_services') from None
         if app.get_boolean("DBusActivatable"):
             entry = GLib.KeyFile.new()
             entry.load_from_file(app.get_filename(), GLib.KeyFileFlags.NONE)
@@ -114,6 +125,7 @@ def launch(app, receipt, plan=None):
                 context.setenv(key, value)
         context.unsetenv("FLOE_NATIVE_APPLICATION_ENV")
         context.unsetenv("FLOE_NATIVE_ROOT")
+        context.unsetenv('FLOE_NATIVE_HOST_BUS')
         # Support-tool Python clears GTK_PATH and the saved host map restores it.
         # Apply the input launcher's explicit private path only to the final app.
         gtk_path = os.environ.get("FLOE_NATIVE_INPUT_GTK_PATH")
@@ -123,25 +135,44 @@ def launch(app, receipt, plan=None):
             context.setenv("GTK_PATH", gtk_path)
         context.unsetenv("FLOE_NATIVE_INPUT_GTK_PATH")
         def started(_app, pid, _data):
+            children.register(pid)
             pids.append(pid)
         if not app.launch_uris_as_manager([], context, GLib.SpawnFlags.SEARCH_PATH | GLib.SpawnFlags.DO_NOT_REAP_CHILD,
                                           None, None, started, None) or not pids:
             raise ValueError("The application did not start an owned process.")
         write_receipt(receipt, "running", phase="spawn", launcher_pids=pids)
     except Exception as error:
+        if scope is not None:
+            scope.close()
         write_receipt(receipt, "failed", phase=error.stage if isinstance(error, Unavailable) else "spawn",
                       error_code=error.code if isinstance(error, Unavailable) else "APPLICATION_LAUNCH_FAILED")
         raise
     # No display polling or first-window timeout: a background application is
     # still an application. Reap both direct and adopted children until none remain.
-    while True:
-        try:
-            pid, status = os.waitpid(-1, 0)
-            observed(pid, status)
-        except InterruptedError:
-            continue
-        except ChildProcessError:
-            break
+    def before_wait():
+        if stopped:
+            terminate_children()
+    if scope is None:
+        children.wait(before_wait)
+    else:
+        # GIO services run on the main context while exactly one worker waits
+        # for children. Its protected wait boundary preserves in-flight scope
+        # identities; neither the D-Bus callbacks nor SIGTERM reap a child.
+        loop, failures = GLib.MainLoop(), []
+        def wait():
+            try:
+                children.wait(before_wait)
+            except Exception as error:
+                failures.append(error)
+            finally:
+                GLib.idle_add(loop.quit)
+        waiter = threading.Thread(target=wait, name='application-wait')
+        waiter.start()
+        loop.run()
+        waiter.join()
+        scope.close()
+        if failures:
+            raise failures[0]
     # Preserve actual direct-launcher status. Window readiness is owned by the
     # graphical backend; a process result must not guess whether a window ever
     # existed. In particular, Snap's exit 46 must survive this supervisor.

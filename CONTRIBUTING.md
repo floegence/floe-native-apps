@@ -169,6 +169,26 @@ The native lifetime self-check also asserts actual GIO field-code expansion and
 that a stale plan never executes its task-owned child. The fixture capability is
 explicitly identity-only; it is not evidence for Wayland or sandbox support.
 
+For a verified Snap plan, the application supervisor owns the private systemd
+scope adapter. The prepared helper supplies `FLOE_NATIVE_HOST_BUS` separately
+from the application's private session bus; this handoff is removed before GIO
+executes the application. The two bus identities must differ and the real scope
+manager must belong to the host user. Only a registered direct launcher may
+request its own package-named scope with one PID and no extra units/properties.
+Requests and completion signals use the real systemd peer's unique bus identity.
+No general desktop-bus proxy, service creation, or process-management API exists.
+
+The sole process wait boundary observes child exit without reaping a PID used by
+an in-flight scope request. A pidfd alone does not prevent numeric PID reuse.
+Actual systemd completion, a definitive systemd error, or that exact peer's exit
+releases the lease. Local timeouts and bus-generated `NoReply` errors retain it;
+they neither retry the operation nor claim it was cancelled. Native lifetime
+qualification checks this kernel boundary as well as the existing adopted-child,
+windowless-process, exit-status and explicit-termination behavior. The standalone
+scope fixture now uses this production supervisor; it has no independent proxy.
+These source and scope tests do not constitute a complete graphical-backend or
+package-format support claim.
+
 ## Component compatibility qualification
 
 An SDK release must preserve supported installed recipe identities independently

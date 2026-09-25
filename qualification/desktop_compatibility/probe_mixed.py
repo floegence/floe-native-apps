@@ -17,7 +17,7 @@ import tempfile
 import threading
 import time
 
-from scope_bridge import identity
+from application_processes import identity
 
 
 def main():

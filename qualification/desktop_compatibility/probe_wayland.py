@@ -22,7 +22,7 @@ import threading
 import time
 
 from gi.repository import Gio, GLib
-from scope_bridge import ScopeBridge, identity
+from application_processes import identity
 
 
 def main():
@@ -40,7 +40,7 @@ def main():
         'user_pref("browser.download.useDownloadDir", false);\n'
         'user_pref("browser.download.dir", ' + json.dumps(str(downloads)) + ');\n')
     events, receipts, processes, logs = [], [], [], []
-    bridge = None
+    private = None
     left, right = socket.socketpair()
     mainloop = GLib.MainLoop()
     outcome = {"passed": False, "evidence": str(evidence), "profile": str(profile),
@@ -169,7 +169,7 @@ def main():
         try:
             wait_until(display.exists, "Private Wayland socket did not appear")
             from portal_probe import start_portals
-            start_portals(evidence, address, display, bridge.private, start, wait_until)
+            start_portals(evidence, address, display, private, start, wait_until)
             environment = {**os.environ, "DBUS_SESSION_BUS_ADDRESS": address,
                 "WAYLAND_DISPLAY": display.name, "GDK_BACKEND": "wayland", "MOZ_ENABLE_WAYLAND": "1",
                 "GTK_IM_MODULE": "ibus" if input_kind == "ibus" else "wayland", "XDG_RUNTIME_DIR": str(runtime),
@@ -207,13 +207,31 @@ def main():
             desktop.write_text(entry.to_data()[0])
             outcome["desktop_sha256"] = hashlib.sha256(original.read_bytes()).hexdigest()
             outcome["fixture_desktop_sha256"] = hashlib.sha256(desktop.read_bytes()).hexdigest()
-            app = start(["python3", str(root / "application.py"), str(desktop), str(evidence / "application.json")],
+            # Use the production immutable plan and supervisor-owned scope
+            # adapter. The graphical backend itself is still an unpublished
+            # fixture, not a production readiness assertion.
+            from launch_plan import prepare, restored_environment
+            backend = {'id': 'wayland', 'component': 'unpublished-graphical-fixture',
+                       'protocols': ['wayland', 'x11'],
+                       'services': ['user-systemd-scope', 'file-portal', 'document-portal']}
+            plan = prepare(str(desktop), restored_environment(environment), [backend])
+            plan_path = evidence / 'launch-plan.json'
+            plan_path.write_text(json.dumps(plan))
+            environment['FLOE_NATIVE_HOST_BUS'] = host_address
+            app = start(["python3", str(root / "application.py"), '--plan', str(plan_path), str(evidence / "application.json")],
                         environment, "application")
             wait_until(lambda: any(r.get("loaded") for r in receipts), "Snap page did not load", 35)
             protocols = [e['control'].split()[2] for e in events
                          if e.get('control', '').startswith('window-protocol ')]
             assert protocols, 'No actual surface protocol observation'
             outcome['actual_application_protocol'] = protocols[0]
+            launched = json.loads((evidence / 'application.json').read_text())
+            assert launched['state'] == 'running' and len(launched['launcher_pids']) == 1
+            caller = launched['launcher_pids'][0]
+            cgroup = Path(f'/proc/{caller}/cgroup').read_text().strip()
+            assert re.search(r'/snap\.firefox\.firefox-[a-f0-9-]+\.scope$', cgroup)
+            outcome['scope'] = {'pid': caller, 'started': identity(caller)[1], 'cgroup': cgroup,
+                                'owner': 'application supervisor'}
             capture("loaded")
             # One actual click is delivered through the compositor seat.
             left.sendall(b"motion 300 280\nbutton 272 1\nbutton 272 0\n")
@@ -284,7 +302,9 @@ def main():
             "--print-address=1"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, start_new_session=True)
         processes.append((bus, identity(bus.pid)[1], "bus"))
         address = bus.stdout.readline().strip()
-        bridge = ScopeBridge(address, host_address, "snap.firefox.firefox", os.getpid(), record)
+        flags = Gio.DBusConnectionFlags.AUTHENTICATION_CLIENT | Gio.DBusConnectionFlags.MESSAGE_BUS_CONNECTION
+        private = Gio.DBusConnection.new_for_address_sync(address, flags, None, None)
+        private.set_exit_on_close(False)
         if input_kind == "ibus":
             os.environ["IBUS_ADDRESS"] = "unix:abstract=/tmp/ibus/dbus-floe-" + secrets.token_hex(12)
             components = evidence / "ibus-components"
@@ -295,7 +315,7 @@ def main():
             start(["ibus-daemon", "--single", "--panel=disable", "--config=disable", "--emoji-extension=disable",
                    "--cache=none", "--address=" + os.environ["IBUS_ADDRESS"]], daemon_environment, "ibus")
             def daemon_ready():
-                return bridge.private.call_sync("org.freedesktop.DBus", "/org/freedesktop/DBus",
+                return private.call_sync("org.freedesktop.DBus", "/org/freedesktop/DBus",
                     "org.freedesktop.DBus", "NameHasOwner", GLib.Variant("(s)", ("org.freedesktop.IBus",)),
                     GLib.VariantType.new("(b)"), Gio.DBusCallFlags.NONE, 2000, None).unpack()[0]
             wait_until(daemon_ready, "Private IBus daemon did not become ready")
@@ -333,8 +353,6 @@ def main():
         mainloop.run()
         thread.join()
     finally:
-        if bridge:
-            bridge.close()
         # The application supervisor owns its descendants, including the sandbox.
         for process, start_ticks, name in reversed(processes):
             if process.poll() is None and identity(process.pid)[1] == start_ticks:
@@ -350,6 +368,8 @@ def main():
         right.close()
         for log in logs:
             log.close()
+        if private and not private.is_closed():
+            private.close_sync(None)
         shutil.rmtree(profile)
         outcome["events"] = events
         outcome["receipts"] = receipts

@@ -9,6 +9,12 @@ import (
 //go:embed application.py
 var applicationLauncher []byte
 
+//go:embed application_processes.py
+var applicationProcesses []byte
+
+//go:embed application_scope.py
+var applicationScope []byte
+
 // XpraApplicationLifetimeArgs binds an Xpra server to a monitored application
 // child, independently of its viewers and windows. Use a --start-child command
 // that remains alive until the application and its descendants have exited.
@@ -28,9 +34,16 @@ func XpraApplicationLifetimeArgs() []string {
 // The supervisor retains a nonzero launcher result after reaping descendants.
 // The launcher restores the host application environment and reaps descendants;
 // closing a window or losing a viewer never terminates the application.
+// A verified Snap plan additionally requires FLOE_NATIVE_HOST_BUS to identify
+// the real user bus, separate from DBUS_SESSION_BUS_ADDRESS. Only the supervisor
+// receives that handoff; it is removed from the final application's environment.
+// The supervisor exposes only its admitted direct launcher's scope operation.
 func WriteApplicationLauncher(directory string) (string, error) {
-	if _, err := writeApplicationFile(directory, "launch_plan.py", applicationPlanner, true); err != nil {
-		return "", err
+	for name, data := range map[string][]byte{"launch_plan.py": applicationPlanner,
+		"application_processes.py": applicationProcesses, "application_scope.py": applicationScope} {
+		if _, err := writeApplicationFile(directory, name, data, true); err != nil {
+			return "", err
+		}
 	}
 	return writeApplicationFile(directory, "floe-application.py", applicationLauncher, true)
 }

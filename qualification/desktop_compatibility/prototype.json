@@ -102,6 +102,15 @@
       "case": "Strict Snap Firefox with the portable combined display on amd64 Ubuntu 24.04",
       "result": "No GDK/Mozilla/Qt protocol override; Firefox selects actual Wayland with Xwayland offered. Actual field click, 64 repeated Unicode commits, 14000-byte text, following Enter, remote official save dialog, exact saved bytes and normal close pass",
       "limits": "Fixture profile is explicitly isolated. Production helper, native adapter admission and complete package/desktop qualification remain incomplete"
+    },
+    {
+      "case": "Production supervisor-owned Snap scope on native amd64",
+      "result": "Verified immutable launch plan, distinct bus identities, real user-systemd completion and actual scope cgroup; stock strict Firefox completes default combined-display Unicode/save stress and normal exit",
+      "limits": "This validates the production launch/scope boundary within the unpublished compositor fixture. Flatpak ownership, production graphical backend, input and portal admission remain incomplete"
+    },
+    {
+      "case": "Production launch PID protection on native amd64 and arm64",
+      "result": "The sole wait owner observes kernel exit without reaping a PID pinned by a host-service operation, then releases it exactly once; previous child-tree, host environment, stale-plan and exit-status checks pass"
     }
   ],
   "rejected_assumptions": [
