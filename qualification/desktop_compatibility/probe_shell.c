@@ -67,6 +67,7 @@ struct probe_window {
     uint64_t identity;
     int32_t width, height;
     struct weston_geometry geometry;
+    struct probe_window *parent;
 };
 struct probe_background {
     struct wl_list link;
@@ -207,10 +208,10 @@ static void manager_bind(struct wl_client *client, void *data, uint32_t version,
     wl_resource_set_implementation(r, &manager_api, data, NULL);
 }
 
-static bool ancestor(struct weston_desktop_surface *parent, struct weston_desktop_surface *child) {
+static bool ancestor(struct probe_window *parent, struct probe_window *child) {
     for (unsigned int depth = 0; child && depth < 128; depth++) {
         if (parent == child) return true;
-        child = weston_desktop_surface_get_parent(child);
+        child = child->parent;
     }
     return false;
 }
@@ -257,6 +258,16 @@ static void content_committed(struct wl_listener *listener, void *data) {
     struct probe_surface *content = wl_container_of(listener, content, commit);
     struct probe *p = content->probe;
     struct weston_surface *root = weston_surface_get_main_surface(content->surface);
+    /* xdg_popup is a desktop child, not a wl_subsurface or a top-level added
+     * through the shell callback. Its commits still damage the parent's frame. */
+    struct weston_desktop_surface *desktop = weston_surface_is_desktop_surface(root) ?
+        weston_surface_get_desktop_surface(root) : NULL;
+    for (unsigned int depth = 0; desktop && depth < 128; depth++) {
+        struct weston_desktop_surface *parent = weston_desktop_surface_get_parent(desktop);
+        if (!parent) break;
+        desktop = parent;
+        root = weston_desktop_surface_get_surface(desktop);
+    }
     struct probe_window *window;
     wl_list_for_each(window, &p->windows, link) {
         if (weston_desktop_surface_get_surface(window->desktop) != root ||
@@ -268,6 +279,9 @@ static void content_committed(struct wl_listener *listener, void *data) {
 static void content_destroyed(struct wl_listener *listener, void *data) {
     (void)data;
     struct probe_surface *content = wl_container_of(listener, content, destroy);
+    if (content->probe->current)
+        dprintf(content->probe->control, "damage %" PRIu64 " %" PRIu64 "\n",
+                ++content->probe->damage, content->probe->scene);
     wl_list_remove(&content->commit.link);
     wl_list_remove(&content->destroy.link);
     wl_list_remove(&content->link);
@@ -295,8 +309,7 @@ static void apply_selection(struct probe *p, struct probe_window *selected) {
      * windows keep their native lifetime; they never contribute pixels/input. */
     wl_list_for_each_reverse(window, &p->windows, link) {
         if (!weston_view_is_mapped(window->view)) continue;
-        bool visible = selected && (ancestor(window->desktop, selected->desktop) ||
-                                    ancestor(selected->desktop, window->desktop));
+        bool visible = selected && (ancestor(window, selected) || ancestor(selected, window));
         weston_view_move_to_layer(window->view, visible ? &p->layer.view_list : &p->hidden_layer.view_list);
         weston_desktop_surface_propagate_layer(window->desktop);
         weston_desktop_surface_set_activated(window->desktop, window == selected);
@@ -321,6 +334,9 @@ static void surface_added(struct weston_desktop_surface *desktop, void *data) {
 static void surface_removed(struct weston_desktop_surface *desktop, void *data) {
     struct probe *p = data;
     struct probe_window *window = weston_desktop_surface_get_user_data(desktop);
+    struct probe_window *parent = window->parent, *child;
+    wl_list_for_each(child, &p->windows, link)
+        if (child->parent == window) child->parent = NULL;
     struct weston_surface *surface = weston_desktop_surface_get_surface(desktop);
     struct text_context *ctx;
     wl_list_for_each(ctx, &p->contexts, link) {
@@ -332,6 +348,10 @@ static void surface_removed(struct weston_desktop_surface *desktop, void *data) 
     weston_desktop_surface_unlink_view(window->view);
     weston_view_destroy(window->view);
     free(window);
+    if (!p->current && parent && weston_view_is_mapped(parent->view)) {
+        apply_selection(p, parent);
+        dprintf(p->control, "window-restored\n");
+    }
     if (!p->current) {
         wl_list_for_each(window, &p->windows, link) {
             if (!weston_view_is_mapped(window->view)) continue;
@@ -342,6 +362,41 @@ static void surface_removed(struct weston_desktop_surface *desktop, void *data) 
     }
     dprintf(p->control, "window-removed\n");
     scene_changed(p);
+}
+static void position_window(struct probe_window *window) {
+    double x = -window->geometry.x, y = -window->geometry.y;
+    if (window->parent && weston_view_is_mapped(window->parent->view)) {
+        struct weston_coord_global parent = weston_view_get_pos_offset_global(window->parent->view);
+        x += parent.c.x + window->parent->geometry.x +
+            (window->parent->geometry.width - window->geometry.width) / 2.0;
+        y += parent.c.y + window->parent->geometry.y +
+            (window->parent->geometry.height - window->geometry.height) / 2.0;
+    }
+    weston_view_set_position(window->view, (struct weston_coord_global){ .c = {x, y} });
+}
+static void surface_parent(struct weston_desktop_surface *desktop,
+                           struct weston_desktop_surface *parent, void *data) {
+    struct probe *p = data;
+    struct probe_window *window = weston_desktop_surface_get_user_data(desktop);
+    struct probe_window *new_parent = parent ? weston_desktop_surface_get_user_data(parent) : NULL;
+    if (new_parent && ancestor(window, new_parent)) return;
+    window->parent = new_parent;
+    /* Dialogs choose their natural size; ordinary top-levels initially fit the
+     * application viewport. Their relationship comes only from native shell
+     * metadata, never the title, application ID or a guessed surface number. */
+    weston_desktop_surface_set_size(desktop, parent ? 0 : 1000, parent ? 0 : 700);
+    if (weston_view_is_mapped(window->view)) {
+        position_window(window);
+        struct probe_window *selected;
+        wl_list_for_each(selected, &p->windows, link) {
+            if (weston_desktop_surface_get_surface(selected->desktop) == p->current) {
+                apply_selection(p, selected);
+                release_input(p);
+                scene_changed(p);
+                break;
+            }
+        }
+    }
 }
 static void surface_committed(struct weston_desktop_surface *desktop,
                               struct weston_coord_surface offset, void *data) {
@@ -358,7 +413,7 @@ static void surface_committed(struct weston_desktop_surface *desktop,
         window->geometry.width != geometry.width || window->geometry.height != geometry.height;
     if (mapped && !changed) return;
     window->width = surface->width; window->height = surface->height; window->geometry = geometry;
-    weston_view_set_position(view, (struct weston_coord_global){ .c = { -geometry.x, -geometry.y } });
+    position_window(window);
     if (mapped) {
         weston_view_update_transform(view);
         if (p->current == surface) {
@@ -385,7 +440,7 @@ static void surface_committed(struct weston_desktop_surface *desktop,
 static const struct weston_desktop_api desktop_api = {
     .struct_size = sizeof desktop_api,
     .surface_added = surface_added, .surface_removed = surface_removed,
-    .committed = surface_committed,
+    .committed = surface_committed, .set_parent = surface_parent,
 };
 
 static void command(struct probe *p, char *line) {

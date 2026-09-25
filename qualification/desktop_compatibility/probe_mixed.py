@@ -57,8 +57,14 @@ def main():
         frame_process.stdin.write(b"x")
         frame_process.stdin.close()
 
-    def paint(stage, expected=None):
-        result.setdefault('frames', []).extend(control.paint(stage, expected))
+    def paint(stage, expected=None, **options):
+        recorded = control.paint(stage, expected, **options)
+        result.setdefault('frames', []).extend(recorded)
+        return recorded[-1]
+
+    def click_marker(frame):
+        x0, y0, x1, y1 = frame['marker_bounds']
+        control.send(frame['window'], f'motion {(x0 + x1) / 2} {(y0 + y1) / 2}\nbutton 272 1\nbutton 272 0\n'.encode())
 
     def controls():
         with left.makefile("r") as stream:
@@ -113,7 +119,8 @@ def main():
             result['x11_unauthenticated_client_rejected'] = True
         receipts = [evidence / "wayland.json", evidence / "xwayland.json"]
         wayland = start(["python3", str(root / "input_fixture.py"), "gtk4", str(receipts[0])],
-                        {**environment, "GDK_BACKEND": "wayland", 'FLOE_TEST_WINDOW_COLOR': '13579b'}, "wayland")
+                        {**environment, "GDK_BACKEND": "wayland", 'FLOE_TEST_WINDOW_COLOR': '13579b',
+                         'FLOE_TEST_WINDOW_ACTIONS': '1'}, "wayland")
         wait(lambda: receipts[0].exists() and any(e.startswith("frame ") for e in events),
              "No mapped Wayland fixture frame")
         start_capture()
@@ -127,11 +134,24 @@ def main():
         result['first_frame_admission'] = True
         control.send(first, b"motion 250 180\nbutton 272 1\nbutton 272 0\nkey 30 1\nkey 30 0\n")
         wait(lambda: json.loads(receipts[0].read_text()) == ["a", ""], "No actual Wayland seat input")
+        control.send(first, b'key 60 1\nkey 60 0\n')
+        popup = paint('popup', marker=(19, 183, 73), required=((19, 87, 155),))
+        click_marker(popup)
+        actions = receipts[0].with_suffix('.windows.json')
+        wait(lambda: json.loads(actions.read_text())['popup_clicks'] == 1, 'Popup did not receive the actual click')
+        control.send(first, b'key 61 1\nkey 61 0\n')
+        dialog = paint('dialog', marker=(191, 49, 189), required=((19, 87, 155),))
+        click_marker(dialog)
+        wait(lambda: json.loads(actions.read_text())['dialog_clicks'] == 1, 'Transient dialog did not receive the actual click')
+        control.send(dialog['window'], b'close\n')
+        wait(lambda: json.loads(actions.read_text())['dialog_closed'] == 1, 'Transient dialog did not receive the native close')
+        paint('dialog-restored', (19, 87, 155))
+        result['popup_and_dialog'] = json.loads(actions.read_text())
         xwayland = start(["python3", str(root / "input_fixture.py"), "gtk4", str(receipts[1])],
                          {**environment, "GDK_BACKEND": "x11", "DISPLAY": display,
                           'FLOE_TEST_WINDOW_COLOR': '9b3113'}, "xwayland")
-        wait(lambda: receipts[1].exists() and events.count("window-added") == 2 and
-             sum(e.startswith("frame ") for e in events) == 2, "No distinct mapped Xwayland fixture")
+        wait(lambda: receipts[1].exists() and events.count("window-added") == 3 and
+             sum(e.startswith("frame ") for e in events) == 3, "No distinct mapped Xwayland fixture")
         second = int([e.split()[1] for e in events if e.startswith('window-instance ')][-1])
         paint("mixed", (155, 49, 19))
         control.send(second, b"motion 250 180\nbutton 272 1\nbutton 272 0\nkey 48 1\nkey 48 0\n")
@@ -191,25 +211,25 @@ def main():
         wait(lambda: "window-restored" in events, "Closing Xwayland did not restore Wayland")
         paint("restored", (19, 87, 155))
         identities = [int(e.split()[1]) for e in events if e.startswith("window-instance ")]
-        assert len(identities) == 2 and identities[0] != identities[1]
+        assert len(identities) == 3 and len(set(identities)) == 3
         wait(lambda: "connection-ready 2" in events, "Connection replacement was not admitted")
         # A retired native window and an old viewer generation must both reject
         # their late input. The following live key proves the stream progressed.
         generation = control.native.generation
-        stale = (f"input 1 {identities[0]} {generation} key 45 1\ninput 1 {identities[0]} {generation} key 45 0\n"
-                 f"input 2 {identities[1]} {generation} key 45 1\ninput 2 {identities[1]} {generation} key 45 0\n")
+        stale = (f"input 1 {first} {generation} key 45 1\ninput 1 {first} {generation} key 45 0\n"
+                 f"input 2 {second} {generation} key 45 1\ninput 2 {second} {generation} key 45 0\n")
         left.sendall(stale.encode())
         control.send(first, b"key 46 1\nkey 46 0\n")
         wait(lambda: json.loads(receipts[0].read_text()) == ["ac", ""], "Restored Wayland window did not receive input")
         assert events.count(f"input-rejected 1 {identities[0]}") == 2
-        assert events.count(f"input-rejected 2 {identities[1]}") == 2
+        assert events.count(f"input-rejected 2 {second}") == 2
         result["rejected_stale_input"] = {"old_connection": 2, "retired_window": 2}
         control.send(first, b"close\n")
         wayland.wait(timeout=10)
         assert wayland.returncode == 0
         result["actual"] = [json.loads(path.read_text()) for path in receipts]
         protocols = [line.split()[2] for line in events if line.startswith('window-protocol ')]
-        assert protocols == ['wayland', 'x11'], 'Compositor did not confirm both actual surface protocols'
+        assert protocols == ['wayland', 'wayland', 'x11'], 'Compositor did not confirm both actual surface protocols'
         result['actual_protocols'] = protocols
         result["passed"] = True
     except Exception as error:

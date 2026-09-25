@@ -185,7 +185,7 @@ class ControlProbe:
         return self.request('input', connection=self.generation, window=window,
             generation=self.native.generation, operation={'kind': 'fixture', 'commands': commands.decode()})
 
-    def paint(self, stage, expected=None):
+    def paint(self, stage, expected=None, marker=None, required=()):
         from PIL import Image
         import hashlib
         recorded = []
@@ -204,6 +204,17 @@ class ControlProbe:
                 assert response['error'] == 'FRAME_TARGET_UNAVAILABLE'
                 continue
             assert len(image.getcolors(frame['width'] * frame['height'])) > 16
+            if marker is not None:
+                colors = {color: count for count, color in image.getcolors(frame['width'] * frame['height'])}
+                if colors.get(marker, 0) < 20:
+                    continue
+                assert all(colors.get(color, 0) >= 20 for color in required), 'Transient surface omitted its parent'
+                x0, y0, x1, y1 = image.width, image.height, 0, 0
+                for index, color in enumerate(image.getdata()):
+                    if color == marker:
+                        x, y = index % image.width, index // image.width
+                        x0, y0, x1, y1 = min(x0, x), min(y0, y), max(x1, x), max(y1, y)
+                record['marker_bounds'] = [x0, y0, x1, y1]
             if expected is None:
                 return recorded
             sample = image.getpixel((200, 240))

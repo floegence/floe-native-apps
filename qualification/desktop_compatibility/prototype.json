@@ -146,6 +146,11 @@
       "case": "Automatic bounded capture on native amd64 and arm64",
       "result": "The production frame reader brackets real native captures with ordered compositor scene barriers. Surface commits drive capture, without polling. Actual mixed-window pixels are decoded and acknowledged through the authenticated attachment; stale frames cannot authorize a new target. Blocked frame delivery preserves real widget input; reconnect preserves applications and releases modifiers.",
       "limits": "The shell and native record adapter remain unpublished fixtures. Raw pixel decoding is a native test client, not the product browser renderer. Launch realization, complete surface lifecycle and release input/portal admission remain incomplete."
+    },
+    {
+      "case": "Actual xdg popup and transient dialog on native amd64 and arm64",
+      "result": "A GTK4 popover publishes real native damage and receives its actual button click. A separate modal top-level retains and displays its parent, receives its actual button click and native close, then restores parent input. Pixel evidence is selected by test-only widget colors through the automatically captured authenticated frames.",
+      "limits": "This covers GTK4 menu/dialog behavior in the unpublished shell; full cross-toolkit window operations and release integration remain incomplete."
     }
   ],
   "rejected_assumptions": [
@@ -158,6 +163,7 @@
     "Verified GTK archives alone are insufficient for private file dialogs: MIME, schema and image loader caches must be derived; missing MIME data caused an actual GTK chooser assertion",
     "XDG_DESKTOP_PORTAL_DIR overrides both backend descriptions and portal configuration; separating them silently restores fallback interfaces",
     "Portal 1.20 validates the bwrap process through metadata under the actual Flatpak launcher runtime, not an unrelated service or host runtime directory; the private portal resolves the original instance metadata without copying or fabricating it",
-    "WESTON_LAYER_POSITION_HIDDEN still renders. It requires an opaque background; removing the layer instead loses native mapping/callback behavior. The private shell covers inactive surfaces and clears prior pixels without a user desktop."
+    "WESTON_LAYER_POSITION_HIDDEN still renders. It requires an opaque background; removing the layer instead loses native mapping/callback behavior. The private shell covers inactive surfaces and clears prior pixels without a user desktop.",
+    "xdg_popup commits are not top-level shell commits. Damage follows the native desktop parent chain; transient toplevel parent metadata has a separate shell callback and must be registered explicitly."
   ]
 }

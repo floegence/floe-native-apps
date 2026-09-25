@@ -81,6 +81,60 @@ elif kind in ('gtk4', 'gtk4-entry'):
                 editor.get_buffer().connect('changed', lambda *_: save(contents()))
         window.set_child(row)
         window.set_default_size(640, 320)
+        if os.environ.get('FLOE_TEST_WINDOW_ACTIONS'):
+            from gi.repository import Gdk
+            Gtk.Settings.get_default().set_property('gtk-cursor-blink', False)
+            state = {'popup_clicks': 0, 'dialog_clicks': 0, 'dialog_closed': 0}
+            state_path = receipt.with_suffix('.windows.json')
+            def write_state():
+                pending = state_path.with_suffix('.pending')
+                pending.write_text(json.dumps(state))
+                pending.replace(state_path)
+            css = Gtk.CssProvider()
+            css.load_from_data(b'.floe-popup { background: #13b749; padding: 20px; } '
+                               b'.floe-dialog { background: #bf31bd; padding: 20px; }')
+            Gtk.StyleContext.add_provider_for_display(window.get_display(), css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+            def pressed(_controller, keyval, _keycode, _state):
+                if keyval == Gdk.KEY_F2:
+                    popup = Gtk.Popover()
+                    popup.set_parent(editors[0])
+                    anchor = Gdk.Rectangle()
+                    anchor.x, anchor.y, anchor.width, anchor.height = 90, 100, 20, 20
+                    popup.set_pointing_to(anchor)
+                    popup.set_autohide(True)
+                    button = Gtk.Button(label='Record popup click')
+                    button.add_css_class('floe-popup')
+                    def clicked(_button):
+                        state['popup_clicks'] += 1
+                        write_state()
+                        popup.popdown()
+                    button.connect('clicked', clicked)
+                    popup.set_child(button)
+                    popup.connect('closed', lambda *_: popup.unparent())
+                    popup.popup()
+                elif keyval == Gdk.KEY_F3:
+                    dialog = Gtk.Window(title='Floe transient fixture', transient_for=window, modal=True)
+                    dialog.set_default_size(360, 180)
+                    button = Gtk.Button(label='Record dialog click')
+                    button.add_css_class('floe-dialog')
+                    def clicked(_button):
+                        state['dialog_clicks'] += 1
+                        write_state()
+                    def closed(_dialog):
+                        state['dialog_closed'] += 1
+                        write_state()
+                        return False
+                    button.connect('clicked', clicked)
+                    dialog.connect('close-request', closed)
+                    dialog.set_child(button)
+                    dialog.present()
+                else:
+                    return False
+                return True
+            keys = Gtk.EventControllerKey()
+            keys.connect('key-pressed', pressed)
+            window.add_controller(keys)
+            write_state()
         window.present()
         editors[0].grab_focus()
         save(['', ''])
