@@ -1,0 +1,35 @@
+{
+  "status": "unpublished feasibility fixtures; not production APIs or support claims",
+  "baseline": "74c31c63c65cdfd7377c52d9759915531c60ddc4",
+  "purpose": "Prove private systemd scope, sandbox display, native confirmed text, file dialogs and application receipts before defining a release contract",
+  "sources": [
+    {
+      "project": "Weston",
+      "version": "13.0.0",
+      "source": "https://gitlab.freedesktop.org/wayland/weston/-/tree/13.0",
+      "use": "Reviewed exported seat ABI declarations; libweston/desktop API and official output capture",
+      "license": "MIT"
+    },
+    {
+      "project": "snapd",
+      "version": "2.76.3",
+      "source": "https://github.com/canonical/snapd/blob/2.76.3/sandbox/cgroup/tracking.go",
+      "use": "StartTransientUnit arguments, tracking scope identity and real JobRemoved completion"
+    },
+    {
+      "project": "IBus",
+      "version": "1.5.29",
+      "source": "https://github.com/ibus/ibus/tree/1.5.29",
+      "use": "Shipped daemon and GTK input module; a commit-only fixture implements the standard engine interface"
+    }
+  ],
+  "unproven_release_requirements": [
+    "All package, desktop and toolkit combinations in the approved acceptance matrix",
+    "One production launch planner and supervisor with authoritative sandbox ownership",
+    "Bounded input scheduling with cancellation, stale marker and target replacement proofs",
+    "Native text-input focus/serial ordering without relying on test document feedback",
+    "Authenticated reconnectable frame and input API with complete window and popup lifecycle",
+    "Private portal document grants, concurrent sessions and sandbox-accessible paths",
+    "Pinned production component catalog, complete native architecture qualification and release validation"
+  ]
+}
