@@ -90,23 +90,26 @@ try {
    const workarea=/_NET_WORKAREA[^=]*=\s*0,\s*0,\s*(\d+),\s*(\d+)/.exec(native.root);
    assert(workarea,`missing native workarea: ${native.root}`);
    assert.deepEqual(workarea.slice(1).map(Number),record.display,'native workarea retained stale logical dimensions');
-   const pixels=await page.evaluate(()=>{
-    const copy=document.createElement('canvas');copy.width=4;copy.height=4;
-    copy.getContext('2d').drawImage(primary.canvas,0,0,4,4);
-    return [...copy.getContext('2d').getImageData(0,0,4,4).data];
+   // Sample the presented image. Reading a transferred canvas directly can
+   // observe a worker between clearRect and drawImage, before that frame is
+   // published. A screenshot synchronizes with the browser's rendering step.
+   const clip=await page.evaluate(()=>{
+    const r=primary.canvas.getBoundingClientRect(),x=Math.max(0,r.left),y=Math.max(0,r.top);
+    return {x,y,width:Math.min(innerWidth,r.right)-x,height:Math.min(innerHeight,r.bottom)-y};
    });
-   if(!pixels.some((v,i)=>i%4!==3&&v>16)) {
-    const samples=[];
-    for(let i=0;i<30;i++) {
-     await page.waitForTimeout(100);
-     samples.push(await page.evaluate(()=>{
-      const c=document.createElement('canvas');c.width=c.height=4;c.getContext('2d').drawImage(primary.canvas,0,0,4,4);
-      return {geometry:[primary.x,primary.y,primary.w,primary.h],canvas:[primary.canvas.width,primary.canvas.height],pixels:[...c.getContext('2d').getImageData(0,0,4,4).data]};
-     }));
-    }
-    await page.screenshot({path:receipt+'.png'});
-    await writeFile(receipt.replace(/\.json$/,'.layout.json'),JSON.stringify({offscreen,policy,record,native,results,samples},null,2));
-    assert.fail(`blank native image after ${policy}; subsequent pixel samples recorded`);
+   const screenshot=await page.screenshot({clip});
+   const pixels=await page.evaluate(async data=>{
+    const image=new Image();image.src=data;await image.decode();
+    const copy=document.createElement('canvas');copy.width=copy.height=4;
+    copy.getContext('2d').drawImage(image,0,0,4,4);
+    return [...copy.getContext('2d').getImageData(0,0,4,4).data];
+   },'data:image/png;base64,'+screenshot.toString('base64'));
+   let content=0;
+   for(let i=0;i<pixels.length;i+=4)if([19,87,155].every((v,j)=>Math.abs(pixels[i+j]-v)<8))content++;
+   if(content<8) {
+    await writeFile(receipt+'.png',screenshot);
+    await writeFile(receipt.replace(/\.json$/,'.layout.json'),JSON.stringify({offscreen,policy,record,native,results,pixels},null,2));
+    assert.fail(`native application content is absent after ${policy}`);
    }
    assert(record.geometry[2]<=Math.max(record.display[0],1240*record.scale)&&record.geometry[3]<=Math.max(record.display[1],960*record.scale), 'transient scale inflated native minimum constraints');
    results.push({offscreen,policy,...record,native,pixels});return record;
