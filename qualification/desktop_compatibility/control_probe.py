@@ -14,18 +14,17 @@ import struct
 from threading import Event, Thread
 
 from gi.repository import GLib
-from desktop_attachment import DesktopAttachment
-from desktop_capture import NativeFrames
-from desktop_control import DesktopControl, GLibLoop, encode_message
-from desktop_native import NativeChannel, NativeDesktop
+from desktop_control import GLibLoop, encode_message
+from desktop_helper import DesktopHelper
 
 
 class ControlWire:
     """Exercise the real native socket owner from compositor startup onward."""
     def __init__(self, connection, events):
         self.events, self.loop = events, GLibLoop()
-        self.native = NativeDesktop(lambda value: self.channel.send(value), None)
-        self.channel = NativeChannel(connection, self.loop, self.observe, self.native.lost)
+        self.helper = DesktopHelper(connection, self.loop)
+        self.native, self.channel = self.helper.native, self.helper.channel
+        self.channel.observed = self.observe
         self.mainloop = GLib.MainLoop()
         self.thread = Thread(target=self.mainloop.run, daemon=True)
         self.thread.start()
@@ -72,25 +71,12 @@ class ControlWire:
     def close(self):
         if self.thread.is_alive():
             def stop():
-                self.channel.close()
+                self.helper.close()
                 self.mainloop.quit()
             self.invoke(stop)
             self.thread.join(timeout=5)
         else:
-            self.channel.close()
-
-
-class ObservedFrames(NativeFrames):
-    def __init__(self, *args):
-        super().__init__(*args)
-        self.observer = None
-
-    def capture(self, target, completed):
-        def captured(description, data, error):
-            completed(description, data, error)
-            if self.observer:
-                self.observer(error)
-        super().capture(target, captured)
+            self.helper.close()
 
 
 class ControlProbe:
@@ -104,10 +90,8 @@ class ControlProbe:
         self.wire, self.loop, self.native = wire, wire.loop, wire.native
         self.pointer = (0, 0)
         def start():
-            self.native.frames = ObservedFrames(frames, self.loop, self.native.query_scene)
-            self.attachment = DesktopAttachment(self.native, GLib.timeout_add, GLib.source_remove)
-            self.native.attachment = self.attachment
-            self.server = DesktopControl(self.directory, self.directory.name, self.token, self.attachment, self.loop)
+            wire.helper.listen(self.directory, self.directory.name, self.token, frames)
+            self.attachment, self.server = wire.helper.attachment, wire.helper.server
         wire.invoke(start)
 
     def reconnect(self):
@@ -238,26 +222,31 @@ class ControlProbe:
 
     def block_frame(self):
         ready = Event()
-        def captured(error):
-            if not error:
-                self.native.frames.observer = None
-                assert self.attachment.awaiting is not None
-                ready.set()
         def block():
             self.server.current.socket.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 4096)
-            self.native.frames.observer = captured
+            original = self.attachment.captured
+            def captured(ticket, description, data, error):
+                original(ticket, description, data, error)
+                if not error and self.attachment.awaiting is not None:
+                    self.attachment.captured = original
+                    ready.set()
+            # Observe completion at its current owner, including a capture
+            # that began before this test armed backpressure. Replacing the
+            # capture method would miss that already running operation.
+            self.attachment.captured = captured
+            awaiting = self.attachment.awaiting
             self.attachment.damage()
-            return False
-        GLib.idle_add(block)
+            return awaiting
+        if self.wire.invoke(block) is not None:
+            # A frame completed before the socket was constrained. Consume and
+            # acknowledge it so the next capture actually meets backpressure.
+            self.paint('before-blocked-frame')
         assert ready.wait(5)
 
     def close(self):
         if self.client:
             self.client.close()
         def stop():
-            self.server.close()
-            self.attachment.close()
-            self.native.frames.close()
-            self.native.attachment = None
+            self.wire.helper.stop_sharing()
         self.wire.invoke(stop)
         (self.directory / 'control-receipts.json').write_text(json.dumps(self.trace, indent=2) + '\n')

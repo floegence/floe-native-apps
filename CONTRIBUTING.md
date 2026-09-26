@@ -217,6 +217,16 @@ application, or certify the unpublished combined graphical backend. Production
 component preparation and the package/desktop application matrix remain required
 before that backend can be published as a supported capability.
 
+The internal `DesktopHelper` composes the native channel/window registry, bounded
+capture, decoded-frame gate, ordered input and authenticated endpoint on one event
+loop. The supervisor supplies its prepared sockets. It starts sharing only after
+the native protocol is identified and owns cleanup if endpoint creation fails.
+Viewer detach leaves the registry and capture process intact; native channel loss
+reports unavailable state without inventing application exit. Full helper disposal
+closes its channels, while process lifetime remains with the launch supervisor.
+Native combined-display probes use this same assembly rather than a second test
+implementation. This boundary does not yet provide the complete prepared launcher.
+
 ### Unpublished combined-display qualification
 
 Copy native fixtures with
