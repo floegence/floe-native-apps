@@ -72,15 +72,24 @@ def read_application_result(path, process_code):
 
 
 class DesktopSession:
-    def __init__(self, directory, instance, token, services, graphics, *, ibus_command,
-                 plan, application_launcher, application_environment, completed, record):
+    def __init__(self, directory, runtime, instance, token, services, graphics, *, ibus_command,
+                 plan, application_launcher, application_environment, completed, record, host_bus=None):
         self.directory = private_directory(directory)
-        self.runtime = private_directory(graphics.application_environment['XDG_RUNTIME_DIR'])
+        # Sandbox policy can require graphics sockets in a package runtime.
+        # The authenticated endpoint always remains in this instance's own
+        # directory; never create a fixed control.sock in a shared runtime.
+        self.runtime = private_directory(runtime)
         self.instance, self.token = instance, token
         self.services, self.graphics = services, graphics
         self.ibus_command = tuple(ibus_command)
         self.application_environment = dict(application_environment)
+        self.application_environment.pop('FLOE_NATIVE_HOST_BUS', None)
         self.plan = revalidate(plan, self.application_environment, [plan['backend']])
+        if 'user-systemd-scope' in self.plan['observation']['services']:
+            bus_configuration(host_bus)
+            if host_bus == graphics.application_environment['DBUS_SESSION_BUS_ADDRESS']:
+                raise ValueError('Host and private services must use different buses')
+            self.application_environment['FLOE_NATIVE_HOST_BUS'] = host_bus
         self.application_receipt = self.directory / 'application.json'
         if os.path.lexists(self.application_receipt):
             raise ValueError('New instance-private application receipt is required')

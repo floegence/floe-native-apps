@@ -37,6 +37,12 @@ def helper(root, runtime, evidence, token, mode):
         path = runtime / name
         path.mkdir(mode=0o700)
         environment[key] = str(path)
+    specification = {}
+    if mode == 'package':
+        specification = json.loads((evidence / 'fixture-environment.json').read_text())
+        environment.update(specification['environment'])
+        for key in specification['unset']:
+            environment.pop(key, None)
     services = DesktopServices(os.environ['FLOE_PROBE_COMPONENT'], evidence)
     native = Path(os.environ['FLOE_PROBE_NATIVE'])
     library = Path(os.environ['FLOE_PROBE_WESTON_LIBRARY'])
@@ -50,11 +56,12 @@ def helper(root, runtime, evidence, token, mode):
         with (evidence / 'helper.jsonl').open('a') as stream:
             stream.write(json.dumps(value) + '\n')
     plan = prepare(str(evidence / 'fixture.desktop'), environment,
-        [{'id': 'wayland', 'component': 'unpublished-native-session-fixture', 'protocols': ['wayland', 'x11']}])
-    session = DesktopSession(evidence, runtime.name, token, services, graphics,
+        [{'id': 'wayland', 'component': 'unpublished-native-session-fixture', 'protocols': ['wayland', 'x11'],
+          'services': ['user-systemd-scope', 'file-portal', 'document-portal', 'ibus-portal']}])
+    session = DesktopSession(evidence, runtime, runtime.name, token, services, graphics,
         ibus_command=[os.environ['FLOE_PROBE_IBUS_DAEMON']], plan=plan,
         application_launcher=[sys.executable, str(root / 'application.py')], application_environment=environment,
-        completed=loop.quit, record=record)
+        completed=loop.quit, record=record, host_bus=specification.get('host_bus'))
     original_failure = session.fail
     def failure(code, **details):
         # Test-only traceback observation: the isolated fixture has no user data.
@@ -73,6 +80,40 @@ def helper(root, runtime, evidence, token, mode):
     with patch.object(Gio.SubprocessLauncher, 'new', side_effect=launcher):
         session.start()
         loop.run()
+
+
+def cleanup_helper(process, started, processes):
+    if process and process.poll() is None and identity(process.pid)[1] == started:
+        # The fixture owns this exact supervisor. Its explicit SIGTERM is
+        # test cleanup only; no viewer or production disconnect does this.
+        for item in processes:
+            if item['service'] != 'application':
+                continue
+            try:
+                descriptor = os.pidfd_open(item['pid'])
+                if identity(item['pid'])[1] == item['start_ticks']:
+                    signal.pidfd_send_signal(descriptor, signal.SIGTERM)
+                os.close(descriptor)
+            except (FileNotFoundError, ProcessLookupError):
+                pass
+        try:
+            process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            descriptor = os.pidfd_open(process.pid)
+            if identity(process.pid)[1] == started:
+                signal.pidfd_send_signal(descriptor, signal.SIGTERM)
+            os.close(descriptor)
+            process.wait(timeout=5)
+    # A test cannot pass merely because its helper was killed after cleanup
+    # stalled. Every recorded support process must have actually exited.
+    remaining = []
+    for item in processes:
+        try:
+            if identity(item['pid'])[1] == item['start_ticks']:
+                remaining.append(item)
+        except (FileNotFoundError, ProcessLookupError):
+            pass
+    return remaining
 
 
 def main():
@@ -235,36 +276,7 @@ def main():
             client.close()
             (evidence / 'control-receipts.json').write_text(json.dumps(client.trace, indent=2))
         result['processes'] = [x for x in records() if x.get('event') == 'process']
-        if process and process.poll() is None and identity(process.pid)[1] == started:
-            # The fixture owns this exact supervisor. Its explicit SIGTERM is
-            # test cleanup only; no viewer or production disconnect does this.
-            for item in result['processes']:
-                if item['service'] != 'application':
-                    continue
-                try:
-                    descriptor = os.pidfd_open(item['pid'])
-                    if identity(item['pid'])[1] == item['start_ticks']:
-                        signal.pidfd_send_signal(descriptor, signal.SIGTERM)
-                    os.close(descriptor)
-                except (FileNotFoundError, ProcessLookupError):
-                    pass
-            try:
-                process.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                descriptor = os.pidfd_open(process.pid)
-                if identity(process.pid)[1] == started:
-                    signal.pidfd_send_signal(descriptor, signal.SIGTERM)
-                os.close(descriptor)
-                process.wait(timeout=5)
-        # A test cannot pass merely because its helper was killed after cleanup
-        # stalled. Every recorded support process must have actually exited.
-        remaining = []
-        for item in result['processes']:
-            try:
-                if identity(item['pid'])[1] == item['start_ticks']:
-                    remaining.append(item)
-            except (FileNotFoundError, ProcessLookupError):
-                pass
+        remaining = cleanup_helper(process, started, result['processes'])
         if remaining:
             result['passed'] = False
             result['cleanup_remaining'] = remaining

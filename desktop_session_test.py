@@ -80,6 +80,18 @@ class SessionTests(unittest.TestCase):
         session.launch_application.assert_called_once()
         session.spawn.assert_not_called()
 
+    def test_scope_requires_an_explicit_distinct_host_bus_before_creating_resources(self):
+        plan = {'backend': {}, 'observation': {'services': ['user-systemd-scope']}}
+        graphics = SimpleNamespace(application_environment={'DBUS_SESSION_BUS_ADDRESS': 'unix:path=/private/bus'})
+        for address in (None, 'unix:path=/private/bus', 'tcp:host=localhost'):
+            with self.subTest(address=address), patch.object(self.module, 'revalidate', return_value=plan):
+                with self.assertRaises(ValueError):
+                    self.module.DesktopSession(self.directory.name, self.directory.name, 'fixture', 'token',
+                        Mock(), graphics, ibus_command=(), plan=plan, application_launcher=(),
+                        application_environment={'FLOE_NATIVE_HOST_BUS': 'unix:path=/ambient/host'},
+                        completed=Mock(), record=Mock(), host_bus=address)
+        self.assertEqual(list(Path(self.directory.name).iterdir()), [])
+
     def test_dead_bus_cannot_interrupt_support_disposal(self):
         session = self.module.DesktopSession.__new__(self.module.DesktopSession)
         completed, tree, process = Mock(), Mock(), Mock()

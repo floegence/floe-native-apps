@@ -270,6 +270,15 @@ when the private bus is already closed; qualification checks every recorded chil
 and removes its own mount normally. The fixture may explicitly terminate only its
 recorded test supervisor for failure cleanup; this is never viewer behavior.
 
+The persistent Snap probe uses the same session owner and authenticated viewer
+endpoint. Snap's existing policy-compatible graphics runtime hosts only a unique
+Wayland socket; the control endpoint stays in a separate instance-private runtime.
+The launch plan requires an explicit, distinct host bus for the existing scoped
+systemd adapter. No ambient host-bus variable is accepted as authorization. Real
+strict Firefox scope, Unicode/Enter stress, detach/reconnect, remote official save
+and byte-for-byte file receipts now exercise this owner. Flatpak preparation and
+the installed component/public launch API remain separate release requirements.
+
 ### Unpublished combined-display qualification
 
 Copy native fixtures with

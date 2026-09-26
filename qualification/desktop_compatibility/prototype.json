@@ -318,6 +318,11 @@
       "case": "Plan-driven persistent native session without desktop/FUSE services",
       "result": "The session consumes and preserves the immutable plan and the sole GIO supervisor revalidates it at execution. Real GTK4 Unicode/Enter, first-frame gate, detach/reconnect and launcher exit 46 pass on native amd64/arm64. The amd64 fixture has no /dev/fuse and starts no xdg portals; private-bus loss preserves its application and every recorded support process exits on explicit fixture cleanup.",
       "limits": "Package-specific persistent helper resource realization and installed public launch API remain incomplete."
+    },
+    {
+      "case": "Persistent session with strict Snap Firefox 156.0.1-1 revision 8969 on native amd64",
+      "result": "One session owner starts plan-required services; the production supervisor creates the real restricted systemd scope. Authenticated viewer IPC, decoded first frame, 64 repeated Unicode commits and one 14000-byte commit with following Enter, detach/reconnect, official remote Save and exact file bytes all pass. Normal close exits every recorded child.",
+      "limits": "Unpublished native artifacts and task-only profile. Flatpak durable assembly, production activation and the complete desktop/package matrix are still required."
     }
   ],
   "rejected_assumptions": [
