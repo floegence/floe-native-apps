@@ -100,10 +100,10 @@ def qualify(root, evidence, environment, control, wire, start, wait, paint, disp
     if toolkit == 'terminal':
         from xim_context_probe import qualify as qualify_xim
         return qualify_xim(root, evidence, environment, control, wire, start, wait, paint, display)
-    assert toolkit in ('qt5', 'qt6', 'gtk', 'gtk4', 'chromium')
+    assert toolkit in ('qt5', 'qt6', 'gtk', 'gtk4')
     protocol = os.environ.get('FLOE_PROBE_CONTEXT_PROTOCOL', 'wayland')
     assert protocol in ('wayland', 'x11') and (protocol != 'x11' or display)
-    gtk = toolkit in ('gtk', 'gtk4', 'chromium')
+    gtk = toolkit in ('gtk', 'gtk4')
     tree = ProcessTree(os.getpid(), identity(os.getpid())[1])
     connection = Gio.DBusConnection.new_for_address_sync(environment['DBUS_SESSION_BUS_ADDRESS'],
         Gio.DBusConnectionFlags.AUTHENTICATION_CLIENT | Gio.DBusConnectionFlags.MESSAGE_BUS_CONNECTION, None, None)
@@ -191,23 +191,14 @@ def qualify(root, evidence, environment, control, wire, start, wait, paint, disp
             input_service.activate(activated.append)
         return NativeContextService(connection, contexts)
     service = wire.invoke(serve)
-    browser = None
     try:
         if input_service:
             wait(lambda: bool(activated), 'Native IBus engine selection did not complete')
             assert activated == [None], activated
         receipt = evidence / (toolkit + '-context.json')
         previous = wire.native.target
-        if toolkit == 'chromium':
-            from xim_context_probe import browser_server
-            browser = browser_server(receipt)
-            app = start([os.environ['FLOE_TEST_CHROMIUM_BIN'], '--user-data-dir=' + str(evidence / 'browser-profile'),
-                '--gtk-version=3', '--no-first-run', '--no-default-browser-check', '--ozone-platform=x11',
-                '--disable-gpu', '--window-size=1000,700', '--app=http://127.0.0.1:' + str(browser.server_port) + '/'],
-                app_environment, 'chromium-context')
-        else:
-            app = start(['python3', str(root / 'input_fixture.py'), toolkit, str(receipt)],
-                app_environment, toolkit + '-context')
+        app = start(['python3', str(root / 'input_fixture.py'), toolkit, str(receipt)],
+            app_environment, toolkit + '-context')
         def registered():
             if input_service is None:
                 return bool(wire.native.contexts.clients)
@@ -245,9 +236,6 @@ def qualify(root, evidence, environment, control, wire, start, wait, paint, disp
         if daemon_peer:
             daemon_peer.close()
         tree.close()
-        if browser:
-            browser.shutdown()
-            browser.server_close()
 
 
 def exercise_fields(control, window, receipt, wait):

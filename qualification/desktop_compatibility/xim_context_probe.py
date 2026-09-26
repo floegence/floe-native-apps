@@ -40,11 +40,14 @@ def qualify(root, evidence, environment, control, wire, start, wait, paint, disp
                 '-e', 'python3', str(root / 'input_fixture.py'), 'terminal', str(receipt)]
         app = start(command, local, toolkit + '-context')
         wait(lambda: receipt.with_suffix('.ready').exists() and wire.native.target is not None and
-             wire.native.target is not previous and bridge.focused is not None,
+             wire.native.target is not previous and (toolkit == 'chromium' or bridge.focused is not None),
              'No actual XIM input context')
         frame = paint(toolkit + '-context', marker=(59, 117, 159))
         window = frame['window']
         if toolkit == 'chromium':
+            click = control.send(window, b'motion 220 240\nbutton 272 1\nbutton 272 0\n')
+            assert control.response(click).get('result') == 'submitted'
+            wait(lambda: bridge.focused is not None, 'Chromium did not establish an XIM context after click')
             from context_probe import exercise_fields
             # Readiness comes from the real page, native context and rendered
             # pixels. Never force DOM focus or set field contents from a driver.
