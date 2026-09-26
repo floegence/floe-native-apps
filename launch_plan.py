@@ -297,6 +297,12 @@ def inspect_application(path, environment):
                 if not separator or not value or key in seen:
                     raise Unavailable('PACKAGE_LAUNCHER_UNSUPPORTED')
                 seen.add(key)
+            elif key == '--nofilesystem':
+                # Honor an entry's explicit restrictive Flatpak policy. It is
+                # part of the bound desktop bytes, not a deployment selector;
+                # repeated exclusions are valid and never loosen permissions.
+                if not separator or not value:
+                    raise Unavailable('PACKAGE_LAUNCHER_UNSUPPORTED')
             elif token != '--file-forwarding':
                 raise Unavailable('PACKAGE_LAUNCHER_UNSUPPORTED')
             index += 1

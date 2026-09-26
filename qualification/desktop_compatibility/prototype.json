@@ -323,6 +323,11 @@
       "case": "Persistent session with strict Snap Firefox 156.0.1-1 revision 8969 on native amd64",
       "result": "One session owner starts plan-required services; the production supervisor creates the real restricted systemd scope. Authenticated viewer IPC, decoded first frame, 64 repeated Unicode commits and one 14000-byte commit with following Enter, detach/reconnect, official remote Save and exact file bytes all pass. Normal close exits every recorded child.",
       "limits": "Unpublished native artifacts and task-only profile. Flatpak durable assembly, production activation and the complete desktop/package matrix are still required."
+    },
+    {
+      "case": "Persistent Flatpak GNOME Text Editor and KWrite on native arm64",
+      "result": "The same session prepares the official IBus portal, trusted file portal and restricted host-document facade. Both real sandboxes exclude broad host/home filesystem access; authenticated frame/input IPC, 65 Unicode/Enter commits including 14000 bytes, detach/reconnect, remote Save As and exact matching bytes pass. Official initial-file and new-file grants are observed; normal close exits all children and fixture-only grants are removed.",
+      "limits": "Qt still receives its private module in an explicitly task-owned sandbox directory. General package resource realization/installation, pure Wayland Chromium and full desktop/package qualification remain unfinished."
     }
   ],
   "rejected_assumptions": [

@@ -61,7 +61,9 @@ def helper(root, runtime, evidence, token, mode):
     session = DesktopSession(evidence, runtime, runtime.name, token, services, graphics,
         ibus_command=[os.environ['FLOE_PROBE_IBUS_DAEMON']], plan=plan,
         application_launcher=[sys.executable, str(root / 'application.py')], application_environment=environment,
-        completed=loop.quit, record=record, host_bus=specification.get('host_bus'))
+        completed=loop.quit, record=record, host_bus=specification.get('host_bus'),
+        ibus_portal_command=[os.environ['FLOE_PROBE_IBUS_PORTAL']] if 'FLOE_PROBE_IBUS_PORTAL' in os.environ else (),
+        initial_documents=specification.get('initial_documents', ()))
     original_failure = session.fail
     def failure(code, **details):
         # Test-only traceback observation: the isolated fixture has no user data.

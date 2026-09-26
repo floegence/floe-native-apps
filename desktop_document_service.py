@@ -22,8 +22,9 @@ XML = '<node><interface name="' + NAME + '"><property name="version" type="u" ac
 
 
 class DocumentService:
-    def __init__(self, private, host_address, app_id, authority, record):
+    def __init__(self, private, host_address, app_id, authority, record, *, unavailable=None):
         self.private, self.authority, self.record = private, authority, record
+        self.unavailable = unavailable
         self.grants, self.calls = DocumentGrants(app_id), {}
         self.host, self.registration, self.subscription = None, 0, 0
         self.host_closed = 0
@@ -33,7 +34,7 @@ class DocumentService:
                 Gio.DBusConnectionFlags.AUTHENTICATION_CLIENT | Gio.DBusConnectionFlags.MESSAGE_BUS_CONNECTION,
                 None, None)
             self.host.set_exit_on_close(False)
-            self.host_closed = self.host.connect('closed', lambda *_args: self.close())
+            self.host_closed = self.host.connect('closed', lambda *_args: self.lost())
             if self.host.get_guid() == private.get_guid():
                 raise ValueError('Document host and private buses must differ')
             self.host_owner = self.host.call_sync('org.freedesktop.DBus', '/org/freedesktop/DBus',
@@ -137,7 +138,14 @@ class DocumentService:
     def owner_changed(self, _connection, _sender, _path, _interface, _signal, parameters):
         owner, _old, new = parameters.unpack()
         if owner == self.host_owner and not new:
-            self.close()
+            self.lost()
+
+    def lost(self):
+        if self.closed:
+            return
+        self.close()
+        if self.unavailable:
+            self.unavailable()
 
     def close(self):
         if self.closed:

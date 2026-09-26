@@ -8,6 +8,38 @@ from gi.repository import Gio, GLib
 NAME, PATH = 'org.freedesktop.portal.Documents', '/org/freedesktop/portal/documents'
 
 
+def clean_session_documents(address, directory, app_id):
+    """Remove only grants for the two explicitly owned persistent test files."""
+    root = directory.resolve(strict=True)
+    assert root.stat().st_uid == os.getuid() and root.stat().st_mode & 0o077 == 0
+    connection = Gio.DBusConnection.new_for_address_sync(address,
+        Gio.DBusConnectionFlags.AUTHENTICATION_CLIENT | Gio.DBusConnectionFlags.MESSAGE_BUS_CONNECTION, None, None)
+    connection.set_exit_on_close(False)
+    removed = []
+    try:
+        owner = connection.call_sync('org.freedesktop.DBus', '/org/freedesktop/DBus',
+            'org.freedesktop.DBus', 'GetNameOwner', GLib.Variant('(s)', (NAME,)),
+            GLib.VariantType.new('(s)'), Gio.DBusCallFlags.NONE, 3000, None).unpack()[0]
+        grants = connection.call_sync(owner, PATH, NAME, 'List', GLib.Variant('(s)', (app_id,)),
+            GLib.VariantType.new('(a{say})'), Gio.DBusCallFlags.NONE, 3000, None).unpack()[0]
+        allowed = {root / name for name in ('document.txt', 'portal-copy.txt')}
+        for identifier, filename in grants.items():
+            path = Path(os.fsdecode(bytes(filename).rstrip(b'\0')))
+            if path not in allowed:
+                continue
+            assert not path.is_symlink()
+            actual, _permissions = connection.call_sync(owner, PATH, NAME, 'Info',
+                GLib.Variant('(s)', (identifier,)), GLib.VariantType.new('(aya{sas})'),
+                Gio.DBusCallFlags.NONE, 3000, None).unpack()
+            assert Path(os.fsdecode(bytes(actual).rstrip(b'\0'))) == path
+            connection.call_sync(owner, PATH, NAME, 'Delete', GLib.Variant('(s)', (identifier,)),
+                GLib.VariantType.new('()'), Gio.DBusCallFlags.NONE, 3000, None)
+            removed.append(path.name)
+    finally:
+        connection.close_sync(None)
+    return removed
+
+
 class DocumentProbe:
     def __init__(self, address, app_id, document):
         self.root = document.parent.resolve()

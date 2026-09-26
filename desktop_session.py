@@ -45,7 +45,7 @@ def read_application_result(path, process_code):
         if (set(value) != {'state', 'phase', 'error_code'} or process_code != 1 or
                 not isinstance(value['phase'], str) or not re.fullmatch(r'[a-z_]{1,64}', value['phase']) or
                 not isinstance(value['error_code'], str) or
-                not re.fullmatch(r'APPLICATION_[A-Z_]{1,96}', value['error_code'])):
+                not re.fullmatch(r'(?:APPLICATION|PACKAGE|GRAPHICAL|HOST_SERVICE)_[A-Z_]{1,96}', value['error_code'])):
             raise ValueError('Application failure receipt is invalid')
     elif value.get('state') == 'exited':
         if (set(value) != {'state', 'phase', 'exit_code', 'launchers', 'termination_requested'} or
@@ -73,7 +73,8 @@ def read_application_result(path, process_code):
 
 class DesktopSession:
     def __init__(self, directory, runtime, instance, token, services, graphics, *, ibus_command,
-                 plan, application_launcher, application_environment, completed, record, host_bus=None):
+                 plan, application_launcher, application_environment, completed, record, host_bus=None,
+                 ibus_portal_command=(), initial_documents=()):
         self.directory = private_directory(directory)
         # Sandbox policy can require graphics sockets in a package runtime.
         # The authenticated endpoint always remains in this instance's own
@@ -85,10 +86,16 @@ class DesktopSession:
         self.application_environment = dict(application_environment)
         self.application_environment.pop('FLOE_NATIVE_HOST_BUS', None)
         self.plan = revalidate(plan, self.application_environment, [plan['backend']])
-        if 'user-systemd-scope' in self.plan['observation']['services']:
+        self.host_documents = self.plan['observation']['package']['kind'] == 'flatpak'
+        self.host_bus, self.initial_documents = host_bus, tuple(initial_documents)
+        self.ibus_portal_command = tuple(ibus_portal_command)
+        if 'ibus-portal' in self.plan['observation']['services'] and not self.ibus_portal_command:
+            raise ValueError('Verified private input portal is required')
+        if 'user-systemd-scope' in self.plan['observation']['services'] or self.host_documents:
             bus_configuration(host_bus)
             if host_bus == graphics.application_environment['DBUS_SESSION_BUS_ADDRESS']:
                 raise ValueError('Host and private services must use different buses')
+        if 'user-systemd-scope' in self.plan['observation']['services']:
             self.application_environment['FLOE_NATIVE_HOST_BUS'] = host_bus
         self.application_receipt = self.directory / 'application.json'
         if os.path.lexists(self.application_receipt):
@@ -104,6 +111,7 @@ class DesktopSession:
         self.loop = GLibLoop()
         self.processes, self.watches, self.peers = {}, {}, []
         self.connection = self.helper = self.capture = None
+        self.documents = self.document_authority = self.document_tree = None
         self.application = None
         self.closed, self.failed, self.ready = False, False, False
         self.timeout = self.kill_timeout = None
@@ -283,8 +291,11 @@ class DesktopSession:
         from Xlib.display import Display
         from desktop_x11 import X11Resources
         resources = X11Resources(Display(self.application_environment['DISPLAY']))
+        from desktop_context import NativeContextService
+        package = self.plan['observation']['package']
+        destination = package['id'] + '.FloeClientInput' if package['kind'] == 'flatpak' else NativeContextService.NAME
         self.helper.configure_input(self.connection, self.tree,
-            self.application_environment['XDG_RUNTIME_DIR'], x11=resources)
+            self.application_environment['XDG_RUNTIME_DIR'], x11=resources, destination=destination)
         self.helper.enable_xim()
         components = self.directory / 'ibus-components'
         components.mkdir(mode=0o700)
@@ -293,21 +304,28 @@ class DesktopSession:
                        'WAYLAND_DISPLAY', 'XDG_RUNTIME_DIR', 'DBUS_SESSION_BUS_ADDRESS', 'IBUS_ADDRESS')}
         environment.update(IBUS_COMPONENT_PATH=str(components),
             XDG_CONFIG_HOME=str(self.directory / 'ibus-config'), XDG_CACHE_HOME=str(self.directory / 'ibus-cache'))
+        self.ibus_environment = environment
         process = self.spawn('ibus', [*self.ibus_command, '--single', '--panel=disable', '--config=disable',
             '--emoji-extension=disable', '--cache=none', '--address=' + self.ibus_address], environment)
         self.service('org.freedesktop.IBus', process, self.input_ready)
 
-    def service(self, name, process, ready):
+    def service(self, name, process, ready, *, admitted=None):
         expected = int(process.get_identifier())
+        peer = self.tree.admit(expected)
+        self.peers.append(peer)
+        # Some official services query dependencies before owning their name.
+        # Bind their launched process on this event loop before any such call
+        # can dispatch; the subsequent bus-name check still proves readiness.
+        if admitted:
+            admitted(peer)
         current = [None]
         def appeared(connection, _name, owner):
             values = connection.call_sync('org.freedesktop.DBus', '/org/freedesktop/DBus',
                 'org.freedesktop.DBus', 'GetConnectionCredentials', GLib.Variant('(s)', (owner,)),
                 GLib.VariantType.new('(a{sv})'), Gio.DBusCallFlags.NONE, 2000, None).unpack()[0]
-            if values.get('ProcessID') != expected or values.get('UnixUserID') != os.getuid() or current[0] is not None:
+            if (values.get('ProcessID') != expected or values.get('UnixUserID') != os.getuid() or
+                    current[0] is not None or not peer.valid()):
                 raise ValueError('Prepared service owner differs')
-            peer = self.tree.admit(expected)
-            self.peers.append(peer)
             current[0] = owner
             ready(peer)
         def vanished(_connection, _name):
@@ -322,16 +340,29 @@ class DesktopSession:
             if error:
                 raise ValueError('Native input activation failed')
             self.start_portals()
-        self.helper.enable_ibus(daemon, self.guard(activated))
+        if 'ibus-portal' in self.plan['observation']['services']:
+            process = self.spawn('ibus-portal', self.ibus_portal_command, self.ibus_environment)
+            self.service('org.freedesktop.portal.IBus', process,
+                lambda portal: self.helper.enable_ibus(daemon, self.guard(activated), portal=portal))
+        else:
+            self.helper.enable_ibus(daemon, self.guard(activated))
 
     def start_portals(self):
         if 'file-portal' not in self.plan['observation']['services']:
             self.launch_application()
             return
         self.transition('portals')
+        if self.host_documents:
+            from desktop_documents import DocumentAuthority
+            from desktop_document_service import DocumentService
+            self.document_authority = DocumentAuthority()
+            self.documents = DocumentService(self.connection, self.host_bus,
+                self.plan['observation']['package']['id'], self.document_authority, self.record,
+                unavailable=lambda: self.fail('DESKTOP_HOST_SERVICE_UNAVAILABLE'))
         self.portals = DesktopPortals(self.services, self.bus_address,
             Path(self.application_environment['XDG_RUNTIME_DIR']) / self.application_environment['WAYLAND_DISPLAY'],
-            self.application_environment)
+            self.application_environment, host_documents=self.host_documents,
+            package_runtime=self.application_environment['XDG_RUNTIME_DIR'] if self.host_documents else None)
         pending = iter(self.portals.commands)
         def next_service(_peer=None):
             item = next(pending, None)
@@ -340,7 +371,8 @@ class DesktopSession:
                 return
             name, bus_name, command = item
             process = self.spawn(name, command, self.portals.environment)
-            self.service(bus_name, process, next_service)
+            bind = self.document_authority.bind_portal if name == 'xdg-desktop-portal' and self.document_authority else None
+            self.service(bus_name, process, next_service, admitted=bind)
         next_service()
 
     def launch_application(self):
@@ -352,6 +384,14 @@ class DesktopSession:
         self.helper.listen(self.runtime, self.instance, self.token, self.capture)
         self.capture = None
         self.application = self.spawn('application', self.application_command, self.application_environment)
+        if self.document_authority:
+            # Bind on this event loop before dispatching the launcher's first
+            # request. Only this supervisor's descendants may forward explicitly
+            # authorized initial files; other helper services have no such grant.
+            pid = int(self.application.get_identifier())
+            self.document_tree = ProcessTree(pid, identity(pid)[1])
+            self.document_authority.bind_launcher(self.document_tree,
+                self.plan['observation']['executable']['resolved'], self.initial_documents)
         self.ready = True
         self.record({'state': 'prepared', 'phase': 'sharing_ready', 'helper_pid': os.getpid(),
                      'helper_start_ticks': identity(os.getpid())[1], 'socket': self.helper.server.path})
@@ -390,6 +430,12 @@ class DesktopSession:
         if self.capture:
             self.capture.close()
             self.capture = None
+        if self.documents:
+            self.documents.close()
+        if self.document_authority:
+            self.document_authority.close()
+        if self.document_tree:
+            self.document_tree.close()
         if self.connection and not self.connection.is_closed():
             try:
                 self.connection.close_sync(None)

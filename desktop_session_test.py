@@ -26,9 +26,12 @@ class SessionTests(unittest.TestCase):
         self.path.chmod(0o600)
 
     def test_preserve_authoritative_launch_failure(self):
-        value = {'state': 'failed', 'phase': 'host_services', 'error_code': 'APPLICATION_HOST_SERVICE_UNAVAILABLE'}
-        self.write(value)
-        self.assertEqual(self.module.read_application_result(self.path, 1), value)
+        for code in ('APPLICATION_HOST_SERVICE_UNAVAILABLE', 'PACKAGE_LAUNCHER_UNSUPPORTED',
+                     'PACKAGE_RUNTIME_UNAVAILABLE', 'GRAPHICAL_BACKEND_UNAVAILABLE', 'HOST_SERVICE_UNAVAILABLE'):
+            value = {'state': 'failed', 'phase': 'host_services', 'error_code': code}
+            self.write(value)
+            with self.subTest(code=code):
+                self.assertEqual(self.module.read_application_result(self.path, 1), value)
 
     def test_preserve_launcher_exit_and_explicit_termination(self):
         for code in (0, 46, -9):
@@ -81,7 +84,7 @@ class SessionTests(unittest.TestCase):
         session.spawn.assert_not_called()
 
     def test_scope_requires_an_explicit_distinct_host_bus_before_creating_resources(self):
-        plan = {'backend': {}, 'observation': {'services': ['user-systemd-scope']}}
+        plan = {'backend': {}, 'observation': {'services': ['user-systemd-scope'], 'package': {'kind': 'snap'}}}
         graphics = SimpleNamespace(application_environment={'DBUS_SESSION_BUS_ADDRESS': 'unix:path=/private/bus'})
         for address in (None, 'unix:path=/private/bus', 'tcp:host=localhost'):
             with self.subTest(address=address), patch.object(self.module, 'revalidate', return_value=plan):
@@ -113,6 +116,33 @@ class SessionTests(unittest.TestCase):
         args[1](None)
         session.start_portals.assert_called_once()
 
+    def test_service_can_query_dependencies_before_owning_its_bus_name(self):
+        session = self.module.DesktopSession.__new__(self.module.DesktopSession)
+        session.closed, session.failed = False, False
+        session.tree, session.connection, session.fail = Mock(), Mock(), Mock()
+        session.peers, session.watches = [], {}
+        process, admitted, ready = Mock(), Mock(), Mock()
+        process.get_identifier.return_value = '4102'
+        gio, glib = self.module.Gio, self.module.GLib
+        gio.BusNameWatcherFlags, gio.DBusCallFlags = SimpleNamespace(NONE=0), SimpleNamespace(NONE=0)
+        gio.bus_watch_name_on_connection = Mock(return_value=42)
+        glib.Variant, glib.VariantType = Mock(), Mock()
+        session.service('org.example.Portal', process, ready, admitted=admitted)
+        peer = session.tree.admit.return_value
+        admitted.assert_called_once_with(peer)
+        ready.assert_not_called()
+        self.assertEqual(session.peers, [peer])
+        appeared = gio.bus_watch_name_on_connection.call_args.args[3]
+        session.connection.call_sync.return_value.unpack.return_value = [{'ProcessID': 4102, 'UnixUserID': os.getuid()}]
+        appeared(session.connection, 'org.example.Portal', ':1.5')
+        ready.assert_called_once_with(peer)
+        session.fail.assert_not_called()
+        # A replacement owner cannot inherit that launched service's authority.
+        session.connection.call_sync.return_value.unpack.return_value = [{'ProcessID': 9999, 'UnixUserID': os.getuid()}]
+        appeared(session.connection, 'org.example.Portal', ':1.6')
+        session.fail.assert_called_once_with('DESKTOP_PREPARATION_FAILED')
+        ready.assert_called_once()
+
     def test_dead_bus_cannot_interrupt_support_disposal(self):
         session = self.module.DesktopSession.__new__(self.module.DesktopSession)
         completed, tree, process = Mock(), Mock(), Mock()
@@ -123,6 +153,7 @@ class SessionTests(unittest.TestCase):
         session.timeout, session.kill_timeout, session.watches = None, None, {}
         session.loop, session.helper, session.capture = Mock(), Mock(), None
         session.connection, session.peers, session.tree = connection, [], tree
+        session.documents = session.document_authority = session.document_tree = None
         session.completed = completed
         session.close()
         connection.close_sync.assert_not_called()

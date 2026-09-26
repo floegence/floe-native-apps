@@ -276,8 +276,18 @@ Wayland socket; the control endpoint stays in a separate instance-private runtim
 The launch plan requires an explicit, distinct host bus for the existing scoped
 systemd adapter. No ambient host-bus variable is accepted as authorization. Real
 strict Firefox scope, Unicode/Enter stress, detach/reconnect, remote official save
-and byte-for-byte file receipts now exercise this owner. Flatpak preparation and
-the installed component/public launch API remain separate release requirements.
+and byte-for-byte file receipts now exercise this owner.
+
+Flatpak plans prepare the verified IBus portal before activating the input owner.
+The session binds the official file portal's launched process before it queries
+its document dependency, then independently validates bus-name readiness. The
+restricted document facade binds the actual application supervisor and only its
+explicit initial files; it never exposes the host desktop bus. Qt registration
+uses the package's existing allowed bus namespace. Host document-service loss
+reports unavailable state, while disposal preserves host grants. GTK and Qt
+persistent-session fixtures deny broad host/home filesystem access, verify exact
+remote Save As bytes, and remove only their own two document grants. The installed
+component/public launch API and complete platform matrix remain prerequisites.
 
 ### Unpublished combined-display qualification
 
