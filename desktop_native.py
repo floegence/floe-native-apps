@@ -129,6 +129,7 @@ class NativeDesktop:
         self.attachment, self.target = None, None
         self.contexts = None
         self.windows, self.declared, self.last_window, self.generation = {}, {}, 0, 0
+        self.x11_windows = {}
         self.surfaces, self.last_surface, self.focus = set(), 0, None
         self.epoch, self.last_epoch = 0, 0
         self.query, self.query_id = None, 0
@@ -225,12 +226,23 @@ class NativeDesktop:
                     self.changed()
                 elif self.attachment:
                     self.attachment.metadata_changed()
+        elif kind == 'window-x11':
+            if self.version != 1 or len(fields) != 3:
+                raise ValueError('Invalid Xwayland binding')
+            wid, xid = integer(int(fields[1])), integer(int(fields[2]), 1, 0xffffffff)
+            window = self.windows.get(wid)
+            if (not window or window.protocol != 'x11' or
+                    wid in self.x11_windows and self.x11_windows[wid] != xid or
+                    any(other != wid and value == xid for other, value in self.x11_windows.items())):
+                raise ValueError('Unknown or conflicting Xwayland binding')
+            self.x11_windows[wid] = xid
         elif kind == 'window-retired':
             if len(fields) != 2:
                 raise ValueError('Invalid retirement')
             wid = integer(int(fields[1]))
             self.windows.pop(wid, None)
             self.declared.pop(wid, None)
+            self.x11_windows.pop(wid, None)
             if self.target and self.target.window == wid:
                 self.target = None
                 self.changed()

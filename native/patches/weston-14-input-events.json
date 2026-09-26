@@ -9,13 +9,17 @@
     "COPYING": "fdb65868f65d0fbdb05c2d3b779e10ce9969fa0c4b9262ba4f260e87086ab860",
     "include/libweston/libweston.h": "226cf3bc0f4e29e7e7752702172edbb3216b8db31762b27084034c527e6c2cd3",
     "libweston/input.c": "8c12c64b3eb0767a7239f423b539cf82927cc40a88a9924086386bee604b48d1",
-    "libweston/desktop/seat.c": "1e70de708eda28d19c75d52b1ad3f036294ad6ea795d509ba824019a77e8adbe"
+    "libweston/desktop/seat.c": "1e70de708eda28d19c75d52b1ad3f036294ad6ea795d509ba824019a77e8adbe",
+    "include/libweston/xwayland-api.h": "d96ca5a56a5608710f9c4212ea74f09bca171aab7df99f2685028b93eb590d83",
+    "xwayland/window-manager.c": "032ed4f567bacdd7ec1b097bd68f4d4df034e2a472884c35fd1cadf8bc25962c",
+    "xwayland/launcher.c": "f2cebfa6c2767e22c30f87da8d3aee56fb6146473dcb7f281e84c7918de1af37"
   },
   "patch": "weston-14-input-events.patch",
-  "patch_sha256": "969520d5cc69d67a6c017bc68e6c4dde07f94f6f70b7fcfd48d26efbf37f27f1",
+  "patch_sha256": "03aae91bdd3120018c27cca76413a65e7e3a952dca43ed26c6aae9457ec51cc1",
   "changes": [
     "Validate keyboard popup grabs against the last 32 actual keyboard event serials of the same client and focus lifetime; release cannot invalidate the preceding press",
-    "Advertise wl_seat version 8 and carry value120 wheel metadata through the existing native grab and axis dispatch"
+    "Advertise wl_seat version 8 and carry value120 wheel metadata through the existing native grab and axis dispatch",
+    "Expose the compositor-owned Xwayland surface-to-resource binding through a separate read-only versioned plugin API; advisory PID and title never authorize an input context"
   ],
   "abi": "Fields append to core-allocated pointer/keyboard objects; existing member offsets and axis event layout remain unchanged. The native shell requires floe_notify_axis_value120 from this derived library.",
   "limitations": [

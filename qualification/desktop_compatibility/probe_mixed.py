@@ -255,23 +255,31 @@ def main():
              "Attachment replacement retained the old Control modifier")
         result['modifier_released_on_reattach'] = True
         from Xlib import Xatom, display as xdisplay
+        from Xlib.ext import res
         from unittest.mock import patch
         with patch.dict(os.environ, {'XAUTHORITY': environment.get('XAUTHORITY', '')}):
             xconnection = xdisplay.Display(display)
-        pids = []
-        pending = list(xconnection.screen().root.query_tree().children)
-        inspected = 0
-        while pending:
-            window = pending.pop()
-            inspected += 1
-            assert inspected <= 512, "Unexpectedly large private X11 window tree"
-            prop = window.get_full_property(xconnection.intern_atom("_NET_WM_PID"), Xatom.CARDINAL)
-            if prop:
-                pids.extend(int(value) for value in prop.value)
-            pending.extend(window.query_tree().children)
+        xid = wire.native.x11_windows[second]
+        window = xconnection.create_resource_object('window', xid)
+        atom = xconnection.intern_atom('_NET_WM_PID')
+        original = window.get_full_property(atom, Xatom.CARDINAL)
+        assert original and list(original.value) == [xwayland.pid]
+        def owner():
+            reply = xconnection.res_query_client_ids([{'client': xid, 'mask': res.LocalClientPIDMask}])
+            assert len(reply.ids) == 1 and reply.ids[0].spec.mask == res.LocalClientPIDMask
+            assert len(reply.ids[0].value) == 1
+            return reply.ids[0].value[0]
+        assert owner() == xwayland.pid
+        window.change_property(atom, Xatom.CARDINAL, 32, [os.getpid()])
+        xconnection.sync()
+        assert list(window.get_full_property(atom, Xatom.CARDINAL).value) == [os.getpid()]
+        assert owner() == xwayland.pid, 'Advisory X11 PID changed trusted resource ownership'
+        assert wire.native.windows[second].pid == -1
+        window.change_property(atom, Xatom.CARDINAL, 32, list(original.value))
+        xconnection.sync()
         xconnection.close()
-        assert xwayland.pid in pids, "X11 window does not identify the owned fixture"
-        result["x11_window_pids"] = pids
+        result['x11_resource_identity'] = {'native_window': second, 'xid': xid,
+            'actual_pid': xwayland.pid, 'forged_advisory_pid_rejected': True}
         control.send(second, b"close\n")
         xwayland.wait(timeout=10)
         assert xwayland.returncode == 0 and wayland.poll() is None

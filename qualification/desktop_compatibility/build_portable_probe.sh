@@ -5,6 +5,8 @@ set -eu
 source_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 output=$1
 capture_protocol=$2
+test -n "${FLOE_PROBE_WESTON_SOURCE:-}"
+test -f "$FLOE_PROBE_WESTON_SOURCE/include/libweston/xwayland-api.h"
 test "$(pkg-config --modversion libweston-14)" = 14.0.2
 test "$(sha256sum "$capture_protocol" | cut -d ' ' -f 1)" = 8cedbfc3eca413505b7ea8bd99d5f05f3d0724e311f159186070d1f8c107bc10
 mkdir -p "$output"
@@ -13,7 +15,7 @@ wayland-scanner server-header "$protocol" "$output/text-input-v3-server.h"
 wayland-scanner private-code "$protocol" "$output/text-input-v3-code.c"
 # Treat publisher headers as system headers; warnings in our source still fail.
 cc -shared -fPIC -Wall -Wextra -Werror -g \
-  "$source_dir/probe_shell.c" "$output/text-input-v3-code.c" -I"$output" \
+  "$source_dir/probe_shell.c" "$output/text-input-v3-code.c" -I"$output" -isystem "$FLOE_PROBE_WESTON_SOURCE/include" \
   $(pkg-config --cflags libweston-14 wayland-server | sed 's/-I/-isystem /g') \
   $(pkg-config --libs libweston-14 wayland-server) -lm -o "$output/probe-shell.so"
 wayland-scanner client-header "$capture_protocol" "$output/weston-output-capture-client.h"

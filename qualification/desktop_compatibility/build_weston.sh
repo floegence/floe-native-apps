@@ -24,6 +24,9 @@ ninja -C "$destination/build"
 sha256sum "$archive" "$patch_file" "$source_root/COPYING" \
     "$source_root/include/libweston/libweston.h" "$source_root/libweston/input.c" \
     "$source_root/libweston/desktop/seat.c" \
-    "$destination/build/libweston/libweston-14.so.0.0.2" > "$destination/digests.txt"
+    "$source_root/include/libweston/xwayland-api.h" "$source_root/xwayland/launcher.c" \
+    "$source_root/xwayland/window-manager.c" \
+    "$destination/build/libweston/libweston-14.so.0.0.2" \
+    "$destination/build/xwayland/xwayland.so" > "$destination/digests.txt"
 apk info -vv > "$destination/build-packages.txt"
 cc --version > "$destination/compiler.txt"

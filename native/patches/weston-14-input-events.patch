@@ -130,3 +130,40 @@
  	    (pointer == NULL || pointer->grab_serial != serial) &&
  	    (touch == NULL || touch->grab_serial != serial) &&
  	    !tool_found) {
+--- a/include/libweston/xwayland-api.h
++++ b/include/libweston/xwayland-api.h
+@@ -41,0 +42,8 @@
++
++/* Read-only native binding. The X server, not _NET_WM_PID, must separately
++ * establish the resource owner's process identity. Existing Weston APIs and
++ * their ABI remain unchanged. */
++#define FLOE_XWAYLAND_RESOURCE_API_NAME "floe_xwayland_resource_v1"
++struct floe_xwayland_resource_api {
++	uint32_t (*get_xid)(struct weston_surface *surface);
++};
+--- a/xwayland/window-manager.c
++++ b/xwayland/window-manager.c
+@@ -2983,0 +2984,11 @@
++static uint32_t
++floe_xwayland_surface_xid(struct weston_surface *surface)
++{
++	struct weston_wm_window *window = get_wm_window(surface);
++	return window ? window->id : XCB_WINDOW_NONE;
++}
++
++const struct floe_xwayland_resource_api floe_resource_api = {
++	floe_xwayland_surface_xid,
++};
++
+--- a/xwayland/launcher.c
++++ b/xwayland/launcher.c
+@@ -365,0 +366 @@
++extern const struct floe_xwayland_resource_api floe_resource_api;
+@@ -408,0 +410,7 @@
++	ret = weston_plugin_api_register(compositor, FLOE_XWAYLAND_RESOURCE_API_NAME,
++					 &floe_resource_api, sizeof(floe_resource_api));
++	if (ret < 0) {
++		weston_log("Failed to register the Xwayland resource API.\n");
++		goto out_free;
++	}
++

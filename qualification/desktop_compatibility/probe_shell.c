@@ -258,12 +258,19 @@ static void window_state(struct probe *p, struct probe_window *window) {
     struct weston_surface *surface = weston_desktop_surface_get_surface(window->desktop);
     const struct weston_xwayland_surface_api *api = weston_xwayland_surface_get_api(p->compositor);
     bool x11 = api && api->is_xwayland_surface(surface);
-    /* X11's reported PID is advisory metadata; it is not SO_PEERCRED and must
-     * never authorize a text context. Wayland PID comes from the native peer. */
+    /* X11's mutable PID property is not process identity. Publish no PID for
+     * it; the helper resolves the native resource through XRes instead. */
     window->mode = window_mode(window);
     emit(p, "window-state %" PRIu64 " %" PRIu64 " %s %d %d %d %u\n", window->identity,
         window->parent ? window->parent->identity : 0, x11 ? "x11" : "wayland",
-        (int)weston_desktop_surface_get_pid(window->desktop), window->width, window->height, window->mode);
+        x11 ? -1 : (int)weston_desktop_surface_get_pid(window->desktop), window->width, window->height, window->mode);
+    if (x11) {
+        const struct floe_xwayland_resource_api *resources = weston_plugin_api_get(
+            p->compositor, FLOE_XWAYLAND_RESOURCE_API_NAME, sizeof *resources);
+        uint32_t xid = resources ? resources->get_xid(surface) : 0;
+        if (!xid) { control_lost(p); return; }
+        emit(p, "window-x11 %" PRIu64 " %u\n", window->identity, xid);
+    }
 }
 static void window_metadata(struct wl_listener *listener, void *data) {
     (void)data;

@@ -24,6 +24,8 @@ def prepare(component, evidence, environment, shell, authentication=None):
         if not (derived / 'libweston-14.so.0').is_file():
             raise RuntimeError('Derived native compositor library is unavailable')
         libraries = str(derived) + ':' + libraries
+        if not (derived.parent / 'xwayland/xwayland.so').is_file():
+            raise RuntimeError('Derived Xwayland resource binding is unavailable')
 
     def command(relative):
         return [str(loader), '--library-path', libraries, str(component / relative)]
@@ -67,6 +69,10 @@ def prepare(component, evidence, environment, shell, authentication=None):
         'XKB_CONFIG_ROOT': str(component / 'usr/share/X11/xkb'),
         'WESTON_MODULE_MAP': ';'.join(name + '=' + str(component / 'usr/lib/libweston-14' / name)
                                     for name in ('headless-backend.so', 'xwayland.so'))}
+    if derived:
+        server_environment['WESTON_MODULE_MAP'] = (
+            'headless-backend.so=' + str(component / 'usr/lib/libweston-14/headless-backend.so') +
+            ';xwayland.so=' + str(derived.parent / 'xwayland/xwayland.so'))
     arguments = command('usr/bin/weston') + ['--backend=headless', '--renderer=pixman', '--xwayland',
         '--shell=' + str(shell), '--socket=' + environment['WAYLAND_DISPLAY'], '--width=1000', '--height=700',
         '--idle-time=0', '--config=' + str(config)]

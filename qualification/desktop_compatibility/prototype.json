@@ -229,6 +229,11 @@
       "case": "Lossless native frame transport on amd64 and arm64",
       "result": "The sole native capture format is bounded RGB PNG. Actual Wayland/Xwayland window frames retain exact geometry and pixels through the authenticated helper transport. Native window operations, pending-frame backpressure with live input, frame admission and reconnect pass on both architectures. Chromium, Firefox and WebKit decode 66 original captured frames per architecture and compare every RGB pixel with the independent native decoder: 396 matching browser decodes.",
       "limits": "This proves image transport and decoded pixels, not a complete product viewer or native package/desktop support claim. Durable helper preparation, cursor/clipboard, remaining input adapters and release qualification are still required."
+    },
+    {
+      "case": "Authoritative Xwayland native resource identity on amd64 and arm64",
+      "result": "The derived XWM exposes its exact surface-to-XID binding through one read-only versioned plugin API. Native bindings cannot change or alias a live window instance; retirement allows later XID reuse under a new native identity. Actual XRes queries identify the GTK X11 process even after its _NET_WM_PID property is changed to the helper PID. Window metadata publishes no advisory X11 process identity. Both native mixed-window, pixels, input, manipulation and reconnect suites pass.",
+      "limits": "Resource identity establishes a necessary admission boundary, not confirmed-text ordering or toolkit completion. Xwayland confirmed text and complete prepared helper qualification remain required."
     }
   ],
   "rejected_assumptions": [
