@@ -1,8 +1,8 @@
 """Observe actual Chromium text-input-v3 state progress before adding an adapter.
 
-Only ASCII protocol progress is claimed. This uses the unpublished shell command
-to investigate native replies; it is not authenticated confirmed-text acceptance,
-a Unicode/ordering implementation, or a production completion contract.
+This uses unpublished shell commands to investigate native replies and event-loop
+ordering. It is not authenticated confirmed-text acceptance or a universal
+production completion contract. Actual page values remain the result authority.
 """
 import json
 
@@ -52,13 +52,37 @@ def qualify(root, evidence, environment, control, wire, start, wait, paint):
             committed = paint('chromium-v3-repeated-' + str(index), marker=browser.commit_marker(expected))
         updates = [line for line in wire.events[start_index:] if line.startswith('context-surrounding ')]
         assert not updates, 'Reevaluate the client receipt contract: a repeated-tail state update was observed'
+        sequence = 0
+        def barrier():
+            nonlocal sequence
+            sequence += 1
+            wire.send('client-barrier ' + str(sequence) + '\n')
+            wait(lambda: 'client-barrier-done ' + str(sequence) in wire.events,
+                 'Native client event-loop barrier did not complete')
+        control.send(window, b'key 29 1\nkey 30 1\nkey 30 0\nkey 29 0\nkey 14 1\nkey 14 0\n')
+        barrier()
+        expected = ['', '']
+        for index, value in enumerate(['中文日本語한글🙂👩🏽‍💻e\u0301𠮷'] * 64 + ['界🙂' * 2000]):
+            field = index % 2
+            control.send(window, (f'motion {700 if field else 200} 120\nbutton 272 1\nbutton 272 0\n'
+                'key 29 1\nkey 107 1\nkey 107 0\nkey 29 0\n').encode())
+            barrier()
+            wire.send('text-hex ' + value.encode().hex() + '\n')
+            barrier()
+            control.send(window, b'key 28 1\nkey 28 0\n')
+            barrier()
+            expected[field] += value + '\n'
+        wait(lambda: json.loads(receipt.read_text()) == expected,
+             'Actual Chromium Unicode/focus/Enter order differs after native barriers')
+        committed = paint('chromium-v3-ordered', marker=browser.commit_marker(expected))
         control.send(window, b'close\n')
         assert application.wait(timeout=10) == 0
         return {'protocol': 'wayland text-input-v3', 'browser': browser.version,
                 'actual': json.loads(receipt.read_text()), 'committed_frame': committed['sequence'],
-                'repeated_long_text_bytes': len(expected[0].encode()),
+                'repeated_long_text_bytes': 6156,
                 'actual_document_changed_without_surrounding_receipt': True,
-                'limits': 'ASCII state-progress prototype only; not a qualified confirmed-text adapter'}
+                'event_loop_barriers': sequence, 'unicode_transactions': 65,
+                'limits': 'Native protocol investigation only; not an authenticated confirmed-text adapter or universal client receipt'}
     finally:
         browser.close()
         (evidence / 'chromium-v3-native-events.json').write_text(json.dumps(wire.events[first_event:], indent=2))
