@@ -331,7 +331,16 @@ host library path or input module installation is involved. A builder image alon
 does not establish application compatibility. Native amd64/arm64 GTK and
 Chromium/Xwayland tests, strict Snap Firefox and Flatpak GTK/Qt save receipts are
 separate acceptance evidence. Pure Wayland Chromium has no qualified confirmed-text
-adapter yet. These artifacts are not an activated catalog or a published support
+adapter in the published distribution yet. The development helper admits one
+text-input-v3 resource for the actual focused surface and live application peer.
+Its existing input scheduler brackets native commit dispatch with callback
+barriers. The compositor alone selects and validates the editable context when
+it sends the text, so stale helper copies of enable/disable state cannot reject
+ordered focus changes or authorize another resource. Revoked connection, window,
+surface and resource identities cannot receive late text or advance a new
+transaction. Native rejection is final; no alternate adapter or replay follows.
+Only actual application receipts establish document content and order.
+These artifacts are not an activated catalog or a published support
 claim; prepared helper resources, distribution and the full matrix remain required.
 
 `DesktopServices` owns support-process resource preparation. Its input component

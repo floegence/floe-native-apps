@@ -36,7 +36,7 @@ class WaylandTests(unittest.TestCase):
         self.assertEqual(self.sent[-1], 'input 1 1 1 client-barrier 1\n')
         self.assertEqual(self.completed, [])
         self.native.observe('client-barrier-done 1')
-        self.assertEqual(self.sent[-1], 'input 1 1 1 text-commit 2 1 1 e5908cf09f99820a\n')
+        self.assertEqual(self.sent[-1], 'input 1 1 1 text-commit 2 1 e5908cf09f99820a\n')
         self.native.observe('text-dispatched 2')
         self.assertEqual(self.sent[-1], 'input 1 1 1 client-barrier 3\n')
         self.assertEqual(self.completed, [])
@@ -49,11 +49,21 @@ class WaylandTests(unittest.TestCase):
 
     def test_context_revocation_cancels_without_sending_text_or_replaying(self):
         self.begin()
-        self.native.observe('text-context 1 2 1 0 3')
-        self.assertEqual(self.completed, ['INPUT_CONTEXT_UNAVAILABLE'])
+        self.native.observe('text-context-retired 1')
         self.native.observe('client-barrier-done 1')
+        self.assertEqual(self.completed, ['INPUT_CONTEXT_UNAVAILABLE'])
         self.assertFalse(any('text-commit' in line for line in self.sent))
-        self.assertIsNone(self.contexts.context_for(self.native.target))
+
+    def test_preceding_focus_callbacks_select_context_once_at_dispatch(self):
+        self.begin()
+        self.native.observe('text-context 1 2 1 0 3')
+        self.native.observe('text-context 1 3 1 1 4')
+        self.native.observe('client-barrier-done 1')
+        self.assertIn('text-commit 2 1 ', self.sent[-1])
+        self.native.observe('text-context-retired 1')
+        self.assertEqual(self.completed, ['INPUT_CONTEXT_UNAVAILABLE'])
+        self.native.observe('text-dispatched 2')
+        self.assertNotIn('client-barrier 3', self.sent[-1])
 
     def test_surrounding_serial_progress_does_not_complete_or_revoke_text(self):
         self.begin()
@@ -85,6 +95,45 @@ class WaylandTests(unittest.TestCase):
         self.native.observe('client-barrier-done 1')
         self.assertEqual(self.completed, ['INPUT_CONTEXT_UNAVAILABLE'])
         self.assertFalse(any('text-commit' in line for line in self.sent))
+
+    def test_retired_surface_cannot_complete_text_already_sent_to_its_client(self):
+        self.begin()
+        self.native.observe('client-barrier-done 1')
+        self.native.observe('text-dispatched 2')
+        self.native.observe('text-context 1 2 0 0 3')
+        self.assertEqual(self.completed, ['INPUT_CONTEXT_UNAVAILABLE'])
+        self.native.observe('client-barrier-done 3')
+        self.assertEqual(self.completed, ['INPUT_CONTEXT_UNAVAILABLE'])
+        self.assertEqual(sum('text-commit' in line for line in self.sent), 1)
+
+    def test_old_completion_cannot_advance_new_text_request(self):
+        token = self.begin()
+        self.contexts.cancel(token)
+        replacement = self.contexts.context_for(self.native.target)
+        self.contexts.commit(replacement, 'same', self.completed.append)
+        self.assertEqual(self.sent[-1], 'input 1 1 1 client-barrier 2\n')
+        count = len(self.sent)
+        self.native.observe('client-barrier-done 1')
+        self.assertEqual(len(self.sent), count)
+        self.native.observe('client-barrier-done 2')
+        self.assertEqual(self.sent[-1], 'input 1 1 1 text-commit 3 1 73616d65\n')
+
+    def test_native_loss_completes_once_without_replaying_payload(self):
+        self.begin()
+        self.native.lost()
+        self.native.lost()
+        self.native.observe('client-barrier-done 1')
+        self.assertEqual(self.completed, ['INPUT_TARGET_UNAVAILABLE'])
+        self.assertFalse(any('text-commit' in line for line in self.sent))
+
+    def test_native_editable_rejection_is_final_without_another_adapter(self):
+        self.begin()
+        self.native.observe('text-context 1 2 1 0 3')
+        self.native.observe('client-barrier-done 1')
+        self.native.observe('text-rejected 2')
+        self.assertEqual(self.completed, ['INPUT_CONTEXT_UNAVAILABLE'])
+        self.assertFalse(self.contexts.markers.slots)
+        self.assertEqual(sum('text-commit' in line for line in self.sent), 1)
 
 
 if __name__ == '__main__':

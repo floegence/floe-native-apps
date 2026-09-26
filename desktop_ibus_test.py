@@ -29,7 +29,7 @@ class IBusTests(unittest.TestCase):
         self.sent, self.completed, self.commits = [], [], []
         self.native = SimpleNamespace(target=NativeTarget(1, 2),
             focus=NativeFocus(3, 1, 120, 19, True), epoch=1, closed=False,
-            windows={1: SimpleNamespace(protocol='wayland')}, submit=lambda *args: self.sent.append(args))
+            text_contexts={}, windows={1: SimpleNamespace(protocol='wayland')}, submit=lambda *args: self.sent.append(args))
         self.contexts = NativeContexts(self.native, self.tree, '/private/runtime')
         self.addCleanup(self.contexts.close)
         self.adapter = IBusContexts(self.contexts, self.sources)

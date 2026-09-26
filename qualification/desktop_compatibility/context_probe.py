@@ -204,23 +204,22 @@ def qualify(root, evidence, environment, control, wire, start, wait, paint, disp
         previous = wire.native.target
         if toolkit == 'chromium':
             from chromium_context_probe import ChromiumPage
-            browser = ChromiumPage(evidence, receipt, protocol)
+            browser = ChromiumPage(evidence, receipt, protocol,
+                slow_pointer=os.environ.get('FLOE_PROBE_SLOW_RENDERER') == '1')
             command = browser.command
         elif toolkit in ('qt5', 'qt6') and os.environ.get('FLOE_PROBE_QT_BINARY'):
             command = [os.environ['FLOE_PROBE_QT_BINARY'], str(receipt)]
         else:
             command = ['python3', str(root / 'input_fixture.py'), toolkit, str(receipt)]
         app = start(command, app_environment, toolkit + '-context')
+        input_route = None
         def registered():
-            if input_service is None:
-                return bool(wire.native.contexts.clients)
-            active = input_service.adapter.active
-            if not active:
+            nonlocal input_route
+            token = wire.native.contexts.context_for(wire.native.target)
+            if token is None or token.surface_peer.process.pid != app.pid:
                 return False
-            try:
-                return input_service.adapter.sources.read(active[1]).pid == app.pid
-            except (OSError, ValueError):
-                return False
+            input_route = type(token.adapter).__name__ if token.adapter else 'NativeContextService'
+            return True
         wait(lambda: (browser.ready if browser else receipt.exists()) and wire.native.target is not None and wire.native.target is not previous and
              (browser is not None or wire.invoke(registered)),
              'No ready native browser page' if browser else 'No ready native toolkit context')
@@ -250,7 +249,9 @@ def qualify(root, evidence, environment, control, wire, start, wait, paint, disp
         return {**result, **({'browser': browser.version, 'click_and_key_receipt': True} if browser else {}),
                 'toolkit': toolkit, 'protocol': protocol, 'pid': app.pid,
                 'surface_binding': ('native XWM resource binding and XRes' if protocol == 'x11' else 'native surface ID') + ' and live process identity',
-                'completion': ('synchronous IBus context release' if input_service else 'toolkit event loop') +
+                'input_route': input_route,
+                'completion': ('native callback dispatch; actual document separately verified' if input_route == 'NativeWayland' else
+                               'synchronous IBus context release' if input_service else 'toolkit event loop') +
                               ', shared scheduler and authenticated attachment'}
     finally:
         if browser:
@@ -288,5 +289,6 @@ def exercise_fields(control, window, receipt, wait):
     assert control.response(request).get('result') == 'completed'
     expected[1] += long_text
     wait(lambda: json.loads(receipt.read_text()) == expected,
-         'Native context sequence crossed actual toolkit fields or lost Unicode')
+         'Native context sequence crossed actual toolkit fields or lost Unicode',
+         timeout=45 if os.environ.get('FLOE_PROBE_SLOW_RENDERER') == '1' else 15)
     return {'commits': completed + 1, 'long_bytes': len(long_text.encode()), 'actual': json.loads(receipt.read_text())}

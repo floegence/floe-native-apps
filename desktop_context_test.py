@@ -27,7 +27,7 @@ class ContextTests(unittest.TestCase):
         self.sent, self.completed = [], []
         self.native = SimpleNamespace(target=NativeTarget(1, 2),
             focus=NativeFocus(3, 1, 120, 19, True), epoch=1, closed=False,
-            windows={1: SimpleNamespace(protocol='wayland')},
+            text_contexts={}, windows={1: SimpleNamespace(protocol='wayland')},
             submit=lambda *args: self.sent.append(args))
         self.tree = {120: 'application', 121: 'application', 150: 'other instance'}
         mock = patch('desktop_context.ApplicationPeer', Peer)

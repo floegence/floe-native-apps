@@ -1,9 +1,10 @@
 """Native confirmed-text admission beneath the one shared input scheduler.
 
 The compositor identifies the actual surface and client. The registered toolkit
-must own that live client (including an official Flatpak proxy identity), consume
-its native marker on that surface, then acknowledge after its event loop. Neither
-bus dispatch nor a Wayland text-input serial acknowledges document consumption.
+must own that live client (including an official Flatpak proxy identity). Private
+toolkit and IBus routes consume a native marker before acknowledging. Negotiated
+text-input-v3 uses native callback boundaries and compositor-owned admission.
+Neither transport dispatch nor a Wayland serial acknowledges document contents.
 All methods run on the helper's event loop; the application supervisor alone owns
 process lifetime. X11's released context protocol remains independent and intact.
 """
@@ -24,6 +25,7 @@ class ContextToken:
     surface_peer: object
     adapter: object = None
     xid: int = 0
+    text_context: object = None
 
     @property
     def surface(self):
@@ -37,6 +39,7 @@ class NativeContexts:
         self.ibus = None
         self.xim = None
         self.x11 = None
+        self.wayland = NativeWayland(self)
         self.bound, self.pending, self.sequence, self.closed = None, None, 0, False
 
     def register(self, sender, pid, version, toolkit):
@@ -86,7 +89,7 @@ class NativeContexts:
             matching = [(sender, peer) for sender, peer in self.clients.items() if peer.matches(surface_peer)]
             adapter = None
             if not matching:
-                routes = [(candidate, selected) for candidate in (self.ibus, self.xim if xid else None)
+                routes = [(candidate, selected) for candidate in (self.ibus, self.xim if xid else self.wayland)
                           if candidate is not None and (selected := candidate.select(surface_peer))]
                 if len(routes) == 1:
                     adapter, selected = routes[0]
@@ -98,7 +101,8 @@ class NativeContexts:
                 surface_peer.close()
                 return None
             sender, peer = matching[0]
-            token = ContextToken(self.native.epoch, target, focus, sender, peer, surface_peer, adapter, xid)
+            text_context = self.wayland.selected() if adapter is self.wayland else None
+            token = ContextToken(self.native.epoch, target, focus, sender, peer, surface_peer, adapter, xid, text_context)
             self.bound = token
             if not self.valid(token):
                 self.unbind()
@@ -116,7 +120,7 @@ class NativeContexts:
                 (not token.xid or self.x11 is not None and
                  self.native.x11_windows.get(token.target.window) == token.xid and
                  self.x11.owner_pid(token.xid) == token.surface_peer.process.pid) and
-                (token.adapter in (self.ibus, self.xim) and token.adapter.valid(token) if token.adapter else
+                (token.adapter in (self.ibus, self.xim, self.wayland) and token.adapter.valid(token) if token.adapter else
                  self.clients.get(token.sender) is token.client) and
                 token.client.matches(token.surface_peer))
 
@@ -131,6 +135,11 @@ class NativeContexts:
         if self.sequence >= 0xffffffff:
             self.unbind()
             completed('INPUT_SESSION_EXHAUSTED')
+            return
+        if token.adapter is self.wayland:
+            self.sequence += 1
+            self.pending = {'token': token, 'sequence': self.sequence, 'completed': completed}
+            self.wayland.commit(self.pending, text)
             return
         try:
             code = self.markers.enqueue(text, owner=token.sender, x11=bool(token.xid))
@@ -148,7 +157,7 @@ class NativeContexts:
 
     def take(self, sender, code, surface):
         operation = self.pending
-        owned = bool(operation and operation['code'] == code and operation['token'].sender == sender)
+        owned = bool(operation and operation.get('code') == code and operation['token'].sender == sender)
         token = operation['token'] if owned else None
         admitted = (owned and self.valid(token) and surface == token.surface and
                     (not token.xid or self.x11.focused_within(token.xid)))
@@ -221,6 +230,77 @@ class NativeContexts:
         self.unbind()
         for sender in tuple(self.clients):
             self.unregister(sender)
+
+    def native_changed(self):
+        if self.bound and self.bound.adapter is self.wayland and not self.valid(self.bound):
+            if self.pending:
+                self.finish('INPUT_CONTEXT_UNAVAILABLE')
+            else:
+                self.unbind()
+
+
+class NativeWayland:
+    """One negotiated text-input-v3 route beneath NativeContexts' transaction.
+
+    Callback barriers order delivery to the native client. They never claim a
+    renderer, document or filesystem acknowledgement; native application tests
+    independently verify the resulting text, editing and focus order.
+    """
+    def __init__(self, contexts):
+        self.contexts = contexts
+
+    def selected(self):
+        native = self.contexts.native
+        matches = [value for value in native.text_contexts.values()
+                   if native.focus and value.surface == native.focus.identity]
+        return matches[0] if len(matches) == 1 else None
+
+    def select(self, surface):
+        value = self.selected()
+        if value is None:
+            return None
+        peer = ApplicationPeer(self.contexts.tree, surface.process.pid, self.contexts.runtime)
+        return f'wayland/{value.identity}/{value.revision}', peer
+
+    def valid(self, token):
+        value = self.selected()
+        if not (value and token.text_context and value.identity == token.text_context.identity and
+                value.surface == token.focus.identity):
+            return False
+        return True
+
+    def commit(self, operation, text):
+        contexts, native, token = self.contexts, self.contexts.native, operation['token']
+
+        def issue(kind, completed):
+            if contexts.pending is not operation:
+                return
+            if not contexts.valid(token):
+                contexts.finish('INPUT_TARGET_UNAVAILABLE')
+                return
+            try:
+                request = native.text_operation(token.epoch, token.target, kind, completed,
+                    context=self.selected(), text=text if kind == 'text' else None)
+                operation['cancel_delivery'] = lambda: native.cancel_text_operation(request)
+            except (OSError, ValueError):
+                contexts.finish('INPUT_DELIVERY_FAILED')
+
+        def arrived(error, next_step):
+            if contexts.pending is not operation:
+                return
+            if error or not contexts.valid(token):
+                contexts.finish(error or 'INPUT_TARGET_UNAVAILABLE')
+            else:
+                next_step()
+
+        def after_text(error):
+            arrived(error, lambda: issue('barrier', lambda error: arrived(error, lambda: contexts.finish(None))))
+
+        # The compositor alone reads the live editable state at dispatch. A
+        # cached revision here would race the native callbacks of preceding
+        # ordered pointer input. Resource, surface and connection identities
+        # remain fixed; there is no retry after native rejection.
+        issue('barrier', lambda error: arrived(error, lambda: issue('text', after_text)))
 
 
 class NativeContextService:

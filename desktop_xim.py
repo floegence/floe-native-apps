@@ -113,7 +113,7 @@ class NativeXIMContexts(XIM):
         sender, released = self.sender(origin, context), (key.type & 127) == 3
         operation = self.contexts.pending
         owned = bool(operation and operation['token'].adapter is self and
-                     operation['token'].sender == sender and operation['code'] == 0)
+                     operation['token'].sender == sender and operation.get('code') == 0)
         if not owned:
             self.contexts.markers.key(0, released, False, owner=sender)
             return

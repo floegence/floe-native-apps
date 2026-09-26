@@ -65,6 +65,7 @@ struct probe {
     size_t used;
     uint64_t next_window;
     uint64_t next_surface;
+    uint64_t next_context;
     uint64_t connection;
     uint64_t last_connection;
     uint64_t scene;
@@ -122,6 +123,8 @@ struct text_context {
     struct wl_resource *resource;
     struct weston_surface *surface;
     uint32_t serial;
+    uint64_t identity, revision;
+    int pending_enabled;
     bool enabled;
     bool surrounding_pending;
     size_t surrounding_size;
@@ -304,17 +307,28 @@ static void scene_changed(struct probe *p) {
     emit(p, "scene %" PRIu64 " %" PRIu64 "\n", ++p->scene, input_window(p));
 }
 
+static void context_state(struct text_context *ctx) {
+    struct probe_surface *surface;
+    uint64_t identity = 0;
+    wl_list_for_each(surface, &ctx->probe->surfaces, link)
+        if (surface->surface == ctx->surface) { identity = surface->identity; break; }
+    emit(ctx->probe, "text-context %" PRIu64 " %" PRIu64 " %" PRIu64 " %u %u\n",
+        ctx->identity, ctx->revision, identity, ctx->enabled && identity != 0, ctx->serial);
+}
 static void context_focus(struct text_context *ctx, struct weston_surface *surface) {
     if (ctx->surface == surface) return;
     if (ctx->surface)
         zwp_text_input_v3_send_leave(ctx->resource, ctx->surface->resource);
     ctx->surface = NULL;
     ctx->enabled = false;
+    ctx->pending_enabled = -1;
+    ctx->revision++;
     if (surface && surface->resource && wl_resource_get_client(ctx->resource) ==
         wl_resource_get_client(surface->resource)) {
         ctx->surface = surface;
         zwp_text_input_v3_send_enter(ctx->resource, surface->resource);
     }
+    context_state(ctx);
 }
 static void focus_changed(struct wl_listener *listener, void *data) {
     (void)data;
@@ -331,17 +345,18 @@ static void resource_destroy(struct wl_client *client, struct wl_resource *resou
 }
 static void context_destroyed(struct wl_resource *resource) {
     struct text_context *ctx = wl_resource_get_user_data(resource);
+    emit(ctx->probe, "text-context-retired %" PRIu64 "\n", ctx->identity);
     wl_list_remove(&ctx->link); free(ctx);
 }
 static void context_enable(struct wl_client *client, struct wl_resource *resource) {
     (void)client;
     struct text_context *ctx = wl_resource_get_user_data(resource);
-    ctx->enabled = ctx->surface != NULL;
+    ctx->pending_enabled = 1;
 }
 static void context_disable(struct wl_client *client, struct wl_resource *resource) {
     (void)client;
     struct text_context *ctx = wl_resource_get_user_data(resource);
-    ctx->enabled = false;
+    ctx->pending_enabled = 0;
 }
 static void context_surrounding(struct wl_client *c, struct wl_resource *r,
                                 const char *text, int32_t cursor, int32_t anchor) {
@@ -366,6 +381,12 @@ static void context_commit(struct wl_client *c, struct wl_resource *r) {
     (void)c;
     struct text_context *ctx = wl_resource_get_user_data(r);
     ctx->serial++;
+    if (ctx->pending_enabled != -1) {
+        ctx->revision++;
+        ctx->enabled = ctx->pending_enabled && ctx->surface != NULL;
+        ctx->pending_enabled = -1;
+    }
+    context_state(ctx);
     emit(ctx->probe, "context %u %d\n", ctx->serial, ctx->enabled);
     if (ctx->surrounding_pending) {
         /* Protocol metadata only. Document bytes never enter diagnostic output. */
@@ -393,10 +414,14 @@ static void get_context(struct wl_client *client, struct wl_resource *manager,
     struct text_context *ctx = calloc(1, sizeof *ctx);
     if (!ctx) { wl_client_post_no_memory(client); return; }
     ctx->probe = p;
+    ctx->identity = ++p->next_context;
+    ctx->revision = 1;
+    ctx->pending_enabled = -1;
     ctx->resource = wl_resource_create(client, &zwp_text_input_v3_interface, 1, id);
     if (!ctx->resource) { free(ctx); wl_client_post_no_memory(client); return; }
     wl_resource_set_implementation(ctx->resource, &context_api, ctx, context_destroyed);
     wl_list_insert(&p->contexts, &ctx->link);
+    context_state(ctx);
     context_focus(ctx, weston_seat_get_keyboard(&p->seat)->focus);
 }
 static const struct zwp_text_input_manager_v3_interface manager_api = {
@@ -495,6 +520,12 @@ static void content_committed(struct wl_listener *listener, void *data) {
 static void content_destroyed(struct wl_listener *listener, void *data) {
     (void)data;
     struct probe_surface *content = wl_container_of(listener, content, destroy);
+    struct text_context *ctx;
+    wl_list_for_each(ctx, &content->probe->contexts, link) {
+        if (ctx->surface != content->surface) continue;
+        ctx->surface = NULL; ctx->enabled = false; ctx->pending_enabled = -1;
+        ctx->revision++; context_state(ctx);
+    }
     emit(content->probe, "surface-retired %" PRIu64 "\n", content->identity);
     if (content->probe->current)
         emit(content->probe, "damage %" PRIu64 " %" PRIu64 "\n",
@@ -584,7 +615,10 @@ static void surface_removed(struct weston_desktop_surface *desktop, void *data) 
     struct weston_surface *surface = weston_desktop_surface_get_surface(desktop);
     struct text_context *ctx;
     wl_list_for_each(ctx, &p->contexts, link) {
-        if (ctx->surface == surface) { ctx->surface = NULL; ctx->enabled = false; }
+        if (ctx->surface == surface) {
+            ctx->surface = NULL; ctx->enabled = false; ctx->pending_enabled = -1;
+            ctx->revision++; context_state(ctx);
+        }
     }
     if (p->current == surface) { release_input(p); p->current = NULL; }
     emit(p, "window-retired %" PRIu64 "\n", window->identity);
@@ -908,7 +942,7 @@ static int hex_digit(unsigned char digit) {
 }
 static bool decode_text(char *value, size_t *size) {
     size_t length = strlen(value);
-    if (!length || length % 2 || length > 32768) return false;
+    if (!length || length % 2 || length > 32000) return false;
     for (size_t i = 0; i < length; i += 2) {
         int high = hex_digit(value[i]), low = hex_digit(value[i + 1]);
         if (high < 0 || low < 0 || (high == 0 && low == 0)) return false;
@@ -937,6 +971,33 @@ static bool decode_text(char *value, size_t *size) {
     return true;
 }
 
+static bool submit_text(struct probe *p, char *text, bool encoded, uint64_t identity) {
+    size_t length = strlen(text);
+    if (encoded && !decode_text(text, &length)) return false;
+    struct text_context *ctx, *selected = NULL;
+    unsigned int count = 0;
+    wl_list_for_each(ctx, &p->contexts, link) {
+        if (ctx->enabled && ctx->surface == weston_seat_get_keyboard(&p->seat)->focus) {
+            selected = ctx; count++;
+        }
+    }
+    if (count != 1 || (identity && selected->identity != identity))
+        return false;
+    while (length) {
+        size_t size = length > 2048 ? 2048 : length;
+        if (size < length)
+            while (size && ((unsigned char)text[size] & 0xc0) == 0x80) size--;
+        if (!size) return false;
+        char saved = text[size];
+        text[size] = 0;
+        zwp_text_input_v3_send_commit_string(selected->resource, text);
+        zwp_text_input_v3_send_done(selected->resource, selected->serial);
+        text[size] = saved;
+        length -= size; text += size;
+    }
+    return true;
+}
+
 static void command(struct probe *p, char *line) {
     if (!strcmp(line, "display-query")) {
         /* The main compositor initializes Xwayland before dispatching control
@@ -951,7 +1012,7 @@ static void command(struct probe *p, char *line) {
         return;
     }
     unsigned int key, state;
-    uint64_t connection, identity, generation;
+    uint64_t connection, identity, generation, text_request, text_identity;
     int prefix = 0;
     double x, y;
     struct timespec time;
@@ -959,6 +1020,10 @@ static void command(struct probe *p, char *line) {
     if (sscanf(line, "scene-query %" SCNu64, &generation) == 1) {
         emit(p, "scene-at %" PRIu64 " %" PRIu64 " %" PRIu64 "\n",
                 generation, p->scene, input_window(p));
+        return;
+    }
+    if (sscanf(line, "cancel-barrier %" SCNu64, &identity) == 1) {
+        if (p->barrier_client && p->barrier_sequence == identity) p->barrier_client = NULL;
         return;
     }
     if (sscanf(line, "connection %" SCNu64, &connection) == 1) {
@@ -1014,7 +1079,8 @@ static void command(struct probe *p, char *line) {
         line += prefix;
         if (strncmp(line, "key ", 4) && strncmp(line, "button ", 7) &&
             strncmp(line, "motion ", 7) && strncmp(line, "scroll ", 7) &&
-            strncmp(line, "text ", 5) && strcmp(line, "close")) return;
+            strncmp(line, "text ", 5) && strncmp(line, "text-commit ", 12) &&
+            strncmp(line, "client-barrier ", 15) && strcmp(line, "close")) return;
     }
     if (sscanf(line, "client-barrier %" SCNu64, &identity) == 1 && identity) {
         struct probe_window *window = window_for_surface(p, p->current);
@@ -1070,35 +1136,14 @@ static void command(struct probe *p, char *line) {
             weston_pointer_has_focus_resource(pointer), wl_fixed_to_double(pointer->sx), wl_fixed_to_double(pointer->sy));
     } else if (!strcmp(line, "close") && p->current) {
         weston_desktop_surface_close(weston_surface_get_desktop_surface(p->current));
+    } else if (sscanf(line, "text-commit %" SCNu64 " %" SCNu64 " %n",
+               &text_request, &text_identity, &prefix) == 2 && prefix > 0 && text_request && text_identity) {
+        bool accepted = submit_text(p, line + prefix, true, text_identity);
+        emit(p, "text-%s %" PRIu64 "\n", accepted ? "dispatched" : "rejected", text_request);
     } else if (!strncmp(line, "text ", 5) || !strncmp(line, "text-hex ", 9)) {
         bool encoded = !strncmp(line, "text-hex ", 9);
         char *text = line + (encoded ? 9 : 5);
-        size_t length = strlen(text);
-        if (encoded && !decode_text(text, &length)) {
-            emit(p, "text-unavailable 0\n");
-            return;
-        }
-        struct text_context *ctx, *selected = NULL;
-        unsigned int count = 0;
-        wl_list_for_each(ctx, &p->contexts, link) {
-            if (ctx->enabled && ctx->surface == weston_seat_get_keyboard(&p->seat)->focus) {
-                selected = ctx; count++;
-            }
-        }
-        if (count == 1) {
-            while (length) {
-                size_t size = length > 2048 ? 2048 : length;
-                if (size < length)
-                    while (size && ((unsigned char)text[size] & 0xc0) == 0x80) size--;
-                char saved = text[size];
-                text[size] = 0;
-                zwp_text_input_v3_send_commit_string(selected->resource, text);
-                zwp_text_input_v3_send_done(selected->resource, selected->serial);
-                text[size] = saved;
-                length -= size; text += size;
-            }
-            emit(p, "text-queued %u\n", selected->serial);
-        } else emit(p, "text-unavailable %u\n", count);
+        emit(p, "text-%s 0\n", submit_text(p, text, encoded, 0) ? "queued" : "unavailable");
     }
     wl_display_flush_clients(p->compositor->wl_display);
 }

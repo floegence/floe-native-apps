@@ -128,7 +128,7 @@ class IBusContexts:
         if code != X11_CODE and not FIRST_CODE <= code < FIRST_CODE + SLOT_COUNT:
             return False
         operation = self.contexts.pending
-        owned = bool(operation and operation['code'] == code and operation['token'].adapter is self)
+        owned = bool(operation and operation.get('code') == code and operation['token'].adapter is self)
         peer = None
         try:
             if self.closed or not self.active or self.active[0] is not engine:

@@ -111,6 +111,15 @@ class NativeFocus:
     available: bool
 
 
+@dataclass(frozen=True)
+class NativeTextContext:
+    identity: int
+    revision: int
+    surface: int
+    enabled: bool
+    serial: int
+
+
 def integer(value, minimum=1, maximum=MAX_ID):
     if type(value) is not int or not minimum <= value <= maximum:
         raise ValueError('Invalid native integer')
@@ -135,6 +144,8 @@ class NativeDesktop:
         self.query, self.query_id = None, 0
         self.display_requested, self.display_query = False, None
         self.version, self.closed = None, False
+        self.text_contexts, self.last_text_context = {}, 0
+        self.text_request, self.last_text_request = None, 0
 
     def observe(self, line):
         if self.closed:
@@ -147,11 +158,43 @@ class NativeDesktop:
             if fields != ['native-version', '1'] or self.version is not None:
                 raise ValueError('Unsupported native version')
             self.version = 1
-        elif kind in ('client-barrier-done', 'client-barrier-cancelled'):
-            # Unpublished event-loop experiment; never completes helper input.
+        elif kind in ('client-barrier-done', 'client-barrier-cancelled', 'text-dispatched', 'text-rejected'):
             if self.version != 1 or len(fields) != 2:
-                raise ValueError('Invalid native barrier metadata')
-            integer(int(fields[1]))
+                raise ValueError('Invalid native text response')
+            sequence = integer(int(fields[1]))
+            request = self.text_request
+            # Cancelled requests can still have native replies in flight. They
+            # cannot complete a new operation, even after the same window ID.
+            if request and sequence == request[0]:
+                if request[1] != ('barrier' if kind.startswith('client-barrier-') else 'text'):
+                    raise ValueError('Native text response phase differs')
+                self.text_request = None
+                error = None if kind in ('client-barrier-done', 'text-dispatched') else 'INPUT_CONTEXT_UNAVAILABLE'
+                if self.epoch != request[2] or self.target is not request[3]:
+                    error = 'INPUT_TARGET_UNAVAILABLE'
+                request[4](error)
+        elif kind == 'text-context':
+            if self.version != 1 or len(fields) != 6:
+                raise ValueError('Invalid native text context')
+            identity, revision, surface = (integer(int(value), minimum) for value, minimum in
+                zip(fields[1:4], (1, 1, 0)))
+            enabled = bool(integer(int(fields[4]), 0, 1))
+            serial = integer(int(fields[5]), 0, 0xffffffff)
+            previous = self.text_contexts.get(identity)
+            if ((not previous and (identity <= self.last_text_context or len(self.text_contexts) >= 64)) or
+                    previous and revision < previous.revision or
+                    surface and surface not in self.surfaces or enabled and not surface):
+                raise ValueError('Retired or invalid native text context')
+            self.last_text_context = max(identity, self.last_text_context)
+            self.text_contexts[identity] = NativeTextContext(identity, revision, surface, enabled, serial)
+            if self.contexts:
+                self.contexts.native_changed()
+        elif kind == 'text-context-retired':
+            if len(fields) != 2:
+                raise ValueError('Invalid native text retirement')
+            self.text_contexts.pop(integer(int(fields[1])), None)
+            if self.contexts:
+                self.contexts.native_changed()
         elif kind == 'context-surrounding':
             # This unpublished probe exposes bounded protocol metadata only.
             # State progression is not a completed confirmed-text transaction.
@@ -311,6 +354,10 @@ class NativeDesktop:
         if self.closed:
             return
         self.closed, self.target, self.focus, self.epoch = True, None, None, 0
+        self.text_contexts.clear()
+        request, self.text_request = self.text_request, None
+        if request:
+            request[4]('INPUT_TARGET_UNAVAILABLE')
         if self.display_query:
             callback, self.display_query = self.display_query, None
             callback(None)
@@ -434,3 +481,28 @@ class NativeDesktop:
             if token:
                 return self.contexts, token
         return None
+
+    def text_operation(self, epoch, target, kind, completed, *, context=None, text=None):
+        if self.text_request is not None or kind not in ('barrier', 'text'):
+            raise ValueError('Native text operation is unavailable')
+        integer(self.last_text_request + 1)
+        self.last_text_request += 1
+        sequence = self.last_text_request
+        command = f'client-barrier {sequence}'
+        if kind == 'text':
+            command = f'text-commit {sequence} {context.identity} {text.encode("utf-8").hex()}'
+        request = (sequence, kind, epoch, target, completed)
+        self.text_request = request
+        try:
+            self.submit(epoch, target, [command])
+        except BaseException:
+            self.text_request = None
+            raise
+        return request
+
+    def cancel_text_operation(self, request):
+        if self.text_request is not request:
+            return
+        self.text_request = None
+        if not self.closed and request[1] == 'barrier':
+            self.send(f'cancel-barrier {request[0]}\n')
