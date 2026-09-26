@@ -35,6 +35,7 @@ class NativeContexts:
         self.native, self.tree, self.runtime = native, tree, runtime
         self.clients, self.markers = {}, MarkerTransactions()
         self.ibus = None
+        self.xim = None
         self.x11 = None
         self.bound, self.pending, self.sequence, self.closed = None, None, 0, False
 
@@ -84,10 +85,15 @@ class NativeContexts:
             surface_peer = ApplicationPeer(self.tree, pid, self.runtime)
             matching = [(sender, peer) for sender, peer in self.clients.items() if peer.matches(surface_peer)]
             adapter = None
-            if not matching and self.ibus:
-                adapter = self.ibus
-                selected = adapter.select(surface_peer)
-                matching = [selected] if selected else []
+            if not matching:
+                routes = [(candidate, selected) for candidate in (self.ibus, self.xim if xid else None)
+                          if candidate is not None and (selected := candidate.select(surface_peer))]
+                if len(routes) == 1:
+                    adapter, selected = routes[0]
+                    matching = [selected]
+                else:
+                    for _, (_, peer) in routes:
+                        peer.close()
             if len(matching) != 1:
                 surface_peer.close()
                 return None
@@ -110,7 +116,7 @@ class NativeContexts:
                 (not token.xid or self.x11 is not None and
                  self.native.x11_windows.get(token.target.window) == token.xid and
                  self.x11.owner_pid(token.xid) == token.surface_peer.process.pid) and
-                (token.adapter is self.ibus and token.adapter.valid(token) if token.adapter else
+                (token.adapter in (self.ibus, self.xim) and token.adapter.valid(token) if token.adapter else
                  self.clients.get(token.sender) is token.client) and
                 token.client.matches(token.surface_peer))
 
@@ -193,13 +199,17 @@ class NativeContexts:
             return
         if error:
             self.markers.revoke()
+            if operation.get('cancel_delivery'):
+                operation['cancel_delivery']()
         self.unbind()
         operation['completed'](error)
 
     def cancel(self, token):
         if self.pending and self.pending['token'] is token:
-            self.pending = None
+            operation, self.pending = self.pending, None
             self.markers.revoke()
+            if operation.get('cancel_delivery'):
+                operation['cancel_delivery']()
         if self.bound is token:
             self.unbind()
 

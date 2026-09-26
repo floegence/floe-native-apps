@@ -79,6 +79,8 @@ class XCBSource(GLib.Source):
 
 
 class XIM:
+    event_mask = 1 << 21
+
     def __init__(self):
         xcb = c.CDLL('libxcb.so.1')
         im = c.CDLL('libxcb-imdkit.so.1')
@@ -139,10 +141,11 @@ class XIM:
         self.server = function(im, 'xcb_im_create', P, [P, c.c_int, c.c_uint32, c.c_char_p,
             c.c_char_p, c.POINTER(Styles), P, P, c.POINTER(Encodings), c.c_uint32, Callback, P])(
             self.connection, number.value, wid, b'floe-client', locales,
-            c.byref(styles), None, None, c.byref(encodings), 1 << 21, self.callback, None)
+            c.byref(styles), None, None, c.byref(encodings), self.event_mask, self.callback, None)
         if not self.server or not function(im, 'xcb_im_open_im', c.c_bool, [P])(self.server):
             raise RuntimeError('Private XIM input unavailable')
-        function(im, 'xcb_im_set_use_sync_mode', None, [P, c.c_bool])(self.server, False)
+        self.sync_mode = function(im, 'xcb_im_set_use_sync_mode', None, [P, c.c_bool])
+        self.sync_mode(self.server, False)
         self.flush(self.connection)
         fd = function(xcb, 'xcb_get_file_descriptor', c.c_int, [P])(self.connection)
         self.source = XCBSource(self, fd)
@@ -165,7 +168,7 @@ class XIM:
         elif code in (52, 59) and self.focused == context:
             self.focused = None
         elif code == 60:
-            self.forward(server, context, argument)
+            self._forward_event(server, context, argument)
         elif code == 62 and self.pending and self.pending[0] == context:
             _, completed = self.pending
             if self.focused == context and self.fragments:
@@ -182,6 +185,9 @@ class XIM:
                 self.pending = None
                 self.fragments = []
                 completed('INPUT_CONTEXT_UNAVAILABLE')
+
+    def _forward_event(self, server, context, event):
+        self.forward(server, context, event)
 
     def _read(self, _fd, condition):
         if condition & (GLib.IO_HUP | GLib.IO_ERR):
