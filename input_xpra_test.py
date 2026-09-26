@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 from input_xpra import install_server_input
+from input_dispatch import InputDispatch
 
 
 class ServerBoundaryTest(unittest.TestCase):
@@ -23,14 +24,16 @@ class ServerBoundaryTest(unittest.TestCase):
             def cleanup_protocol(self, protocol): events.append('detach')
             def add_packet_handler(self, name, handler, main_thread=False):
                 (self._authenticated_ui_packet_handlers if main_thread else self._authenticated_packet_handlers)[name] = handler
-        class Dispatch:
-            def __init__(self, *_): pass
+        class Dispatch(InputDispatch):
             def enqueue(self, protocol, packet, handler=None):
                 events.append(('ordered', packet[0]))
                 if handler: handler(protocol, packet)
-            def close(self): events.append('closed')
-            def invalidate(self, protocol): events.append('invalidated')
-            def drain(self): events.append('drained')
+            def close(self):
+                events.append('closed')
+                super().close()
+            def invalidate(self, protocol):
+                events.append('invalidated')
+                super().invalidate(protocol)
         modules = {
             'xpra': SimpleNamespace(),
             'xpra.server.base': SimpleNamespace(ServerBase=Base),
@@ -38,7 +41,7 @@ class ServerBoundaryTest(unittest.TestCase):
             'xpra.os_util': SimpleNamespace(gi_import=lambda _: SimpleNamespace(timeout_add=None, source_remove=None, idle_add=lambda cb: cb())),
             'input_dispatch': SimpleNamespace(InputDispatch=Dispatch),
             'input_xim': SimpleNamespace(XIM=lambda: SimpleNamespace(marker=None, close=lambda: None)),
-            'input_context': SimpleNamespace(Contexts=lambda *_: None),
+            'input_context': SimpleNamespace(Contexts=lambda *_: SimpleNamespace(close=lambda: None)),
         }
         with patch.dict(sys.modules, modules):
             install_server_input('unix:fixture')
@@ -55,7 +58,7 @@ class ServerBoundaryTest(unittest.TestCase):
         self.assertNotIn('clipboard-token', server._authenticated_packet_handlers)
         self.assertIn('clipboard-token', server._authenticated_ui_packet_handlers)
         server.cleanup_protocol(None)
-        self.assertEqual(events[-3:], ['invalidated', 'detach', 'drained'])
+        self.assertEqual(events[-2:], ['invalidated', 'detach'])
         server.do_cleanup()
         self.assertEqual(events[-2:], ['closed', 'cleanup'])
 

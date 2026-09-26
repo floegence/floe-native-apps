@@ -116,10 +116,7 @@ def install_server_input(address):
         dispatcher = getattr(self, 'floe_input', None)
         if dispatcher:
             dispatcher.invalidate(protocol)
-        result = original_cleanup_protocol(self, protocol)
-        if dispatcher:
-            dispatcher.drain()
-        return result
+        return original_cleanup_protocol(self, protocol)
 
     # The aggregate server boundary is stable across Xpra 6's internal mixin
     # and subsystem reorganization. There is one input adapter and scheduler.

@@ -175,6 +175,13 @@ for(const editor of editors)editor.addEventListener('input',()=>{const body=JSON
                                     capture_output=True, text=True, timeout=40)
         if client.returncode or 'PASS ' + kind + ' ' not in client.stdout:
             raise RuntimeError('Application receipt assertion failed: ' + client.stdout + client.stderr)
+        # Detach and server cleanup use the real input scheduler. A passing
+        # document receipt must not hide a broken disconnect or shutdown path.
+        server.terminate()
+        server.wait(timeout=10)
+        log.flush()
+        if 'Traceback (most recent call last):' in (directory / 'server.log').read_text():
+            raise RuntimeError('Native input lifecycle produced an unexpected traceback')
         print(client.stdout.strip(), flush=True)
     except Exception:
         log.flush()
