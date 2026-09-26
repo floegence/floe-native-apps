@@ -57,14 +57,13 @@
     }
   ],
   "unproven_release_requirements": [
-    "All package, desktop and toolkit combinations in the approved acceptance matrix",
-    "One production launch planner and supervisor with authoritative sandbox ownership",
-    "Production shared scheduler, real window/process/context admission, cancellation, stale callbacks and reconnect isolation across all adapters",
-    "Reliable native text-input protocol completion or explicit unsupported admission; do not claim direct v3 sequencing from serial alone",
-    "Authenticated reconnectable frame and input API with complete window and popup lifecycle",
-    "Private portal document grants, concurrent sessions and sandbox-accessible paths",
-    "Pinned production component catalog, complete native architecture qualification and release validation",
-    "Pure Wayland Chromium confirmed-text ordering and the complete browser package matrix; native Chromium/Xwayland is qualified separately and must not imply text-input-v3 support"
+    "Complete durable helper entrypoint and public preparation/launch APIs: one production launch plan and supervisor, prepared graphics/input/portal resources, authoritative native readiness and Runtime-independent lifetime",
+    "Migrate remaining standalone sandbox fixture orchestration to the same installed helper; qualify cancellation, startup failures, service loss, stale callbacks, concurrent instances and reconnect with actual applications",
+    "Pure Wayland Chromium confirmed-text delivery and ordering with actual document receipts; native Chromium/Xwayland does not qualify text-input-v3, and serial/socket flush alone is not consumption evidence",
+    "Native cursor and clipboard transport, complete window/popup operations and the approved display/input regression matrix",
+    "The remaining DEB/RPM, AppImage, classic Snap, GNOME Xorg/Wayland, KDE Wayland, Xfce X11 and no-desktop combinations with dedicated actual systems and package identities",
+    "Pinned new production component identities, original source/license obligations, native amd64/arm64 artifact builds, install/cancellation/recovery/security checks and exact-tag release qualification",
+    "Formal upstream release, Go proxy/checksum/artifact readback and only then Redeven integration, targeted acceptance, deployment, local merge and task resource cleanup"
   ],
   "observed_prototypes": [
     {
@@ -293,6 +292,11 @@
       "case": "One helper-owned native input assembly on amd64 and arm64",
       "result": "The old helper deterministically left directly attached input contexts open at disposal. Toolkit service, IBus, XIM and X11 resource ownership now belong to the helper. Both architectures pass actual GTK4 Wayland/Xwayland, Qt6 Wayland, Qt5 Xwayland and XIM terminal receipts: 64 interleaved Unicode/ordinary-input operations plus a 14000-byte commit per case. Viewer detach retains services; disposal revokes contexts and closes only owned resources; failed D-Bus registration releases acquired names and objects. A retired input assembly cannot be recreated in the same native lifetime.",
       "limits": "Authenticated mixed-window fixtures use the unified assembly. Complete persistent launch/process orchestration and sandbox fixture migration, component activation, pure Wayland Chromium text and the full package/desktop matrix remain required."
+    },
+    {
+      "case": "Shared private portal and bus preparation with actual sandbox file dialogs",
+      "result": "A missing backend description previously stranded four partial directories. Official service commands, private configuration and the limited portal bus policy now have one reusable preparation owner. Failure and retry preserve existing instance resources and real Flatpak metadata. Strict Snap Firefox amd64 and Flatpak GTK/Qt arm64 pass repeated Unicode, visible remote save dialogs, actual file bytes and denial of out-of-scope portal interfaces after the fixture-only configuration path is removed.",
+      "limits": "Native fixture service startup still owns process orchestration. The durable helper entrypoint, installed component activation and complete package/desktop release matrix remain unfinished."
     }
   ],
   "rejected_assumptions": [

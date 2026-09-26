@@ -16,7 +16,7 @@ import time
 from gi.repository import Gio, GLib
 from application_processes import ProcessTree, identity
 from portal_probe import start_portals
-from bus_probe import configuration
+from desktop_portals import bus_configuration as configuration
 from source_proof import record_sources
 
 

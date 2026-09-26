@@ -288,6 +288,18 @@ original component is immutable, including when it is already installed. The
 shared preparer replaces the fixture's graphics assembler; artifact activation,
 process orchestration and complete support claims still require qualification.
 
+`DesktopPortals` owns the official portal command set, backend descriptions and
+private configuration beneath `DesktopServices`. The private bus admits only the
+reviewed file/settings, registry and request interfaces; unrelated portal calls
+remain denied even if an official implementation publishes them. Backend metadata
+and `portals.conf` share the same explicit directory, with no default fallback.
+The service environment cannot inherit host theme, loader or input-module paths.
+Flatpak identity lookup links to its real private runtime records without copying
+them. Failed preparation removes only newly created resources and never removes
+populated or pre-existing Flatpak records. Starting commands and confirming actual
+service owners remain launch responsibilities; this source preparer is not a
+completed durable helper or installed capability.
+
 `Dockerfile.qt-native` selects an explicitly pinned native `TARGET_ARCH` and
 `QT_MAJOR`, then verifies Debian's signed 20250224 snapshot. Qt 5 uses the 5.15.2 /
 glibc 2.31 baseline; Qt 6 uses 6.4.2 / glibc 2.36. `build_qt_native.sh` records the
