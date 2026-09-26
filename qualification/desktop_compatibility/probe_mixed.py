@@ -114,6 +114,9 @@ def main():
         assert compositor.poll() is None, "Compositor exited"
         display = re.search(pattern, log.read_text()).group(1)
         result["xwayland_display"] = display
+        wire.send('display-query\n')
+        wait(lambda: 'native-display ' + display in events, 'No authoritative X11 display startup receipt')
+        result['native_display_receipt'] = display
         if authorize:
             environment.update(authorize(display))
             denied = subprocess.run(['python3', '-c', 'from Xlib.display import Display; import sys; Display(sys.argv[1])', display],
