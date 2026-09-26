@@ -64,7 +64,7 @@
     "Authenticated reconnectable frame and input API with complete window and popup lifecycle",
     "Private portal document grants, concurrent sessions and sandbox-accessible paths",
     "Pinned production component catalog, complete native architecture qualification and release validation",
-    "Chromium X11/Wayland native confirmed-text admission and the complete browser package matrix"
+    "Chromium GTK3/Xpra and the complete browser package matrix"
   ],
   "observed_prototypes": [
     {
@@ -239,12 +239,19 @@
     {
       "case": "Unified native Qt and synchronous IBus across Wayland and Xwayland on amd64 and arm64",
       "result": "All 16 architecture/protocol/toolkit combinations pass actual GTK3, GTK4, Qt5 and Qt6 field contents: 64 alternating Unicode/Enter pairs and a 14000-byte commit per case. Xwayland uses its authoritative XWM resource and XRes owner, real X11 focus, and the same native marker owner. Completion requires the native release and toolkit processing acknowledgement. The shell activates through the Weston view API so XWM sets X11 focus. The fixture requires an actual application input context and identifiable widget pixels before stress. Mixed window, popup, decoration, capture backpressure and reconnect checks remain green.",
-      "limits": "These are unpublished native source builds and isolated application fixtures. XIM browser/terminal integration, pinned native module provenance, durable helper preparation, complete package/desktop qualification and release checks remain unfinished."
+      "limits": "These are unpublished native source builds and isolated application fixtures. XIM terminal integration is qualified separately; Chromium uses the GTK3/Xpra path. Pinned native module provenance, durable helper preparation, complete package/desktop qualification and release checks remain unfinished."
+    },
+    {
+      "case": "Chromium GTK3 module through the production Xpra qualification on amd64 and arm64",
+      "result": "The native Chromium executable runs with its normal sandbox through Xpra and the private GTK3 floe-client module. Actual page readiness, pointer focus, 40 exact Unicode/Enter pairs, selection replacement, deletion, clipboard, multiline input and a 15000-byte Unicode commit are acknowledged by the page and application receipts on both architectures.",
+      "input": "GTK3 floe-client with private GTK_IM_MODULE_FILE and GTK_PATH; this is the supported Chromium input contract and does not depend on XMODIFIERS/XIM.",
+      "evidence": "qualification/input.py, qualification/input_client.py, and the native Chromium Xpra qualification receipts under the release acceptance record",
+      "limits": "The disposable XIM probe does not qualify Chromium. Complete package, desktop, Wayland and release qualification remain governed by the separate matrix."
     },
     {
       "case": "Native XIM terminal qualification on amd64 and arm64",
       "result": "Actual xterm XIM contexts receive the reserved native marker through xcb-imdkit, with X11 resource/XRes ownership and real X11 focus. 64 Unicode commits with intervening ordinary keys and Enter plus a 14000-byte commit match terminal bytes exactly on both architectures. Marker release and XIM sync completion are both required; cancellation and context replacement reject late delivery.",
-      "limits": "Chromium X11 did not expose a usable XIM context in the disposable native build and is recorded as blocked pending its supported GTK/IBus input contract. This is not claimed as browser support. Pinned xcb-imdkit module provenance, production helper packaging and release qualification remain unfinished."
+      "limits": "This qualifies only terminal XIM. Chromium is not an XIM consumer; its supported path is the private GTK3 module launched through the Xpra qualification. Pinned xcb-imdkit module provenance, production helper packaging and release qualification remain unfinished."
     }
   ],
   "rejected_assumptions": [
