@@ -147,6 +147,19 @@ class NativeTests(unittest.TestCase):
         self.assertFalse(window['minimized'])
         self.assertEqual(self.native.target.window, 1)
 
+    def test_native_decoration_grab_keeps_viewport_coordinates_until_release(self):
+        target = self.native.target
+        self.native.observe('window-state 1 0 wayland 120 1000 700 8')
+        self.native.observe('window-state 1 0 wayland 120 800 600 8')
+        self.assertIs(self.native.target, target)
+        self.assertTrue(self.native.snapshot()['windows'][0]['interacting'])
+        self.native.deliver(1, target, {'kind': 'move', 'x': 750, 'y': 500})
+        self.native.observe('window-state 1 0 wayland 120 800 600 0')
+        self.assertIsNone(self.native.target)
+        self.native.observe('scene 2 1')
+        with self.assertRaises(ValueError):
+            self.native.deliver(1, target, {'kind': 'move', 'x': 750, 'y': 500})
+
     def test_popup_focus_cannot_keep_parent_input_or_reuse_a_destroyed_surface(self):
         previous = self.native.target
         self.native.observe('surface-instance 9')

@@ -208,11 +208,13 @@ def main():
             result['actual_scroll'][axis].append(fractional['scroll_' + axis])
         control.send(scrolling['window'], b'close\n')
         paint('scroll-restored', (19, 87, 155), absent=((179, 128, 26),))
+        from window_probe import qualify as qualify_windows
+        result['native_window_manipulation'] = qualify_windows(control, first, receipts[0], wait, paint)
         xwayland = start(["python3", str(root / "input_fixture.py"), "gtk4", str(receipts[1])],
                          {**environment, "GDK_BACKEND": "x11", "DISPLAY": display,
                           'FLOE_TEST_WINDOW_COLOR': '9b3113'}, "xwayland")
-        wait(lambda: receipts[1].exists() and events.count("window-added") == 4 and
-             sum(e.startswith("frame ") for e in events) == 4, "No distinct mapped Xwayland fixture")
+        wait(lambda: receipts[1].exists() and events.count("window-added") == 5 and
+             sum(e.startswith("frame ") for e in events) == 5, "No distinct mapped Xwayland fixture")
         second = int([e.split()[1] for e in events if e.startswith('window-instance ')][-1])
         paint("mixed", (155, 49, 19))
         control.send(second, b"motion 250 180\nbutton 272 1\nbutton 272 0\nkey 48 1\nkey 48 0\n")
@@ -272,7 +274,7 @@ def main():
         wait(lambda: "window-restored" in events, "Closing Xwayland did not restore Wayland")
         paint("restored", (19, 87, 155))
         identities = [int(e.split()[1]) for e in events if e.startswith("window-instance ")]
-        assert len(identities) == 4 and len(set(identities)) == 4
+        assert len(identities) == 5 and len(set(identities)) == 5
         wait(lambda: "connection-ready 2" in events, "Connection replacement was not admitted")
         # A retired native window and an old viewer generation must both reject
         # their late input. The following live key proves the stream progressed.
@@ -319,7 +321,7 @@ def main():
         result['native_controller_loss'] = {'mode': control_loss, 'application_preserved': True, 'modifier_released': True}
         result["actual"] = [json.loads(path.read_text()) for path in receipts]
         protocols = [line.split()[2] for line in events if line.startswith('window-protocol ')]
-        expected_protocols = ['wayland', 'wayland', 'wayland', 'x11'] + (['wayland'] if os.environ.get('FLOE_PROBE_CONTEXT') else [])
+        expected_protocols = ['wayland', 'wayland', 'wayland', 'wayland', 'x11'] + (['wayland'] if os.environ.get('FLOE_PROBE_CONTEXT') else [])
         assert protocols == expected_protocols, 'Compositor did not confirm actual surface protocols'
         result['actual_protocols'] = protocols
         result["passed"] = True

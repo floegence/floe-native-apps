@@ -102,6 +102,8 @@ elif kind in ('gtk4', 'gtk4-entry'):
             css = Gtk.CssProvider()
             css.load_from_data(b'.floe-popup { background: #13b749; padding: 20px; } '
                                b'.floe-dialog { background: #bf31bd; padding: 20px; } '
+                               b'.floe-move { background: #19a6c8; padding: 20px; } '
+                               b'.floe-resize { background: #d8a24b; padding: 20px; } '
                                b'.floe-scroll text { background: #b3801a; }')
             Gtk.StyleContext.add_provider_for_display(window.get_display(), css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
             def pressed(_controller, keyval, _keycode, _state):
@@ -184,6 +186,38 @@ elif kind in ('gtk4', 'gtk4-entry'):
                     window.unfullscreen()
                 elif keyval == Gdk.KEY_F10:
                     window.minimize()
+                elif keyval == Gdk.KEY_F11:
+                    dialog = Gtk.Window(title='Floe manipulation fixture', transient_for=window)
+                    dialog.set_default_size(420, 260)
+                    controls = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, homogeneous=True)
+                    for operation in ('move', 'resize'):
+                        button = Gtk.Button(label='Begin native ' + operation)
+                        button.add_css_class('floe-' + operation)
+                        button.set_vexpand(True)
+                        gesture = Gtk.GestureClick(button=1)
+                        gesture.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+                        def begin(controller, _count, _x, _y, operation=operation):
+                            event = controller.get_current_event()
+                            _ok, x, y = event.get_position()
+                            surface = dialog.get_surface()
+                            arguments = (event.get_device(), 1, x, y, event.get_time())
+                            if operation == 'move':
+                                surface.begin_move(*arguments)
+                            else:
+                                surface.begin_resize(Gdk.SurfaceEdge.SOUTH_EAST, *arguments)
+                            state['window_operation'] = operation
+                            write_state()
+                        gesture.connect('pressed', begin)
+                        button.add_controller(gesture)
+                        controls.append(button)
+                    dialog.set_child(controls)
+                    dialog.present()
+                    surface = dialog.get_surface()
+                    def sized(*_):
+                        state['manipulated_size'] = [surface.get_width(), surface.get_height()]
+                        write_state()
+                    surface.connect('notify::width', sized)
+                    surface.connect('notify::height', sized)
                 else:
                     return False
                 return True
