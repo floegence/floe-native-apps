@@ -283,6 +283,15 @@ PNG decoding and pixel checks precede frame acknowledgement, so geometry changes
 during inspection cannot authorize input using a retired frame. These are native
 application receipts, not evidence for a product viewer or a real client IME.
 
+The `chromium-v3` context probe isolates native text-input-v3 state progression.
+An empty `done` acknowledges each client commit; it does not acknowledge text
+consumption. Chromium otherwise withholds its next state update. Actual document
+and frame receipts show that repeated long tails can suppress surrounding-state
+updates even after new input, so those updates cannot complete ordered input.
+Each Wayland string also has a bounded native message size; a future long-text
+adapter must preserve UTF-8 and operation ordering across fragments. This probe
+is explicitly not the authenticated confirmed-text adapter or a release claim.
+
 `Dockerfile.ibus-portable` and `build_portable_ibus.sh` produce native musl IBus
 daemon, portal and library candidates from the pinned original source and reviewed
 context-origin patch. The disposable builder retains signed APKs and records its

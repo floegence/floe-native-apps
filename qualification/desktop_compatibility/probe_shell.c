@@ -367,6 +367,10 @@ static void context_commit(struct wl_client *c, struct wl_resource *r) {
              ctx->surrounding_size, ctx->surrounding_cursor, ctx->surrounding_anchor);
         ctx->surrounding_pending = false;
     }
+    /* Acknowledge the client's committed state even without input events.
+     * Chromium holds its next state update until this serial is acknowledged.
+     * This advances the protocol; it is not a text-consumption receipt. */
+    zwp_text_input_v3_send_done(ctx->resource, ctx->serial);
 }
 static const struct zwp_text_input_v3_interface context_api = {
     .destroy = resource_destroy, .enable = context_enable, .disable = context_disable,

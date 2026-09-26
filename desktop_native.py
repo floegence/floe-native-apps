@@ -147,6 +147,15 @@ class NativeDesktop:
             if fields != ['native-version', '1'] or self.version is not None:
                 raise ValueError('Unsupported native version')
             self.version = 1
+        elif kind == 'context-surrounding':
+            # This unpublished probe exposes bounded protocol metadata only.
+            # State progression is not a completed confirmed-text transaction.
+            if self.version != 1 or len(fields) != 5:
+                raise ValueError('Invalid text context metadata')
+            integer(int(fields[1]), 0, 0xffffffff)
+            size = integer(int(fields[2]), 0, 4000)
+            integer(int(fields[3]), 0, size)
+            integer(int(fields[4]), 0, size)
         elif kind == 'native-display':
             if self.version != 1 or len(fields) != 2 or self.display_query is None:
                 raise ValueError('Unexpected native display response')

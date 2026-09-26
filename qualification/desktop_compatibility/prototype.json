@@ -54,6 +54,12 @@
       "source": "https://github.com/ibus/ibus/releases/download/1.5.33/ibus-1.5.33.tar.gz",
       "use": "Read-only daemon credentials and original portal caller extension; native source builds and exact patch provenance in native/patches/ibus-1.5-context-source.json",
       "license": "LGPL-2.1-or-later"
+    },
+    {
+      "project": "Chromium text-input-v3",
+      "version": "145.0.7632.6",
+      "source": "https://github.com/chromium/chromium/blob/145.0.7632.6/ui/ozone/platform/wayland/host/zwp_text_input_v3.cc",
+      "use": "Reviewed client serial progression and identical surrounding-state suppression; source SHA-256 fc644a9f39abdd7e728ea48cebe1223856a53450ab6dbf917f93c891f832f81d, no third-party source copied"
     }
   ],
   "unproven_release_requirements": [
@@ -302,6 +308,11 @@
       "case": "Persistent private helper service ownership on native amd64 and arm64",
       "result": "A separate helper prepares the private bus, compositor, authorized capture, one input assembly and official file/settings portals. Actual GTK4 receipts preserve 32 Unicode/Enter pairs, detach/reconnect and modifier release. Native tests retain a window delayed 42 seconds, classify launcher exit 46 without losing status, reject failed support startup before execution and preserve application/document state after capture or bus loss. A noexec runtime exposed executable-resource placement; separate instance resources now pass on an actually restricted native runtime. Bus loss exposed interrupted disposal; repeated native cases now require every recorded child to have exited, and the task noexec mount is removed normally.",
       "limits": "Internal native assembly only. Public installed launch preparation, plan-driven package service realization, sandbox fixture migration, component activation, pure Wayland Chromium text and the complete package/desktop matrix remain unfinished."
+    },
+    {
+      "case": "Native arm64 Chromium 145 Wayland text-input-v3 state progression",
+      "result": "Empty done events unblock initial state; actual ASCII commit, following Enter and three bounded 2048-byte commits reach the document and captured frame. Actual GTK4 Wayland/Xwayland input regressions pass.",
+      "limits": "A repeated 4000-byte surrounding tail suppresses state updates despite actual new document input. Surrounding changes cannot be completion receipts. A single 6000-byte event exceeded the native Wayland message buffer and disconnected the client; long operations require UTF-8-safe fragments. No qualified v3 confirmed-text adapter or support claim."
     }
   ],
   "rejected_assumptions": [

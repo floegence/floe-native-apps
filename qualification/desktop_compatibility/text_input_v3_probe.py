@@ -35,11 +35,29 @@ def qualify(root, evidence, environment, control, wire, start, wait, paint):
         control.send(window, b'key 28 1\nkey 28 0\n')
         wait(lambda: json.loads(receipt.read_text()) == ['awire-proof\n', ''],
              'Actual Chromium document differs after protocol state and Enter')
-        committed = paint('chromium-v3-committed', marker=browser.commit_marker(['awire-proof\n', '']))
+        expected = ['awire-proof\n', '']
+        paint('chromium-v3-committed', marker=browser.commit_marker(expected))
+        # A surrounding-state acknowledgement must also be evaluated beyond the
+        # 4000-byte protocol window. Identical tails may suppress updates even
+        # when the document received another real commit.
+        # libwayland's standard event buffer also bounds each string message;
+        # an operation larger than that must be split at UTF-8 boundaries.
+        chunk = 'Z' * 2048
+        for index in range(3):
+            start_index = len(wire.events)
+            wire.send('text ' + chunk + '\n')
+            expected[0] += chunk
+            wait(lambda: json.loads(receipt.read_text()) == expected,
+                 'Repeated ASCII commit was not received')
+            committed = paint('chromium-v3-repeated-' + str(index), marker=browser.commit_marker(expected))
+        updates = [line for line in wire.events[start_index:] if line.startswith('context-surrounding ')]
+        assert not updates, 'Reevaluate the client receipt contract: a repeated-tail state update was observed'
         control.send(window, b'close\n')
         assert application.wait(timeout=10) == 0
         return {'protocol': 'wayland text-input-v3', 'browser': browser.version,
                 'actual': json.loads(receipt.read_text()), 'committed_frame': committed['sequence'],
+                'repeated_long_text_bytes': len(expected[0].encode()),
+                'actual_document_changed_without_surrounding_receipt': True,
                 'limits': 'ASCII state-progress prototype only; not a qualified confirmed-text adapter'}
     finally:
         browser.close()

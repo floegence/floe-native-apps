@@ -74,6 +74,16 @@ class NativeTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 native.observe('native-display ' + display)
 
+    def test_text_protocol_metadata_does_not_admit_or_complete_input(self):
+        target = self.native.target
+        self.native.observe('context-surrounding 0 3 3 3')
+        self.assertIs(self.native.target, target)
+        self.assertIsNone(self.native.contexts)
+        for line in ('context-surrounding 1 4001 0 0', 'context-surrounding 1 1 2 0',
+                     'context-surrounding 1 1 -1 0', 'context-surrounding 1 0'):
+            with self.subTest(line=line), self.assertRaises(ValueError):
+                self.native.observe(line)
+
     def setUp(self):
         self.sent = []
         self.frames = Frames()
