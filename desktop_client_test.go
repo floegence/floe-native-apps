@@ -35,7 +35,7 @@ func desktopTestConnection(t *testing.T) (*DesktopConnection, net.Conn) {
 	t.Helper()
 	client, peer := net.Pipe()
 	t.Cleanup(func() { _ = client.Close(); _ = peer.Close() })
-	return &DesktopConnection{conn: client, connection: 7}, peer
+	return &DesktopConnection{conn: client, connection: 7, writeTurn: make(chan struct{}, 1)}, peer
 }
 
 func desktopTestPNG(t *testing.T) []byte {
@@ -231,6 +231,58 @@ func TestDesktopClientWriteCancellationDoesNotReplay(t *testing.T) {
 	}
 	if _, err := client.Send(t.Context(), DesktopRequest{Method: "refresh"}); err == nil {
 		t.Fatal("partially written request left a usable stream")
+	}
+}
+
+func TestDesktopClientQueuedWriteCancellationPreservesActiveRequest(t *testing.T) {
+	client, peer := desktopTestConnection(t)
+	first := make(chan error, 1)
+	go func() {
+		id, err := client.Send(t.Context(), DesktopRequest{Method: "status"})
+		if err == nil && id != 1 {
+			err = ErrDesktopProtocol
+		}
+		first <- err
+	}()
+	// Leave the first writer blocked halfway through its packet header.
+	var prefix [2]byte
+	if _, err := io.ReadFull(peer, prefix[:]); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Millisecond)
+	defer cancel()
+	queued := make(chan error, 1)
+	go func() {
+		_, err := client.Send(ctx, DesktopRequest{Method: "refresh"})
+		queued <- err
+	}()
+	select {
+	case err := <-queued:
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("queued writer did not honor cancellation: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("cancelled request remained blocked behind another writer")
+	}
+	body, err := readDesktopPacket(io.MultiReader(bytes.NewReader(prefix[:]), peer), 1, desktopRequestLimit)
+	if err != nil || !bytes.Contains(body, []byte(`"method":"status"`)) {
+		t.Fatalf("queued cancellation damaged the active request: %s %v", body, err)
+	}
+	if err := <-first; err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		id, err := client.Send(t.Context(), DesktopRequest{Method: "refresh"})
+		if err == nil && id != 2 {
+			err = ErrDesktopProtocol
+		}
+		first <- err
+	}()
+	if _, err := readDesktopPacket(peer, 1, desktopRequestLimit); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-first; err != nil {
+		t.Fatalf("cancelled queued write consumed a sequence or left the stream unusable: %v", err)
 	}
 }
 

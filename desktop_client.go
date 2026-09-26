@@ -7,7 +7,6 @@ import (
 	"errors"
 	"io"
 	"net"
-	"sync"
 	"time"
 	"unicode/utf8"
 )
@@ -37,7 +36,7 @@ type DesktopEndpoint struct {
 // Native validation and ordering remain authoritative in the helper.
 type DesktopConnection struct {
 	conn       net.Conn
-	writeMu    sync.Mutex
+	writeTurn  chan struct{}
 	sequence   uint64
 	connection uint64
 }
@@ -138,8 +137,12 @@ func (c *DesktopConnection) Close() error { return c.conn.Close() }
 // A caller should use a separate continuous reader so frame delivery cannot
 // prevent it from consuming replies. Input ordering belongs to the helper.
 func (c *DesktopConnection) Send(ctx context.Context, request DesktopRequest) (uint64, error) {
-	c.writeMu.Lock()
-	defer c.writeMu.Unlock()
+	select {
+	case c.writeTurn <- struct{}{}:
+		defer func() { <-c.writeTurn }()
+	case <-ctx.Done():
+		return 0, ctx.Err()
+	}
 	if err := ctx.Err(); err != nil {
 		return 0, err
 	}
@@ -275,7 +278,7 @@ func writeDesktopPacket(w io.Writer, body []byte) error {
 }
 
 func authenticateDesktop(ctx context.Context, conn net.Conn, endpoint DesktopEndpoint) (*DesktopConnection, DesktopState, error) {
-	c := &DesktopConnection{conn: conn}
+	c := &DesktopConnection{conn: conn, writeTurn: make(chan struct{}, 1)}
 	handshake, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 	stop := context.AfterFunc(handshake, func() { _ = conn.Close() })
