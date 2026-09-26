@@ -204,6 +204,11 @@
       "case": "Native GTK IBus source and completion admission",
       "result": "Derived original daemon and portal report live connection credentials; current native surface, process/sandbox and synchronous context must agree. Shared authenticated input scheduler on native amd64 and arm64 delivers 64 alternating-field Unicode/Enter pairs plus 14000 bytes. Strict Snap Firefox amd64 and Flatpak GTK/Qt arm64 receive exact Unicode and save exact bytes using the same native context owner; Qt and GTK FileChooser use different adapters beneath that one owner.",
       "limits": "Pinned distribution components, production helper realization, full package/desktop matrix and release validation remain unfinished. No direct text-input-v3 completion or real client IME claim."
+    },
+    {
+      "case": "Scoped official document service with real Flatpak GTK and Qt",
+      "result": "Only the live prepared file portal and original admitted Flatpak executable may forward document calls. Initial files are held descriptor identities; actual remote chooser exports preserve original persistence flags and real host replies. Both editors save exact bytes, an unrelated process is denied, and a grant created before the facade survives its close. Qualification separately removes only identity-checked task document entries.",
+      "limits": "The reusable document authority is implemented and the broad fixture bridge removed. Prepared helper resource wiring, full desktop distribution and lifecycle matrix remain required before publication."
     }
   ],
   "rejected_assumptions": [
@@ -222,6 +227,7 @@
     "Weston 14 advertises wl_seat version 7 and cannot deliver high-resolution wheel metadata. GTK 4.14 discards the first smooth scroll delta in the tested scrolled window. The reviewed source patch enables standard value120 on seat version 8, with native legacy detents and per-target fractional remainder.",
     "A minimal Xwayland fixture needs the standard X11 socket directory; the native amd64 distribution fixture supplies a private tmpfs at /tmp/.X11-unix. Production resource realization must handle this prerequisite without depending on a pre-existing desktop.",
     "Selecting an IBus engine synchronously on the helper event loop blocks the factory callback on that same loop; startup must use the official asynchronous result before application launch.",
-    "IBus intentionally exits when its non-daemon parent is PID 1. Distribution fixtures use a real init process; the production parent-death behavior is retained."
+    "IBus intentionally exits when its non-daemon parent is PID 1. Distribution fixtures use a real init process; the production parent-death behavior is retained.",
+    "An Add reply may reuse a pre-existing host document grant. A facade must not treat every returned ID as newly owned or delete host grants when a viewer/helper closes; the official persistence flags remain authoritative."
   ]
 }

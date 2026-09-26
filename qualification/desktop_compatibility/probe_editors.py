@@ -14,7 +14,7 @@ import threading
 import time
 
 from gi.repository import Gio, GLib
-from application_processes import identity
+from application_processes import ProcessTree, identity
 from portal_probe import start_portals
 from bus_probe import configuration
 
@@ -25,6 +25,8 @@ def main():
     input_kind = os.environ.get("FLOE_PROBE_INPUT", "native")
     host_address = os.environ["DBUS_SESSION_BUS_ADDRESS"]
     document_bridge = None
+    document_authority, document_tree, launcher_tree = None, None, None
+    document_probe = None
     native = None
     evidence = Path(tempfile.mkdtemp(prefix=app_id + "-" + input_kind + "-", dir=root))
     runtime = Path(tempfile.mkdtemp(prefix="floe-editor-", dir=f"/run/user/{os.getuid()}"))
@@ -57,12 +59,38 @@ def main():
             time.sleep(0.02)
 
     def start(command, environment, name, **kwargs):
-        log = (evidence / (name + ".log")).open("w")
-        logs.append(log)
-        process = subprocess.Popen(command, env=environment, stdout=log, stderr=log,
-                                   start_new_session=True, **kwargs)
-        processes.append((process, identity(process.pid)[1], name))
-        return process
+        nonlocal launcher_tree
+        def spawn():
+            nonlocal launcher_tree
+            log = (evidence / (name + ".log")).open("w")
+            logs.append(log)
+            process = subprocess.Popen(command, env=environment, stdout=log, stderr=log,
+                                       start_new_session=True, **kwargs)
+            started = identity(process.pid)[1]
+            processes.append((process, started, name))
+            if document_authority and name == 'xdg-desktop-portal':
+                document_authority.bind_portal(document_tree.admit(process.pid))
+            if document_authority and name == 'application':
+                launcher_tree = ProcessTree(process.pid, started)
+                document_authority.bind_launcher(launcher_tree, shutil.which('flatpak'), [str(document)])
+            return process
+        if document_authority and name in ('xdg-desktop-portal', 'application'):
+            # Publish the exact native identity on the service event loop before
+            # it can dispatch the child's first document request.
+            finished, result = threading.Event(), []
+            def dispatch():
+                try:
+                    result.append(spawn())
+                except Exception as error:
+                    result.append(error)
+                finished.set()
+                return False
+            GLib.idle_add(dispatch)
+            assert finished.wait(5), 'Document service process binding did not complete'
+            if isinstance(result[0], Exception):
+                raise result[0]
+            return result[0]
+        return spawn()
 
     def owns(name):
         return connection.call_sync("org.freedesktop.DBus", "/org/freedesktop/DBus",
@@ -98,6 +126,8 @@ def main():
     def worker():
         try:
             wait_until(display.exists, "No private Wayland display")
+            if document_probe:
+                document_probe.assert_unrelated_denied(address)
             if os.environ.get("FLOE_PROBE_TRACE"):
                 start(["dbus-monitor", "--address", address], environment, "bus-trace")
             outcome['portal'] = start_portals(evidence, address, display, connection, start, wait_until,
@@ -294,8 +324,13 @@ def main():
         connection = Gio.DBusConnection.new_for_address_sync(address, flags, None, None)
         connection.set_exit_on_close(False)
         if os.environ.get("FLOE_PROBE_DOCUMENT_PORTAL"):
-            from document_bridge import DocumentBridge
-            document_bridge = DocumentBridge(connection, host_address, os.getpid(), app_id, evidence, record)
+            from desktop_documents import DocumentAuthority
+            from desktop_document_service import DocumentService
+            from document_probe import DocumentProbe
+            document_authority = DocumentAuthority()
+            document_tree = ProcessTree(os.getpid(), identity(os.getpid())[1])
+            document_probe = DocumentProbe(host_address, app_id, document)
+            document_bridge = DocumentService(connection, host_address, app_id, document_authority, record)
         os.environ["IBUS_ADDRESS"] = "unix:abstract=/tmp/ibus/dbus-floe-" + secrets.token_hex(12)
         environment = {**os.environ, "DBUS_SESSION_BUS_ADDRESS": address, "XDG_RUNTIME_DIR": str(runtime),
             "WAYLAND_DISPLAY": display.name, "GDK_BACKEND": "wayland", "QT_QPA_PLATFORM": "wayland",
@@ -366,7 +401,18 @@ def main():
         for log in logs:
             log.close()
         if document_bridge:
-            document_bridge.close()
+            try:
+                outcome['document_authority'] = document_probe.preserve_then_clean(document_bridge)
+            except Exception as error:
+                outcome['document_cleanup_error'] = str(error)
+                outcome['passed'] = False
+                document_bridge.close()
+        if document_authority:
+            document_authority.close()
+        if launcher_tree:
+            launcher_tree.close()
+        if document_tree:
+            document_tree.close()
         if native:
             native.close()
         left.close()
