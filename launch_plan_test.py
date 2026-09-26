@@ -1,11 +1,59 @@
 """Launch planning must finish and bind its inputs before any app is executed."""
 import copy
+import os
 from pathlib import Path
+import shlex
 import tempfile
 import sys
+from types import SimpleNamespace
 import unittest
+from unittest.mock import patch
 
 import launch_plan
+
+
+class LaunchTokenTests(unittest.TestCase):
+    def test_multicall_shell_is_not_an_environment_wrapper(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            binary = root / 'busybox'
+            binary.write_bytes(b'multicall identity fixture')
+            binary.chmod(0o700)
+            for name in ('sh', 'env'):
+                (root / name).symlink_to(binary)
+            script = root / 'arguments.sh'
+            script.write_text('exit 0\n')
+            app = SimpleNamespace(get_string=lambda key: str(root) if key == 'Path'
+                                  else f'"{root}/sh" "{script}"')
+            glib = SimpleNamespace(shell_parse_argv=lambda value: (True, shlex.split(value)))
+            realpath = os.path.realpath
+            def resolve(path):
+                return realpath(root / 'env' if path == '/usr/bin/env' else path)
+            with patch('launch_plan.os.path.realpath', side_effect=resolve):
+                executable, tokens, environment = launch_plan.launch_tokens(app, {'PATH': directory}, glib)
+            self.assertEqual(executable, str(root / 'sh'))
+            self.assertEqual(tokens, [str(root / 'sh'), str(script)])
+            self.assertEqual(environment, {'PATH': directory})
+
+    def test_multicall_env_retains_its_own_applet_semantics(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            binary = root / 'busybox'
+            binary.write_bytes(b'multicall identity fixture')
+            binary.chmod(0o700)
+            for name in ('sh', 'env'):
+                (root / name).symlink_to(binary)
+            app = SimpleNamespace(get_string=lambda key: str(root) if key == 'Path'
+                                  else f'"{root}/env" DESKTOP_HINT=fixture -- sh -c "exit 0"')
+            glib = SimpleNamespace(shell_parse_argv=lambda value: (True, shlex.split(value)))
+            realpath = os.path.realpath
+            def resolve(path):
+                return realpath(root / 'env' if path == '/usr/bin/env' else path)
+            with patch('launch_plan.os.path.realpath', side_effect=resolve):
+                executable, tokens, environment = launch_plan.launch_tokens(app, {'PATH': directory}, glib)
+            self.assertEqual(executable, str(root / 'sh'))
+            self.assertEqual(tokens, ['sh', '-c', 'exit 0'])
+            self.assertEqual(environment, {'PATH': directory, 'DESKTOP_HINT': 'fixture'})
 
 
 class LaunchPlanTests(unittest.TestCase):
