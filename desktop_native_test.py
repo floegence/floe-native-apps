@@ -77,10 +77,14 @@ class NativeTests(unittest.TestCase):
     def test_text_protocol_metadata_does_not_admit_or_complete_input(self):
         target = self.native.target
         self.native.observe('context-surrounding 0 3 3 3')
+        self.native.observe('client-barrier-done 1')
+        self.native.observe('client-barrier-cancelled 2')
         self.assertIs(self.native.target, target)
         self.assertIsNone(self.native.contexts)
         for line in ('context-surrounding 1 4001 0 0', 'context-surrounding 1 1 2 0',
-                     'context-surrounding 1 1 -1 0', 'context-surrounding 1 0'):
+                     'context-surrounding 1 1 -1 0', 'context-surrounding 1 0',
+                     'client-barrier-done 0', 'client-barrier-done 1 2',
+                     'client-barrier-cancelled -1'):
             with self.subTest(line=line), self.assertRaises(ValueError):
                 self.native.observe(line)
 

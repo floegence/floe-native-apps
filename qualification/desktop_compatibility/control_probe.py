@@ -11,7 +11,7 @@ from pathlib import Path
 import secrets
 import socket
 import struct
-from threading import Event, Thread
+from threading import Condition, Event, Thread
 
 from gi.repository import GLib
 from desktop_control import GLibLoop, encode_message
@@ -22,6 +22,7 @@ class ControlWire:
     """Exercise the real native socket owner from compositor startup onward."""
     def __init__(self, connection, events):
         self.events, self.loop = events, GLibLoop()
+        self.observed = Condition()
         self.helper = DesktopHelper(connection, self.loop)
         self.native, self.channel = self.helper.native, self.helper.channel
         self.channel.observed = self.observe
@@ -30,8 +31,16 @@ class ControlWire:
         self.thread.start()
 
     def observe(self, line):
-        self.events.append(line)
-        self.native.observe(line)
+        with self.observed:
+            self.events.append(line)
+            self.native.observe(line)
+            self.observed.notify_all()
+
+    def wait_record(self, expected, timeout=15):
+        # Protocol experiments must not gain accidental ordering from the
+        # fixture's normal polling interval. Wake on the actual native record.
+        with self.observed:
+            return self.observed.wait_for(lambda: expected in self.events, timeout)
 
     def invoke(self, callback):
         completed, result = Event(), []

@@ -309,9 +309,17 @@ An empty `done` acknowledges each client commit; it does not acknowledge text
 consumption. Chromium otherwise withholds its next state update. Actual document
 and frame receipts show that repeated long tails can suppress surrounding-state
 updates even after new input, so those updates cannot complete ordered input.
-Each Wayland string also has a bounded native message size; a future long-text
-adapter must preserve UTF-8 and operation ordering across fragments. This probe
-is explicitly not the authenticated confirmed-text adapter or a release claim.
+Each Wayland string also has a bounded native message size. The native probe
+fragments valid Unicode at UTF-8 boundaries and investigates xdg-shell ping/pong
+as a callback-dispatch boundary around text, Enter and field changes. A pong
+does not acknowledge renderer or document consumption. The actual document and
+its painted marker remain the acceptance authority, including the optional
+`FLOE_PROBE_SLOW_RENDERER=1` fixture that stalls each pointer handler for 200 ms.
+Protocol waits wake on records, without polling delays between operations. The
+fixture keeps one document receipt in flight and coalesces obsolete snapshots;
+its final slow-renderer wait allows the intentionally queued application work
+to finish without adding delays to input delivery. This probe is explicitly not
+the authenticated confirmed-text adapter or a release claim.
 
 `Dockerfile.ibus-portable` and `build_portable_ibus.sh` produce native musl IBus
 daemon, portal and library candidates from the pinned original source and reviewed

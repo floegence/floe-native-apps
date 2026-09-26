@@ -5,6 +5,7 @@ ordering. It is not authenticated confirmed-text acceptance or a universal
 production completion contract. Actual page values remain the result authority.
 """
 import json
+import os
 
 from chromium_context_probe import ChromiumPage
 
@@ -12,7 +13,8 @@ from chromium_context_probe import ChromiumPage
 def qualify(root, evidence, environment, control, wire, start, wait, paint):
     del root
     receipt = evidence / 'chromium-v3.json'
-    browser = ChromiumPage(evidence, receipt, 'wayland')
+    slow_pointer = os.environ.get('FLOE_PROBE_SLOW_RENDERER') == '1'
+    browser = ChromiumPage(evidence, receipt, 'wayland', slow_pointer=slow_pointer)
     first_event = len(wire.events)
     previous = wire.native.target
     try:
@@ -53,27 +55,39 @@ def qualify(root, evidence, environment, control, wire, start, wait, paint):
         updates = [line for line in wire.events[start_index:] if line.startswith('context-surrounding ')]
         assert not updates, 'Reevaluate the client receipt contract: a repeated-tail state update was observed'
         sequence = 0
+        def submit(commands):
+            before = control.request_id
+            control.send(window, commands)
+            # Drain actual transport receipts so frame backpressure cannot
+            # obscure this native protocol experiment. "submitted" is not an
+            # application-consumption acknowledgement.
+            for request in range(before + 1, control.request_id + 1):
+                assert control.response(request).get('result') == 'submitted'
         def barrier():
             nonlocal sequence
             sequence += 1
             wire.send('client-barrier ' + str(sequence) + '\n')
-            wait(lambda: 'client-barrier-done ' + str(sequence) in wire.events,
-                 'Native client event-loop barrier did not complete')
-        control.send(window, b'key 29 1\nkey 30 1\nkey 30 0\nkey 29 0\nkey 14 1\nkey 14 0\n')
+            assert wire.wait_record('client-barrier-done ' + str(sequence)), \
+                'Native client event-loop barrier did not complete'
+        submit(b'key 29 1\nkey 30 1\nkey 30 0\nkey 29 0\nkey 14 1\nkey 14 0\n')
         barrier()
         expected = ['', '']
-        for index, value in enumerate(['中文日本語한글🙂👩🏽‍💻e\u0301𠮷'] * 64 + ['界🙂' * 2000]):
+        wait(lambda: json.loads(receipt.read_text()) == expected,
+             'Chromium fixture did not clear its initial protocol experiment')
+        values = ['中文日本語한글🙂👩🏽‍💻e\u0301𠮷'] * 64 + ['界🙂' * 2000]
+        for index, value in enumerate(values):
             field = index % 2
-            control.send(window, (f'motion {700 if field else 200} 120\nbutton 272 1\nbutton 272 0\n'
+            submit((f'motion {700 if field else 200} 120\nbutton 272 1\nbutton 272 0\n'
                 'key 29 1\nkey 107 1\nkey 107 0\nkey 29 0\n').encode())
             barrier()
             wire.send('text-hex ' + value.encode().hex() + '\n')
             barrier()
-            control.send(window, b'key 28 1\nkey 28 0\n')
+            submit(b'key 28 1\nkey 28 0\n')
             barrier()
             expected[field] += value + '\n'
         wait(lambda: json.loads(receipt.read_text()) == expected,
-             'Actual Chromium Unicode/focus/Enter order differs after native barriers')
+             'Actual Chromium Unicode/focus/Enter order differs after native barriers',
+             timeout=45 if slow_pointer else 15)
         committed = paint('chromium-v3-ordered', marker=browser.commit_marker(expected))
         control.send(window, b'close\n')
         assert application.wait(timeout=10) == 0
@@ -81,7 +95,8 @@ def qualify(root, evidence, environment, control, wire, start, wait, paint):
                 'actual': json.loads(receipt.read_text()), 'committed_frame': committed['sequence'],
                 'repeated_long_text_bytes': 6156,
                 'actual_document_changed_without_surrounding_receipt': True,
-                'event_loop_barriers': sequence, 'unicode_transactions': 65,
+                'event_loop_barriers': sequence, 'unicode_transactions': len(values),
+                'renderer_pointer_stall_ms': 200 if slow_pointer else 0,
                 'limits': 'Native protocol investigation only; not an authenticated confirmed-text adapter or universal client receipt'}
     finally:
         browser.close()

@@ -73,6 +73,8 @@ struct probe {
     struct window_grab *grab;
     double wheel_remainder[2];
     int32_t wheel_detents[2];
+    struct weston_desktop_client *barrier_client;
+    uint64_t barrier_sequence, barrier_window, barrier_connection;
 };
 struct probe_window {
     struct wl_list link;
@@ -179,6 +181,10 @@ static void emit(struct probe *p, const char *format, ...) {
 }
 
 static void release_input(struct probe *p) {
+    if (p->barrier_client) {
+        emit(p, "client-barrier-cancelled %" PRIu64 "\n", p->barrier_sequence);
+        p->barrier_client = NULL;
+    }
     struct timespec time;
     weston_compositor_get_time(&time);
     for (unsigned int key = 0; key < 2080; key++) {
@@ -565,6 +571,10 @@ static void surface_removed(struct weston_desktop_surface *desktop, void *data) 
     struct probe *p = data;
     struct probe_window *window = weston_desktop_surface_get_user_data(desktop);
     window->retiring = true;
+    if (p->barrier_client && p->barrier_window == window->identity) {
+        emit(p, "client-barrier-cancelled %" PRIu64 "\n", p->barrier_sequence);
+        p->barrier_client = NULL;
+    }
     struct probe_window *parent = window->parent, *child;
     wl_list_for_each(child, &p->windows, link)
         if (child->parent == window) {
@@ -864,6 +874,22 @@ static void surface_position(struct weston_desktop_surface *desktop, int32_t *x,
     struct weston_coord_global position = weston_view_get_pos_offset_global(window->view);
     *x = (int32_t)position.c.x; *y = (int32_t)position.c.y;
 }
+static void client_pong(struct weston_desktop_client *client, void *data) {
+    struct probe *p = data;
+    if (p->barrier_client != client) return;
+    bool valid = p->barrier_window == input_window(p) &&
+                 p->barrier_connection == p->connection;
+    p->barrier_client = NULL;
+    /* This acknowledges native callback dispatch only. A renderer or toolkit
+     * may still have queued document work; qualification checks actual values. */
+    emit(p, "client-barrier-%s %" PRIu64 "\n", valid ? "done" : "cancelled", p->barrier_sequence);
+}
+static void client_ping_timeout(struct weston_desktop_client *client, void *data) {
+    struct probe *p = data;
+    if (p->barrier_client != client) return;
+    p->barrier_client = NULL;
+    emit(p, "client-barrier-cancelled %" PRIu64 "\n", p->barrier_sequence);
+}
 static const struct weston_desktop_api desktop_api = {
     .struct_size = sizeof desktop_api,
     .surface_added = surface_added, .surface_removed = surface_removed,
@@ -872,7 +898,44 @@ static const struct weston_desktop_api desktop_api = {
     .minimized_requested = surface_minimized,
     .move = surface_move, .resize = surface_resize,
     .get_position = surface_position,
+    .pong = client_pong, .ping_timeout = client_ping_timeout,
 };
+
+static int hex_digit(unsigned char digit) {
+    if (digit >= '0' && digit <= '9') return digit - '0';
+    if (digit >= 'a' && digit <= 'f') return digit - 'a' + 10;
+    return -1;
+}
+static bool decode_text(char *value, size_t *size) {
+    size_t length = strlen(value);
+    if (!length || length % 2 || length > 32768) return false;
+    for (size_t i = 0; i < length; i += 2) {
+        int high = hex_digit(value[i]), low = hex_digit(value[i + 1]);
+        if (high < 0 || low < 0 || (high == 0 && low == 0)) return false;
+        value[i / 2] = (char)((high << 4) | low);
+    }
+    length /= 2;
+    value[length] = 0;
+    for (size_t i = 0; i < length;) {
+        unsigned char first = value[i++];
+        unsigned int count, code;
+        if (first < 0x80) continue;
+        if (first >= 0xc2 && first <= 0xdf) { count = 1; code = first & 0x1f; }
+        else if (first >= 0xe0 && first <= 0xef) { count = 2; code = first & 0x0f; }
+        else if (first >= 0xf0 && first <= 0xf4) { count = 3; code = first & 7; }
+        else return false;
+        if (count > length - i) return false;
+        for (unsigned int j = 0; j < count; j++) {
+            unsigned char next = value[i++];
+            if ((next & 0xc0) != 0x80) return false;
+            code = (code << 6) | (next & 0x3f);
+        }
+        if ((count == 2 && code < 0x800) || (count == 3 && code < 0x10000) ||
+            (code >= 0xd800 && code <= 0xdfff) || code > 0x10ffff) return false;
+    }
+    *size = length;
+    return true;
+}
 
 static void command(struct probe *p, char *line) {
     if (!strcmp(line, "display-query")) {
@@ -953,7 +1016,18 @@ static void command(struct probe *p, char *line) {
             strncmp(line, "motion ", 7) && strncmp(line, "scroll ", 7) &&
             strncmp(line, "text ", 5) && strcmp(line, "close")) return;
     }
-    if (sscanf(line, "capture-authorize %u", &key) == 1) {
+    if (sscanf(line, "client-barrier %" SCNu64, &identity) == 1 && identity) {
+        struct probe_window *window = window_for_surface(p, p->current);
+        if (!p->barrier_client && window && input_window(p) == window->identity) {
+            struct weston_desktop_client *client = weston_desktop_surface_get_client(window->desktop);
+            if (weston_desktop_client_ping(client) == 0) {
+                p->barrier_client = client;
+                p->barrier_sequence = identity;
+                p->barrier_window = window->identity;
+                p->barrier_connection = p->connection;
+            } else emit(p, "client-barrier-cancelled %" PRIu64 "\n", identity);
+        } else emit(p, "client-barrier-cancelled %" PRIu64 "\n", identity);
+    } else if (sscanf(line, "capture-authorize %u", &key) == 1) {
         p->capture_pid = key;
         emit(p, "capture-authorized %u\n", key);
     } else if (sscanf(line, "key %u %u", &key, &state) == 2 && state <= 1 && key < 2080) {
@@ -996,7 +1070,14 @@ static void command(struct probe *p, char *line) {
             weston_pointer_has_focus_resource(pointer), wl_fixed_to_double(pointer->sx), wl_fixed_to_double(pointer->sy));
     } else if (!strcmp(line, "close") && p->current) {
         weston_desktop_surface_close(weston_surface_get_desktop_surface(p->current));
-    } else if (!strncmp(line, "text ", 5)) {
+    } else if (!strncmp(line, "text ", 5) || !strncmp(line, "text-hex ", 9)) {
+        bool encoded = !strncmp(line, "text-hex ", 9);
+        char *text = line + (encoded ? 9 : 5);
+        size_t length = strlen(text);
+        if (encoded && !decode_text(text, &length)) {
+            emit(p, "text-unavailable 0\n");
+            return;
+        }
         struct text_context *ctx, *selected = NULL;
         unsigned int count = 0;
         wl_list_for_each(ctx, &p->contexts, link) {
@@ -1005,8 +1086,17 @@ static void command(struct probe *p, char *line) {
             }
         }
         if (count == 1) {
-            zwp_text_input_v3_send_commit_string(selected->resource, line + 5);
-            zwp_text_input_v3_send_done(selected->resource, selected->serial);
+            while (length) {
+                size_t size = length > 2048 ? 2048 : length;
+                if (size < length)
+                    while (size && ((unsigned char)text[size] & 0xc0) == 0x80) size--;
+                char saved = text[size];
+                text[size] = 0;
+                zwp_text_input_v3_send_commit_string(selected->resource, text);
+                zwp_text_input_v3_send_done(selected->resource, selected->serial);
+                text[size] = saved;
+                length -= size; text += size;
+            }
             emit(p, "text-queued %u\n", selected->serial);
         } else emit(p, "text-unavailable %u\n", count);
     }

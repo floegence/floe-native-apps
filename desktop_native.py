@@ -147,6 +147,11 @@ class NativeDesktop:
             if fields != ['native-version', '1'] or self.version is not None:
                 raise ValueError('Unsupported native version')
             self.version = 1
+        elif kind in ('client-barrier-done', 'client-barrier-cancelled'):
+            # Unpublished event-loop experiment; never completes helper input.
+            if self.version != 1 or len(fields) != 2:
+                raise ValueError('Invalid native barrier metadata')
+            integer(int(fields[1]))
         elif kind == 'context-surrounding':
             # This unpublished probe exposes bounded protocol metadata only.
             # State progression is not a completed confirmed-text transaction.

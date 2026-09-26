@@ -34,8 +34,8 @@ def main():
     wire = ControlWire(left, events)
     capture_command = [str(root / 'frame-probe/frame-probe')]
 
-    def wait(predicate, reason):
-        deadline = time.monotonic() + 15
+    def wait(predicate, reason, timeout=15):
+        deadline = time.monotonic() + timeout
         while not predicate():
             if time.monotonic() > deadline:
                 raise RuntimeError(reason)
