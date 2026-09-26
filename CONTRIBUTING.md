@@ -262,7 +262,8 @@ Wayland/browser support claim.
 `qualification/desktop_compatibility/session_probe.py` runs this owner as an
 independent process. Its viewer knows only authenticated IPC, decodes actual PNG
 frames and checks toolkit document bytes. Native cases include ordered Unicode
-and Enter, detach/reconnect and modifier release, a 42-second first window,
+and Enter in GTK4 and pure Wayland Chromium, detach/reconnect and modifier
+release, a 42-second first window,
 launcher exit 46, support failure before execution and capture/private-bus loss
 without application termination. A restrictive task-only runtime mount verifies
 that no generated executable lives on a noexec runtime. Cleanup must finish even

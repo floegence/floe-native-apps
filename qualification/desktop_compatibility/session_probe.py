@@ -124,7 +124,7 @@ def main():
         helper(root, Path(sys.argv[3]), Path(sys.argv[4]), sys.stdin.readline().strip(), sys.argv[5])
         return
     mode = sys.argv[2] if len(sys.argv) > 2 else 'normal'
-    assert mode in ('normal', 'slow-window', 'launcher-failure', 'support-failure', 'capture-loss', 'bus-loss', 'runtime-noexec')
+    assert mode in ('normal', 'chromium', 'slow-window', 'launcher-failure', 'support-failure', 'capture-loss', 'bus-loss', 'runtime-noexec')
     from control_probe import ControlClient
     evidence = Path(tempfile.mkdtemp(prefix='persistent-session-', dir=root))
     runtime = Path(tempfile.mkdtemp(prefix='floe-session-', dir=f'/run/user/{os.getuid()}'))
@@ -132,12 +132,17 @@ def main():
     receipt = evidence / 'document.json'
     desktop = evidence / 'fixture.desktop'
     executable = evidence / 'launch.py'
+    browser = None
+    if mode == 'chromium':
+        from chromium_context_probe import ChromiumPage
+        browser = ChromiumPage(evidence, receipt, 'wayland')
     prefix = 'import sys, time, runpy\n'
     if mode == 'slow-window':
         prefix += 'time.sleep(42)\n'
     elif mode == 'launcher-failure':
         prefix += 'sys.exit(46)\n'
-    executable.write_text(prefix + f'sys.argv = {[str(root / "input_fixture.py"), "gtk4", str(receipt)]!r}\n' +
+    executable.write_text(('import os\n' + f'command = {browser.command!r}\nos.execv(command[0], command)\n') if browser else
+        prefix + f'sys.argv = {[str(root / "input_fixture.py"), "gtk4", str(receipt)]!r}\n' +
         f'runpy.run_path({str(root / "input_fixture.py")!r}, run_name="__main__")\n')
     desktop.write_text('[Desktop Entry]\nType=Application\nName=Floe persistent test\nExec=' +
         f'"{sys.executable}" "{executable}"\n')
@@ -198,7 +203,8 @@ def main():
         if mode == 'slow-window':
             assert client.response(client.request('status'))['result']['state'] == 'waiting'
         began = time.monotonic()
-        wait(receipt.exists, 'No application document receipt', 50 if mode == 'slow-window' else 25)
+        wait((lambda: browser.ready) if browser else receipt.exists,
+             'No application readiness receipt', 50 if mode == 'slow-window' else 25)
         result['first_window_wait_seconds'] = time.monotonic() - began
         if mode == 'slow-window':
             assert result['first_window_wait_seconds'] > 40
@@ -209,7 +215,10 @@ def main():
         target = {'connection': client.generation, 'window': status['window'], 'generation': status['generation']}
         denied = client.request('input', **target, operation={'kind': 'key', 'code': 45, 'pressed': True})
         assert client.response(denied)['error'] == 'INPUT_TARGET_UNAVAILABLE'
-        frame = client.paint('first-frame', (19, 87, 155))[-1]
+        def paint(stage, values=None):
+            options = {'marker': browser.commit_marker(values) if values else (59, 117, 159)} if browser else {'expected': (19, 87, 155)}
+            return client.paint(stage, **options)
+        frame = paint('first-frame')[-1]
         result['frames'] = [frame]
         target = {'connection': client.generation, 'window': frame['window'], 'generation': frame['generation']}
         def input(operation):
@@ -236,7 +245,7 @@ def main():
         assert process.poll() is None and identity(process.pid)[1] == started
         client.reconnect()
         assert client.generation > old_connection
-        frame = client.paint('after-reconnect', (19, 87, 155))[-1]
+        frame = paint('after-reconnect', [expected, ''])[-1]
         result['frames'].append(frame)
         target = {'connection': client.generation, 'window': frame['window'], 'generation': frame['generation']}
         input({'kind': 'key', 'code': 48, 'pressed': True})
@@ -245,7 +254,10 @@ def main():
         expected += 'b'
         wait(lambda: json.loads(receipt.read_text()) == [expected, ''], 'Reconnect did not preserve document/release modifiers')
         result['detach_retains_application'] = True
-        result['frames'] += client.paint('final-document', (19, 87, 155))
+        result['frames'] += paint('final-document', [expected, ''])
+        if browser:
+            result['browser'] = browser.version
+            result['protocol'] = 'wayland'
         if mode in ('capture-loss', 'bus-loss'):
             service_name = 'capture' if mode == 'capture-loss' else 'bus'
             service = next(x for x in records() if x.get('service') == service_name)
@@ -274,6 +286,8 @@ def main():
     except BaseException:
         result['error'] = traceback.format_exc()
     finally:
+        if browser:
+            browser.close()
         if client:
             client.close()
             (evidence / 'control-receipts.json').write_text(json.dumps(client.trace, indent=2))
