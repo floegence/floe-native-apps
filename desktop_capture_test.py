@@ -1,10 +1,16 @@
 """Actual socket framing and native scene barriers protect captured pixels."""
+import base64
 import socket
 import struct
 import unittest
 from types import SimpleNamespace
 
 from desktop_capture import NativeFrames
+
+
+# A lossless two-pixel PNG fixture, independent of the production encoder.
+PNG = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAIAAAB7QOjdAAAADElEQVR4nGP4z8AAAAMBAQAY3Y2xAAAAAElFTkSuQmCC")
+PNG_FORMAT = 0x20474e50
 
 
 class Loop:
@@ -46,7 +52,7 @@ class CaptureTests(unittest.TestCase):
         return struct.unpack('=I', self.remote.recv(4))[0]
 
     def pixels(self, sequence=1):
-        packet = struct.pack('=6I', sequence, 1, 2, 1, 0x34325258, 8) + b'abcdefgh'
+        packet = struct.pack('=6I', sequence, 1, 2, 1, PNG_FORMAT, len(PNG)) + PNG
         self.remote.sendall(packet)
         self.frames.read()
         self.frames.read()
@@ -56,7 +62,7 @@ class CaptureTests(unittest.TestCase):
         self.pixels()
         self.assertEqual(self.results, [])
         self.scene()
-        self.assertEqual(self.results, [({'encoding': 'bgrx', 'width': 2, 'height': 1}, b'abcdefgh', None)])
+        self.assertEqual(self.results, [({'encoding': 'png', 'width': 2, 'height': 1}, PNG, None)])
 
     def test_delayed_begin_barrier_never_captures_the_replacement_window(self):
         self.start()
@@ -85,24 +91,24 @@ class CaptureTests(unittest.TestCase):
 
     def test_partial_headers_and_payload_do_not_publish_incomplete_frames(self):
         sequence = self.request()
-        packet = struct.pack('=6I', sequence, 1, 2, 1, 0x34325241, 8) + b'12345678'
+        packet = struct.pack('=6I', sequence, 1, 2, 1, PNG_FORMAT, len(PNG)) + PNG
         for byte in packet:
             self.remote.sendall(bytes((byte,)))
             self.frames.read()
             self.assertEqual(self.results, [])
         self.scene()
-        self.assertEqual(self.results[0][0]['encoding'], 'bgra')
+        self.assertEqual(self.results[0][0]['encoding'], 'png')
 
     def test_malformed_header_closes_only_capture_transport_before_allocation(self):
         self.request()
-        self.remote.sendall(struct.pack('=6I', 1, 1, 0xffffffff, 1, 0x34325258, 0xffffffff))
+        self.remote.sendall(struct.pack('=6I', 1, 1, 0xffffffff, 1, PNG_FORMAT, 0xffffffff))
         self.frames.read()
         self.assertEqual(self.results[0], (None, None, 'CAPTURE_PROTOCOL_INVALID'))
         self.assertEqual(self.local.fileno(), -1)
 
     def test_wrong_sequence_and_source_retry_are_not_silently_replayed(self):
         sequence = self.request()
-        self.remote.sendall(struct.pack('=6I', sequence, 2, 2, 1, 0x34325258, 0))
+        self.remote.sendall(struct.pack('=6I', sequence, 2, 2, 1, PNG_FORMAT, 0))
         self.frames.read()
         self.assertEqual(self.results[0][2], 'CAPTURE_SOURCE_CHANGED')
         sequence = self.request()
@@ -135,6 +141,19 @@ class CaptureTests(unittest.TestCase):
         self.scene()
         self.assertEqual(len(self.results), 2)
         self.assertIsNone(self.results[-1][2])
+
+    def test_png_dimensions_cannot_differ_from_the_native_frame(self):
+        self.request()
+        self.remote.sendall(struct.pack('=6I', 1, 1, 3, 1, PNG_FORMAT, len(PNG)) + PNG)
+        self.frames.read()
+        self.frames.read()
+        self.assertEqual(self.results, [(None, None, 'CAPTURE_PROTOCOL_INVALID')])
+
+    def test_obsolete_raw_pixels_are_rejected_without_a_second_decode_path(self):
+        self.request()
+        self.remote.sendall(struct.pack('=6I', 1, 1, 2, 1, 0x34325258, 8) + b'abcdefgh')
+        self.frames.read()
+        self.assertEqual(self.results, [(None, None, 'CAPTURE_PROTOCOL_INVALID')])
 
 
 if __name__ == '__main__':
