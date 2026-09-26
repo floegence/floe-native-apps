@@ -214,6 +214,11 @@
       "case": "Native window titles on amd64 and arm64",
       "result": "Actual GTK title updates preserve Unicode, window identity and the active input target. The authenticated snapshot carries bounded metadata independently of scene/input invalidation; native popup, scrolling, window selection, frame admission and reconnect regressions pass. Maximum-window snapshots retain bounded backpressure without enlarging incoming request limits.",
       "limits": "The unpublished native shell still requires complete window operations, durable helper preparation, component packaging and release qualification."
+    },
+    {
+      "case": "Application-native window modes on amd64 and arm64",
+      "result": "The original shell deterministically fails the actual GTK maximize acknowledgement. Native callbacks now pass maximize, fullscreen, restore-to-maximized, normal-size restoration, minimize without process exit, and selection to restore. Top-level geometry has one callback owner; ordinary repaint no longer revokes input a second time. Popup, dialog, wheel, mixed Xwayland, frame and reconnect checks pass on both architectures. Strict Snap Firefox and Flatpak GTK/Qt repeat Unicode/save stress with exact bytes and private document authority.",
+      "limits": "This does not yet qualify interactive decoration move/resize, native clipboard/cursor transfer, production helper realization or the complete desktop/package release matrix."
     }
   ],
   "rejected_assumptions": [

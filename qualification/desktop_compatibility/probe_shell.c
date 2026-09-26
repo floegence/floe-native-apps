@@ -81,6 +81,9 @@ struct probe_window {
     struct weston_view *view;
     uint64_t identity;
     int32_t width, height;
+    int32_t restore_width, restore_height;
+    uint32_t mode;
+    bool minimized;
     struct weston_geometry geometry;
     struct probe_window *parent;
 };
@@ -228,15 +231,21 @@ static void emit_focus(struct probe *p) {
     }
     emit(p, "focus 0 0 0 0 0\n");
 }
+static uint32_t window_mode(struct probe_window *window) {
+    return (weston_desktop_surface_get_maximized(window->desktop) ? 1u : 0u) |
+        (weston_desktop_surface_get_fullscreen(window->desktop) ? 2u : 0u) |
+        (window->minimized ? 4u : 0u);
+}
 static void window_state(struct probe *p, struct probe_window *window) {
     struct weston_surface *surface = weston_desktop_surface_get_surface(window->desktop);
     const struct weston_xwayland_surface_api *api = weston_xwayland_surface_get_api(p->compositor);
     bool x11 = api && api->is_xwayland_surface(surface);
     /* X11's reported PID is advisory metadata; it is not SO_PEERCRED and must
      * never authorize a text context. Wayland PID comes from the native peer. */
-    emit(p, "window-state %" PRIu64 " %" PRIu64 " %s %d %d %d\n", window->identity,
+    window->mode = window_mode(window);
+    emit(p, "window-state %" PRIu64 " %" PRIu64 " %s %d %d %d %u\n", window->identity,
         window->parent ? window->parent->identity : 0, x11 ? "x11" : "wayland",
-        (int)weston_desktop_surface_get_pid(window->desktop), window->width, window->height);
+        (int)weston_desktop_surface_get_pid(window->desktop), window->width, window->height, window->mode);
 }
 static void window_metadata(struct wl_listener *listener, void *data) {
     (void)data;
@@ -357,6 +366,11 @@ static bool ancestor(struct probe_window *parent, struct probe_window *child) {
     }
     return false;
 }
+static bool minimized(struct probe_window *window) {
+    for (unsigned int depth = 0; window && depth < 128; depth++, window = window->parent)
+        if (window->minimized) return true;
+    return false;
+}
 static void background_paint(struct probe_background *background) {
     struct weston_output *output = background->output;
     if (background->curtain) weston_shell_utils_curtain_destroy(background->curtain);
@@ -412,9 +426,11 @@ static void content_committed(struct wl_listener *listener, void *data) {
     struct probe_window *owner = window_for_surface(p, content->surface);
     bool geometry_changed = content->width != content->surface->width ||
         content->height != content->surface->height || content->x != x || content->y != y;
-    if (geometry_changed && owner && owner->view->layer_link.layer == &p->layer) {
+    if (geometry_changed && owner && owner->view->layer_link.layer == &p->layer &&
+        content->surface != weston_desktop_surface_get_surface(owner->desktop)) {
         /* Child surfaces can change hit regions without a top-level commit.
-         * Revoke coordinates on native geometry changes, not ordinary repaint. */
+         * The desktop callback owns top-level geometry and positioning. Sampling
+         * its old view offset here would revoke the following repaint twice. */
         release_input(p);
         emit_focus(p);
         scene_changed(p);
@@ -458,11 +474,16 @@ static void apply_selection(struct probe *p, struct probe_window *selected) {
     }
     p->current = surface;
     struct probe_window *window;
+    for (window = selected; window; window = window->parent) {
+        if (!window->minimized) continue;
+        window->minimized = false;
+        if (weston_view_is_mapped(window->view)) window_state(p, window);
+    }
     /* Map parents first so later transient children remain above them. Hidden
      * windows keep their native lifetime; they never contribute pixels/input. */
     wl_list_for_each_reverse(window, &p->windows, link) {
         if (!weston_view_is_mapped(window->view)) continue;
-        bool visible = selected && (ancestor(window, selected) || ancestor(selected, window));
+        bool visible = selected && !minimized(window) && (ancestor(window, selected) || ancestor(selected, window));
         weston_view_move_to_layer(window->view, visible ? &p->layer.view_list : &p->hidden_layer.view_list);
         weston_desktop_surface_propagate_layer(window->desktop);
         weston_desktop_surface_set_activated(window->desktop, window == selected);
@@ -509,13 +530,13 @@ static void surface_removed(struct weston_desktop_surface *desktop, void *data) 
     weston_desktop_surface_unlink_view(window->view);
     weston_view_destroy(window->view);
     free(window);
-    if (!p->current && parent && weston_view_is_mapped(parent->view)) {
+    if (!p->current && parent && !minimized(parent) && weston_view_is_mapped(parent->view)) {
         apply_selection(p, parent);
         emit(p, "window-restored\n");
     }
     if (!p->current) {
         wl_list_for_each(window, &p->windows, link) {
-            if (!weston_view_is_mapped(window->view)) continue;
+            if (!weston_view_is_mapped(window->view) || minimized(window)) continue;
             apply_selection(p, window);
             emit(p, "window-restored\n");
             break;
@@ -573,7 +594,10 @@ static void surface_committed(struct weston_desktop_surface *desktop,
     bool changed = window->width != surface->width || window->height != surface->height ||
         window->geometry.x != geometry.x || window->geometry.y != geometry.y ||
         window->geometry.width != geometry.width || window->geometry.height != geometry.height;
-    if (mapped && !changed) return;
+    if (mapped && !changed) {
+        if (window->mode != window_mode(window)) window_state(p, window);
+        return;
+    }
     window->width = surface->width; window->height = surface->height; window->geometry = geometry;
     position_window(window);
     window_state(p, window);
@@ -600,10 +624,68 @@ static void surface_committed(struct weston_desktop_surface *desktop,
         xwayland && xwayland->is_xwayland_surface(surface) ? "x11" : "wayland");
     scene_changed(p);
 }
+static void configure_mode(struct probe *p, struct probe_window *window, bool enabled, bool fullscreen) {
+    struct weston_desktop_surface *desktop = window->desktop;
+    bool previous = fullscreen ? weston_desktop_surface_get_pending_fullscreen(desktop) :
+        weston_desktop_surface_get_pending_maximized(desktop);
+    if (previous == enabled) return;
+    bool fitted = weston_desktop_surface_get_pending_fullscreen(desktop) ||
+        weston_desktop_surface_get_pending_maximized(desktop);
+    if (enabled && !fitted) {
+        window->restore_width = window->geometry.width;
+        window->restore_height = window->geometry.height;
+    }
+    if (fullscreen) weston_desktop_surface_set_fullscreen(desktop, enabled);
+    else weston_desktop_surface_set_maximized(desktop, enabled);
+    fitted = weston_desktop_surface_get_pending_fullscreen(desktop) ||
+        weston_desktop_surface_get_pending_maximized(desktop);
+    if (fitted && !wl_list_empty(&p->compositor->output_list)) {
+        struct weston_output *output = wl_container_of(p->compositor->output_list.next, output, link);
+        weston_desktop_surface_set_size(desktop, output->width, output->height);
+    } else {
+        weston_desktop_surface_set_size(desktop, window->restore_width, window->restore_height);
+    }
+}
+static void surface_fullscreen(struct weston_desktop_surface *desktop, bool enabled,
+                               struct weston_output *output, void *data) {
+    /* The private application session has one viewport. A client-suggested
+     * output does not select a host monitor or expose another application. */
+    (void)output;
+    configure_mode(data, weston_desktop_surface_get_user_data(desktop), enabled, true);
+}
+static void surface_maximized(struct weston_desktop_surface *desktop, bool enabled, void *data) {
+    configure_mode(data, weston_desktop_surface_get_user_data(desktop), enabled, false);
+}
+static void surface_minimized(struct weston_desktop_surface *desktop, void *data) {
+    struct probe *p = data;
+    struct probe_window *window = weston_desktop_surface_get_user_data(desktop), *selected = NULL, *candidate;
+    if (window->minimized) return;
+    window->minimized = true;
+    if (weston_view_is_mapped(window->view)) window_state(p, window);
+    wl_list_for_each(candidate, &p->windows, link) {
+        if (weston_desktop_surface_get_surface(candidate->desktop) == p->current) {
+            selected = candidate;
+            break;
+        }
+    }
+    if (selected && minimized(selected)) {
+        selected = NULL;
+        wl_list_for_each(candidate, &p->windows, link) {
+            if (weston_view_is_mapped(candidate->view) && !minimized(candidate)) {
+                selected = candidate;
+                break;
+            }
+        }
+    }
+    apply_selection(p, selected);
+    scene_changed(p);
+}
 static const struct weston_desktop_api desktop_api = {
     .struct_size = sizeof desktop_api,
     .surface_added = surface_added, .surface_removed = surface_removed,
     .committed = surface_committed, .set_parent = surface_parent,
+    .fullscreen_requested = surface_fullscreen, .maximized_requested = surface_maximized,
+    .minimized_requested = surface_minimized,
 };
 
 static void command(struct probe *p, char *line) {

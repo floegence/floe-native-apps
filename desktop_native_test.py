@@ -101,14 +101,15 @@ class NativeTests(unittest.TestCase):
     def test_title_updates_preserve_target_and_never_define_window_identity(self):
         target = self.native.target
         changes = self.attachment.changes
+        metadata = self.attachment.metadata
         title = 'Document 日本語 🧑🏽\u200d💻\nSave As'
         self.native.observe('window-title 1 ' + title.encode().hex())
         self.assertEqual(self.native.snapshot()['windows'][0]['title'], title)
         self.assertIs(self.native.target, target)
         self.assertEqual(self.attachment.changes, changes)
-        self.assertEqual(self.attachment.metadata, 1)
+        self.assertEqual(self.attachment.metadata, metadata + 1)
         self.native.observe('window-title 1 ' + title.encode().hex())
-        self.assertEqual(self.attachment.metadata, 1)
+        self.assertEqual(self.attachment.metadata, metadata + 1)
         self.native.observe('window-instance 2')
         self.native.observe('window-title 2 ' + title.encode().hex())
         self.native.observe('window-state 2 0 x11 121 400 300 0')

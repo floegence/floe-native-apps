@@ -188,6 +188,9 @@ elif kind in ('gtk4', 'gtk4-entry'):
                     return False
                 return True
             keys = Gtk.EventControllerKey()
+            # Fixture commands precede GtkTextView's built-in F-key bindings.
+            # Unhandled keys still reach the actual editable controls.
+            keys.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
             keys.connect('key-pressed', pressed)
             def released(_controller, keyval, _keycode, _state):
                 if keyval == Gdk.KEY_Control_L:

@@ -92,6 +92,7 @@ class NativeWindow:
     pid: int
     width: int
     height: int
+    mode: int
 
 
 @dataclass(frozen=True)
@@ -197,12 +198,13 @@ class NativeDesktop:
                 self.focus, self.target = focus, None
                 self.changed()
         elif kind == 'window-state':
-            if self.version != 1 or len(fields) != 7:
+            if self.version != 1 or len(fields) != 8:
                 raise ValueError('Invalid native window')
             wid, parent = integer(int(fields[1])), integer(int(fields[2]), 0)
             protocol = fields[3]
             pid = integer(int(fields[4]), -1, 0x7fffffff)
-            width, height = (integer(int(v), 1, 65536) for v in fields[5:])
+            width, height = (integer(int(v), 1, 65536) for v in fields[5:7])
+            mode = integer(int(fields[7]), 0, 7)
             if protocol not in ('wayland', 'x11') or parent == wid:
                 raise ValueError('Invalid native window')
             previous = self.windows.get(wid)
@@ -212,11 +214,15 @@ class NativeDesktop:
                 raise ValueError('Native window identity changed')
             if parent and parent not in self.declared:
                 raise ValueError('Native parent is unavailable')
-            window = NativeWindow(wid, parent, protocol, pid, width, height)
+            window = NativeWindow(wid, parent, protocol, pid, width, height, mode)
             self.windows[wid] = window
-            if previous != window and self.target and self.target.window == wid:
-                self.target = None
-                self.changed()
+            if previous != window:
+                if self.target and self.target.window == wid and (mode & 4 or previous is None or
+                        (previous.parent, previous.width, previous.height) != (parent, width, height)):
+                    self.target = None
+                    self.changed()
+                elif self.attachment:
+                    self.attachment.metadata_changed()
         elif kind == 'window-retired':
             if len(fields) != 2:
                 raise ValueError('Invalid retirement')
@@ -235,6 +241,8 @@ class NativeDesktop:
             if wid and (not self.focus or not self.focus.available or self.focus.window != wid):
                 raise ValueError('Native scene has no ready focus')
             window = self.windows.get(wid)
+            if window and window.mode & 4:
+                raise ValueError('Minimized native window cannot receive input')
             self.generation = generation
             self.target = NativeTarget(wid, generation, window.width, window.height) if window else None
             self.changed()
@@ -281,7 +289,9 @@ class NativeDesktop:
         return {'state': 'unavailable' if self.closed else 'running' if self.target else 'waiting',
                 'window': self.target.window if self.target else None, 'generation': self.generation,
                 'windows': [dict(window=w.window, parent=w.parent or None, protocol=w.protocol,
-                                 width=w.width, height=w.height, title=self.declared[w.window])
+                                 width=w.width, height=w.height, title=self.declared[w.window],
+                                 maximized=bool(w.mode & 1), fullscreen=bool(w.mode & 2),
+                                 minimized=bool(w.mode & 4))
                             for w in self.windows.values()]}
 
     def bind(self, epoch):
