@@ -47,7 +47,9 @@ def qualify(root, evidence, environment, control, wire, start, wait, paint, disp
         if toolkit == 'chromium':
             click = control.send(window, b'motion 220 240\nbutton 272 1\nbutton 272 0\n')
             assert control.response(click).get('result') == 'submitted'
-            wait(lambda: bridge.focused is not None, 'Chromium did not establish an XIM context after click')
+            wait(lambda: bridge.focused is not None,
+                 'Chromium did not establish an XIM context after click: clients=%r origins=%r supported=%r' %
+                 (bridge.clients, bridge.origins, bridge.supported_contexts))
             from context_probe import exercise_fields
             # Readiness comes from the real page, native context and rendered
             # pixels. Never force DOM focus or set field contents from a driver.

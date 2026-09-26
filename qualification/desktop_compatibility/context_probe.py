@@ -97,7 +97,7 @@ class ToolkitDriver:
 def qualify(root, evidence, environment, control, wire, start, wait, paint, display=None):
     from gi.repository import Gio, GLib
     toolkit = os.environ.get('FLOE_PROBE_CONTEXT_TOOLKIT', 'qt6')
-    if toolkit == 'terminal':
+    if toolkit in ('terminal', 'chromium'):
         from xim_context_probe import qualify as qualify_xim
         return qualify_xim(root, evidence, environment, control, wire, start, wait, paint, display)
     assert toolkit in ('qt5', 'qt6', 'gtk', 'gtk4')
