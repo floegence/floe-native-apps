@@ -95,7 +95,19 @@ try {
     copy.getContext('2d').drawImage(primary.canvas,0,0,4,4);
     return [...copy.getContext('2d').getImageData(0,0,4,4).data];
    });
-   assert(pixels.some((v,i)=>i%4!==3&&v>16),`blank native image after ${policy}`);
+   if(!pixels.some((v,i)=>i%4!==3&&v>16)) {
+    const samples=[];
+    for(let i=0;i<30;i++) {
+     await page.waitForTimeout(100);
+     samples.push(await page.evaluate(()=>{
+      const c=document.createElement('canvas');c.width=c.height=4;c.getContext('2d').drawImage(primary.canvas,0,0,4,4);
+      return {geometry:[primary.x,primary.y,primary.w,primary.h],canvas:[primary.canvas.width,primary.canvas.height],pixels:[...c.getContext('2d').getImageData(0,0,4,4).data]};
+     }));
+    }
+    await page.screenshot({path:receipt+'.png'});
+    await writeFile(receipt.replace(/\.json$/,'.layout.json'),JSON.stringify({offscreen,policy,record,native,results,samples},null,2));
+    assert.fail(`blank native image after ${policy}; subsequent pixel samples recorded`);
+   }
    assert(record.geometry[2]<=Math.max(record.display[0],1240*record.scale)&&record.geometry[3]<=Math.max(record.display[1],960*record.scale), 'transient scale inflated native minimum constraints');
    results.push({offscreen,policy,...record,native,pixels});return record;
   }
