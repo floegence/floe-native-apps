@@ -189,6 +189,34 @@ scope fixture now uses this production supervisor; it has no independent proxy.
 These source and scope tests do not constitute a complete graphical-backend or
 package-format support claim.
 
+## Native helper attachment
+
+`DialDesktop` attaches to an existing Linux helper through a private, versioned
+Unix socket. A trusted application instance supplies its endpoint, identity and
+token. The socket must be owned by the host user, mode 0600, in a mode 0700
+directory; kernel peer credentials are checked before authentication. A successful
+attach returns the native state and an immutable connection generation. Invalid
+authentication must not displace the current viewer.
+
+`DesktopConnection` has one reader and serializes concurrent writers. `Send`
+returns a request ID, not an application receipt; `Read` returns native events and
+correlated replies. Metadata and PNG payloads are bounded and read as one complete
+event. The consumer must decode and paint a frame before sending `frame_ack`.
+Input always names its original connection, window and geometry generation. The
+helper remains the sole owner of admission and input ordering. There is no client
+queue, automatic acknowledgement, reconnect loop or replay. Cancellation during
+I/O closes the partial stream. `Close` detaches sharing and never terminates the
+helper or application. Waiting, unavailable capture and connection loss are not
+application-exit evidence.
+
+`TestDesktopClient*` exercises fragmented packets, malformed framing, cancellation,
+concurrent writes and the real Python control/attachment boundary on native Linux,
+including takeover and late old-owner cleanup. Its synthetic native callbacks are
+wire qualification only. This API does not prepare a compositor, launch an
+application, or certify the unpublished combined graphical backend. Production
+component preparation and the package/desktop application matrix remain required
+before that backend can be published as a supported capability.
+
 ## Component compatibility qualification
 
 An SDK release must preserve supported installed recipe identities independently

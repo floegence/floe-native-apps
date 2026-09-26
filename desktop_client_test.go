@@ -1,0 +1,280 @@
+package nativeapps
+
+import (
+	"bytes"
+	"context"
+	"encoding/binary"
+	"encoding/json"
+	"errors"
+	"image"
+	"image/color"
+	"image/png"
+	"io"
+	"net"
+	"sync"
+	"testing"
+	"time"
+)
+
+func desktopTestPacket(kind byte, body []byte) []byte {
+	packet := make([]byte, 5, 5+len(body))
+	packet[0] = kind
+	binary.BigEndian.PutUint32(packet[1:], uint32(len(body)))
+	return append(packet, body...)
+}
+
+func desktopTestJSON(value any) []byte {
+	body, err := json.Marshal(value)
+	if err != nil {
+		panic(err)
+	}
+	return desktopTestPacket(1, body)
+}
+
+func desktopTestConnection(t *testing.T) (*DesktopConnection, net.Conn) {
+	t.Helper()
+	client, peer := net.Pipe()
+	t.Cleanup(func() { _ = client.Close(); _ = peer.Close() })
+	return &DesktopConnection{conn: client, connection: 7}, peer
+}
+
+func desktopTestPNG(t *testing.T) []byte {
+	t.Helper()
+	im := image.NewRGBA(image.Rect(0, 0, 3, 2))
+	for y := range 2 {
+		for x := range 3 {
+			im.Set(x, y, color.RGBA{R: byte(x * 100), G: byte(y * 200), A: 255})
+		}
+	}
+	var data bytes.Buffer
+	if err := png.Encode(&data, im); err != nil {
+		t.Fatal(err)
+	}
+	return data.Bytes()
+}
+
+func desktopTestFrame(size int) DesktopEvent {
+	return DesktopEvent{Event: "frame", Bytes: size, Frame: &DesktopFrame{
+		Encoding: "png", Width: 3, Height: 2, Sequence: 42, Connection: 7, Window: 12, Generation: 81,
+	}}
+}
+
+func TestDesktopClientFrameAndReplyRemainDistinct(t *testing.T) {
+	client, peer := desktopTestConnection(t)
+	pixels := desktopTestPNG(t)
+	written := make(chan error, 1)
+	go func() {
+		data := append(desktopTestJSON(desktopTestFrame(len(pixels))), desktopTestPacket(2, pixels)...)
+		data = append(data, desktopTestJSON(map[string]any{"id": 1, "result": "submitted"})...)
+		// Fragment every header and body, as the actual stream is allowed to do.
+		for _, value := range data {
+			if _, err := peer.Write([]byte{value}); err != nil {
+				written <- err
+				return
+			}
+		}
+		written <- nil
+	}()
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancel()
+	frame, err := client.Read(ctx)
+	if err != nil || frame.Frame == nil || frame.Frame.Sequence != 42 || !bytes.Equal(frame.Pixels, pixels) {
+		t.Fatalf("frame identity or bytes changed: %v", err)
+	}
+	decoded, err := png.Decode(bytes.NewReader(frame.Pixels))
+	if err != nil || decoded.Bounds().Dx() != 3 || decoded.At(2, 1) != (color.RGBA{R: 200, G: 200, A: 255}) {
+		t.Fatalf("received pixels do not match fixture: %v", err)
+	}
+	result, err := client.Read(ctx)
+	if err != nil || result.ID != 1 || string(result.Result) != `"submitted"` || result.Pixels != nil {
+		t.Fatalf("response was confused with image data: %#v %v", result, err)
+	}
+	if err := <-written; err != nil {
+		t.Fatal(err)
+	}
+	if client.sequence != 0 {
+		t.Fatal("reading pixels implicitly acknowledged a frame")
+	}
+}
+
+func TestDesktopClientRejectsInvalidFramesBeforeExposingPixels(t *testing.T) {
+	pixels := desktopTestPNG(t)
+	for _, name := range []string{"excessive_message", "excessive_frame", "oversized_dimensions", "wrong_connection", "wrong_encoding", "short_payload", "wrong_size", "wrong_geometry", "wrong_kind"} {
+		t.Run(name, func(t *testing.T) {
+			client, peer := desktopTestConnection(t)
+			event := desktopTestFrame(len(pixels))
+			payload := bytes.Clone(pixels)
+			kind := byte(2)
+			switch name {
+			case "excessive_frame":
+				event.Bytes = desktopFrameLimit + 1
+			case "oversized_dimensions":
+				event.Frame.Width = 4097
+			case "wrong_connection":
+				event.Frame.Connection = 6
+			case "wrong_encoding":
+				event.Frame.Encoding = "raw"
+			case "short_payload":
+				payload = payload[:2]
+			case "wrong_size":
+				event.Bytes++
+			case "wrong_geometry":
+				binary.BigEndian.PutUint32(payload[16:20], 4)
+			case "wrong_kind":
+				kind = 1
+			}
+			data := append(desktopTestJSON(event), desktopTestPacket(kind, payload)...)
+			if name == "excessive_message" {
+				data = []byte{1, 0, 0, 0, 0}
+				binary.BigEndian.PutUint32(data[1:], desktopMessageLimit+1)
+			}
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				_, _ = peer.Write(data)
+			}()
+			ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+			defer cancel()
+			value, err := client.Read(ctx)
+			if !errors.Is(err, ErrDesktopProtocol) || len(value.Pixels) != 0 {
+				t.Fatalf("invalid frame was not rejected: %v", err)
+			}
+			<-done // Invalid framing must close the connection and release the writer.
+		})
+	}
+}
+
+func TestDesktopClientCancellationRevokesPartialRead(t *testing.T) {
+	client, peer := desktopTestConnection(t)
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, _ = peer.Write([]byte{1, 0}) // Partial packet cannot be reused after cancellation.
+		cancel()
+	}()
+	if _, err := client.Read(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("partial read did not preserve cancellation: %v", err)
+	}
+	<-done
+	if _, err := client.Send(t.Context(), DesktopRequest{Method: "status"}); err == nil {
+		t.Fatal("cancelled stream remained writable")
+	}
+}
+
+func TestDesktopClientConcurrentRequestsHaveOneWireSequence(t *testing.T) {
+	client, peer := desktopTestConnection(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancel()
+	observed := make(chan error, 1)
+	go func() {
+		for id := uint64(1); id <= 32; id++ {
+			body, err := readDesktopPacket(peer, 1, desktopRequestLimit)
+			if err != nil {
+				observed <- err
+				return
+			}
+			var request struct {
+				ID     uint64 `json:"id"`
+				Method string `json:"method"`
+			}
+			if json.Unmarshal(body, &request) != nil || request.ID != id || request.Method != "status" {
+				observed <- ErrDesktopProtocol
+				return
+			}
+		}
+		observed <- nil
+	}()
+	var writers sync.WaitGroup
+	for range 32 {
+		writers.Go(func() {
+			if _, err := client.Send(ctx, DesktopRequest{Method: "status"}); err != nil {
+				t.Errorf("send request: %v", err)
+			}
+		})
+	}
+	writers.Wait()
+	if err := <-observed; err != nil {
+		t.Fatalf("requests interleaved or lost sequence: %v", err)
+	}
+}
+
+func TestDesktopClientInvalidTargetAndOversizedInputSendNothing(t *testing.T) {
+	client, _ := desktopTestConnection(t)
+	for _, request := range []DesktopRequest{
+		{Method: "input", Connection: 6, Window: 12, Generation: 81, Operation: json.RawMessage(`{"kind":"text","text":"a"}`)},
+		{Method: "input", Connection: 7, Window: 12, Generation: 81, Operation: json.RawMessage(`{"kind":"text","text":"` + string(bytes.Repeat([]byte{'a'}, desktopRequestLimit)) + `"}`)},
+		{Method: "frame_ack"},
+		{Method: "close_window", Window: desktopMaxID + 1},
+		{Method: "status", Window: 12},
+		{Method: "terminate"},
+	} {
+		if _, err := client.Send(t.Context(), request); !errors.Is(err, ErrInvalid) {
+			t.Fatalf("invalid request accepted: %s: %v", request.Method, err)
+		}
+	}
+	if client.sequence != 0 {
+		t.Fatal("invalid requests entered the wire sequence")
+	}
+}
+
+func TestDesktopClientWriteCancellationDoesNotReplay(t *testing.T) {
+	client, peer := desktopTestConnection(t)
+	ctx, cancel := context.WithCancel(t.Context())
+	go func() {
+		var fragment [2]byte
+		_, _ = io.ReadFull(peer, fragment[:])
+		cancel()
+	}()
+	if _, err := client.Send(ctx, DesktopRequest{Method: "status"}); !errors.Is(err, context.Canceled) {
+		t.Fatalf("blocked write did not cancel: %v", err)
+	}
+	if _, err := client.Send(t.Context(), DesktopRequest{Method: "refresh"}); err == nil {
+		t.Fatal("partially written request left a usable stream")
+	}
+}
+
+func TestDesktopClientRequiresVersionedAuthenticationReply(t *testing.T) {
+	for _, name := range []string{"accepted", "missing_version", "future_version", "unsolicited_state"} {
+		t.Run(name, func(t *testing.T) {
+			connection, peer := desktopTestConnection(t)
+			endpoint := DesktopEndpoint{Instance: "private-instance", Token: string(bytes.Repeat([]byte{'a'}, 64))}
+			result := make(chan error, 1)
+			go func() {
+				body, err := readDesktopPacket(peer, 1, desktopRequestLimit)
+				if err != nil {
+					result <- err
+					return
+				}
+				var auth map[string]any
+				if json.Unmarshal(body, &auth) != nil || len(auth) != 3 || auth["version"] != float64(1) ||
+					auth["instance"] != endpoint.Instance || auth["token"] != endpoint.Token {
+					result <- ErrDesktopProtocol
+					return
+				}
+				reply := DesktopEvent{Event: "attached", Version: 1, Connection: 7, State: &DesktopState{State: "waiting"}}
+				switch name {
+				case "missing_version":
+					reply.Version = 0
+				case "future_version":
+					reply.Version = 2
+				case "unsolicited_state":
+					reply.Event = "state"
+				}
+				_, err = peer.Write(desktopTestJSON(reply))
+				result <- err
+			}()
+			client, state, err := authenticateDesktop(t.Context(), connection.conn, endpoint)
+			if name == "accepted" {
+				if err != nil || client.Connection() != 7 || state.State != "waiting" {
+					t.Fatalf("valid handshake failed: %v", err)
+				}
+			} else if !errors.Is(err, ErrDesktopProtocol) || client != nil {
+				t.Fatalf("invalid handshake accepted: %v", err)
+			}
+			if err := <-result; err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
