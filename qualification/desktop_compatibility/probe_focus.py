@@ -93,10 +93,13 @@ def main():
             from ibus_probe import IBusProbe
             ibus = IBusProbe(lambda event: events.append(json.dumps(event)))
             ibus.activate()
-        from portable_probe import prepare
-        command, server_environment, capture_command, _authorize, result['portable'] = prepare(
-            os.environ['FLOE_PROBE_COMPONENT'], evidence, environment,
-            root / 'alpine-wayland-probe/probe-shell.so')
+        from desktop_graphics import DesktopGraphics
+        graphics = DesktopGraphics(os.environ['FLOE_PROBE_COMPONENT'], evidence, environment,
+            shell=root / 'alpine-wayland-probe/probe-shell.so', capture=root / 'alpine-wayland-probe/frame-probe',
+            library=Path(os.environ['FLOE_PROBE_WESTON_LIBRARY']) / 'libweston-14.so.0',
+            xwayland=Path(os.environ['FLOE_PROBE_WESTON_LIBRARY']).parent / 'xwayland/xwayland.so')
+        command, server_environment, capture_command = graphics.command, graphics.environment, graphics.capture_command
+        result['portable'] = graphics.description
         start(command, {**server_environment, "FLOE_PROBE_CONTROL_FD": str(right.fileno())},
               "compositor", pass_fds=(right.fileno(),))
         right.close()

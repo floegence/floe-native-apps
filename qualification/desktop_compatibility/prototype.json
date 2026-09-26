@@ -283,6 +283,11 @@
       "case": "Native Qt5/Qt6 module baselines and single-directory ABI discovery",
       "result": "Both native architectures build the module from signed fixed Debian snapshots. Actual widget receipts prove Qt 5.15.2/glibc 2.31 and Qt 6.4.2/glibc 2.36 execution through Xwayland, including 64 alternating-field Unicode/Enter transactions and 14000-byte text. The same artifacts coexist in one plugin directory and pass current distribution Wayland Qt5/Qt6 on amd64 and arm64. Flatpak KWrite arm64 discovers the Qt6 artifact and saves exact bytes through its official remote portal. Build/source/ELF/artifact identities and actual runtime versions are recorded.",
       "limits": "Minimum-runtime receipts cover X11; newer distribution tests cover Wayland. Artifacts remain unactivated candidates. Complete prepared helper, production distribution and full desktop/package matrix remain unfinished."
+    },
+    {
+      "case": "Private combined-display resource preparation on native amd64 and arm64",
+      "result": "The original preparer deterministically overwrote an existing Xwayland resource and inherited host loader overrides. A single reusable preparer now rejects live resources, isolates native tools, retains original component bytes, bounds generators and validates one-shot X11 authorization. Both native mixed-window, actual GTK4 Unicode, capture, window operations and reconnect tests pass. Strict Snap Firefox amd64 and Flatpak GTK/Qt arm64 preserve exact input and saved bytes through the remote chooser.",
+      "limits": "Only prepared graphics resources and existing fixture launches are qualified here. Complete durable launch/service orchestration, component activation, pure Wayland Chromium text and the full package/desktop matrix remain incomplete."
     }
   ],
   "rejected_assumptions": [

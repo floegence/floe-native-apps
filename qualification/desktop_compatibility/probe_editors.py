@@ -154,7 +154,7 @@ def main():
                 pattern = r'xserver listening on display (:[0-9]+)'
                 wait_until(lambda: re.search(pattern, log.read_text()), 'Private Xwayland did not reserve its display')
                 xdisplay = re.search(pattern, log.read_text()).group(1)
-                authorize(xdisplay)
+                environment.update(authorize(xdisplay))
                 environment['DISPLAY'] = xdisplay
                 for key in ('GDK_BACKEND', 'QT_QPA_PLATFORM'):
                     environment.pop(key, None)
@@ -374,10 +374,13 @@ def main():
                "--socket=" + display.name, "--width=1000", "--height=700", "--idle-time=0", "--no-config"]
         compositor_environment = dict(environment)
         if support:
-            from portable_probe import prepare
-            compositor_command, compositor_environment, capture_command, authorize, outcome['portable'] = prepare(
-                os.environ['FLOE_PROBE_COMPONENT'], evidence, environment,
-                root / 'alpine-wayland-probe/probe-shell.so')
+            from desktop_graphics import DesktopGraphics
+            graphics = DesktopGraphics(os.environ['FLOE_PROBE_COMPONENT'], evidence, environment,
+                shell=root / 'alpine-wayland-probe/probe-shell.so', capture=root / 'alpine-wayland-probe/frame-probe',
+                library=Path(os.environ['FLOE_PROBE_WESTON_LIBRARY']) / 'libweston-14.so.0',
+                xwayland=Path(os.environ['FLOE_PROBE_WESTON_LIBRARY']).parent / 'xwayland/xwayland.so')
+            compositor_command, compositor_environment = graphics.command, graphics.environment
+            capture_command, authorize, outcome['portable'] = graphics.capture_command, graphics.authorize, graphics.description
         start(compositor_command, {**compositor_environment, "FLOE_PROBE_CONTROL_FD": str(right.fileno())},
               "compositor", pass_fds=(right.fileno(),))
         right.close()

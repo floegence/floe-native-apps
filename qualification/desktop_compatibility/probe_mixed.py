@@ -95,10 +95,13 @@ def main():
                             "--width=1000", "--height=700", "--idle-time=0", "--no-config"]
         server_environment, authorize = dict(environment), None
         if os.environ.get('FLOE_PROBE_COMPONENT'):
-            from portable_probe import prepare
-            command, server_environment, capture_command, authorize, result['portable'] = prepare(
-                os.environ['FLOE_PROBE_COMPONENT'], evidence, environment,
-                root / 'alpine-wayland-probe/probe-shell.so')
+            from desktop_graphics import DesktopGraphics
+            graphics = DesktopGraphics(os.environ['FLOE_PROBE_COMPONENT'], evidence, environment,
+                shell=root / 'alpine-wayland-probe/probe-shell.so', capture=root / 'alpine-wayland-probe/frame-probe',
+                library=Path(os.environ['FLOE_PROBE_WESTON_LIBRARY']) / 'libweston-14.so.0',
+                xwayland=Path(os.environ['FLOE_PROBE_WESTON_LIBRARY']).parent / 'xwayland/xwayland.so')
+            command, server_environment, capture_command = graphics.command, graphics.environment, graphics.capture_command
+            authorize, result['portable'] = graphics.authorize, graphics.description
         compositor = start(command,
                            {**server_environment, "FLOE_PROBE_CONTROL_FD": str(right.fileno())},
                            "compositor", pass_fds=(right.fileno(),))
@@ -112,7 +115,7 @@ def main():
         display = re.search(pattern, log.read_text()).group(1)
         result["xwayland_display"] = display
         if authorize:
-            authorize(display)
+            environment.update(authorize(display))
             denied = subprocess.run(['python3', '-c', 'from Xlib.display import Display; import sys; Display(sys.argv[1])', display],
                 env={**environment, 'XAUTHORITY': str(evidence / 'missing-authority')},
                 stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=10)

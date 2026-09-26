@@ -266,6 +266,18 @@ symlinks. XML paths are encoded as data. This implementation replaces the old
 qualification-only resource assembler; it does not itself activate a component,
 start services, or alter application environments.
 
+`DesktopGraphics` prepares one combined display from caller-verified original
+component bytes and explicitly selected derived compositor artifacts. All native
+commands receive an isolated environment; application environment values remain
+unchanged. Xwayland relocation, compiler wrapper, configuration and authorization
+belong to one new private directory. Reusing an instance or an existing authority
+is rejected. Failed preparation removes only resources created by that attempt;
+unknown binary layouts and missing derived libraries never fall back to the host.
+X11 authorization is a one-shot prerequisite before application launch. The
+original component is immutable, including when it is already installed. The
+shared preparer replaces the fixture's graphics assembler; artifact activation,
+process orchestration and complete support claims still require qualification.
+
 `Dockerfile.qt-native` selects an explicitly pinned native `TARGET_ARCH` and
 `QT_MAJOR`, then verifies Debian's signed 20250224 snapshot. Qt 5 uses the 5.15.2 /
 glibc 2.31 baseline; Qt 6 uses 6.4.2 / glibc 2.36. `build_qt_native.sh` records the

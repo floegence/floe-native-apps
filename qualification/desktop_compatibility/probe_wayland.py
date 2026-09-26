@@ -160,8 +160,8 @@ def main():
                            "Private Xwayland did not reserve its display")
                 assert compositor.poll() is None, "Portable compositor exited"
                 xdisplay = re.search(pattern, log.read_text()).group(1)
-                authorize(xdisplay)
-                environment.update(DISPLAY=xdisplay, XAUTHORITY=app_environment['XAUTHORITY'])
+                authorized = authorize(xdisplay)
+                environment.update(DISPLAY=xdisplay, XAUTHORITY=authorized['XAUTHORITY'])
                 # This run tests the approved default: both displays exist and
                 # the unmodified package chooses its graphical protocol.
                 for key in ('GDK_BACKEND', 'MOZ_ENABLE_WAYLAND', 'QT_QPA_PLATFORM'):
@@ -334,12 +334,16 @@ def main():
             "--shell=" + str(root / "probe/probe-shell.so"), "--socket=" + display.name,
             "--width=1000", "--height=700", "--idle-time=0", "--no-config"]
         if os.environ.get('FLOE_PROBE_COMPONENT'):
-            from portable_probe import prepare
+            from desktop_graphics import DesktopGraphics
             app_environment = {**os.environ, 'DBUS_SESSION_BUS_ADDRESS': address,
                 'XDG_RUNTIME_DIR': str(runtime), 'WAYLAND_DISPLAY': display.name}
-            command, weston_environment, capture_command, authorize, outcome['portable'] = prepare(
-                os.environ['FLOE_PROBE_COMPONENT'], evidence, app_environment,
-                root / 'alpine-wayland-probe/probe-shell.so', profile / 'Xauthority')
+            graphics = DesktopGraphics(os.environ['FLOE_PROBE_COMPONENT'], evidence, app_environment,
+                shell=root / 'alpine-wayland-probe/probe-shell.so', capture=root / 'alpine-wayland-probe/frame-probe',
+                library=Path(os.environ['FLOE_PROBE_WESTON_LIBRARY']) / 'libweston-14.so.0',
+                xwayland=Path(os.environ['FLOE_PROBE_WESTON_LIBRARY']).parent / 'xwayland/xwayland.so',
+                authentication=profile / 'Xauthority')
+            command, weston_environment, capture_command = graphics.command, graphics.environment, graphics.capture_command
+            authorize, outcome['portable'] = graphics.authorize, graphics.description
             weston_environment['FLOE_PROBE_CONTROL_FD'] = str(right.fileno())
         compositor = start(command,
             weston_environment, "compositor", pass_fds=(right.fileno(),))
