@@ -30,6 +30,10 @@ class Frames:
 class Attachment:
     def __init__(self):
         self.changes, self.damages = 0, 0
+        self.metadata = 0
+
+    def metadata_changed(self):
+        self.metadata += 1
 
     def scene_changed(self):
         self.changes += 1
@@ -93,6 +97,34 @@ class NativeTests(unittest.TestCase):
         self.assertEqual(self.native.target.width, 600)
         with self.assertRaises(ValueError):
             self.native.observe('scene 2 1')
+
+    def test_title_updates_preserve_target_and_never_define_window_identity(self):
+        target = self.native.target
+        changes = self.attachment.changes
+        title = 'Document 日本語 🧑🏽\u200d💻\nSave As'
+        self.native.observe('window-title 1 ' + title.encode().hex())
+        self.assertEqual(self.native.snapshot()['windows'][0]['title'], title)
+        self.assertIs(self.native.target, target)
+        self.assertEqual(self.attachment.changes, changes)
+        self.assertEqual(self.attachment.metadata, 1)
+        self.native.observe('window-title 1 ' + title.encode().hex())
+        self.assertEqual(self.attachment.metadata, 1)
+        self.native.observe('window-instance 2')
+        self.native.observe('window-title 2 ' + title.encode().hex())
+        self.native.observe('window-state 2 0 x11 121 400 300')
+        self.assertEqual([w['title'] for w in self.native.snapshot()['windows']], [title, title])
+        self.native.observe('window-title 1 -')
+        self.assertEqual(self.native.snapshot()['windows'][0]['title'], '')
+        self.native.observe('window-retired 2')
+        with self.assertRaises(ValueError):
+            self.native.observe('window-title 2 ' + title.encode().hex())
+
+    def test_title_records_are_bounded_and_bad_application_utf8_is_display_only(self):
+        self.native.observe('window-title 1 ff61')
+        self.assertEqual(self.native.snapshot()['windows'][0]['title'], '\ufffda')
+        for data in ('00' * 1025, '0', 'gg', '61 62'):
+            with self.subTest(data=data[:20]), self.assertRaises(ValueError):
+                self.native.observe('window-title 1 ' + data)
 
     def test_popup_focus_cannot_keep_parent_input_or_reuse_a_destroyed_surface(self):
         previous = self.native.target

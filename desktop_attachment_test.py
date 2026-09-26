@@ -110,6 +110,21 @@ class AttachmentTests(unittest.TestCase):
         self.input()
         self.assertEqual(len(self.native.input), 1)
 
+    def test_metadata_update_does_not_cancel_text_or_require_another_frame(self):
+        self.ready()
+        self.input('text', text='document')
+        self.input(code=28, pressed=True)
+        target = self.attachment.ready
+        captures = len(self.native.captures)
+        self.attachment.metadata_changed()
+        self.assertIs(self.attachment.ready, target)
+        self.assertEqual(self.native.released, [])
+        self.assertEqual(len(self.native.captures), captures)
+        self.assertEqual(self.native.input, [])
+        self.assertEqual(self.owner.messages[-1]['event'], 'state')
+        self.native.commits[-1][2](None)
+        self.assertEqual(len(self.native.input), 1)
+
     def test_stale_decode_cannot_grant_replacement_window_authority(self):
         self.captured()
         old_frame = self.owner.frames[-1][0]['sequence']
