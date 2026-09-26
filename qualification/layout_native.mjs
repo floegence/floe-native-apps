@@ -97,27 +97,37 @@ try {
     const r=primary.canvas.getBoundingClientRect(),x=Math.max(0,r.left),y=Math.max(0,r.top);
     return {x,y,width:Math.min(innerWidth,r.right)-x,height:Math.min(innerHeight,r.bottom)-y};
    });
-   const screenshot=await page.screenshot({clip});
-   const pixels=await page.evaluate(async data=>{
-    const image=new Image();image.src=data;await image.decode();
-    const copy=document.createElement('canvas');copy.width=copy.height=4;
-    copy.getContext('2d').drawImage(image,0,0,4,4);
-    return [...copy.getContext('2d').getImageData(0,0,4,4).data];
-   },'data:image/png;base64,'+screenshot.toString('base64'));
-   let content=0;
-   // Toolkit focus palettes and image encoding can shift the exact RGB value.
-   // Require the fixture's dominant blue, rejecting both white and black frames.
-   for(let i=0;i<pixels.length;i+=4){
-    const [r,g,b,a]=pixels.slice(i,i+4);
-    if(a===255 && b>96 && g>32 && b>g && g>r+16)content++;
-   }
+   const paintStarted=Date.now();
+   let screenshot,pixels,content=0;
+   // A geometry acknowledgement can precede asynchronous toolkit repaint and
+   // Xpra's damage delivery. Qualify the presented frame within a bounded time;
+   // a partial preserved frame is evidence of pending paint, not completion.
+   do {
+    screenshot=await page.screenshot({clip});
+    pixels=await page.evaluate(async data=>{
+     const image=new Image();image.src=data;await image.decode();
+     const copy=document.createElement('canvas');copy.width=copy.height=4;
+     copy.getContext('2d').drawImage(image,0,0,4,4);
+     return [...copy.getContext('2d').getImageData(0,0,4,4).data];
+    },'data:image/png;base64,'+screenshot.toString('base64'));
+    content=0;
+    // Toolkit focus palettes and image encoding can shift the exact RGB value.
+    // Require the fixture's dominant blue, rejecting white and black frames.
+    for(let i=0;i<pixels.length;i+=4){
+     const [r,g,b,a]=pixels.slice(i,i+4);
+     if(a===255 && b>96 && g>32 && b>g && g>r+16)content++;
+    }
+    if(content>=8)break;
+    await page.waitForTimeout(100);
+   } while(Date.now()-paintStarted<5000);
+   const paintWait=Date.now()-paintStarted;
    if(content<8) {
     await writeFile(receipt+'.png',screenshot);
-    await writeFile(receipt.replace(/\.json$/,'.layout.json'),JSON.stringify({offscreen,policy,record,native,results,pixels},null,2));
+    await writeFile(receipt.replace(/\.json$/,'.layout.json'),JSON.stringify({offscreen,policy,record,native,results,pixels,paintWait},null,2));
     assert.fail(`native application content is absent after ${policy}`);
    }
    assert(record.geometry[2]<=Math.max(record.display[0],1240*record.scale)&&record.geometry[3]<=Math.max(record.display[1],960*record.scale), 'transient scale inflated native minimum constraints');
-   results.push({offscreen,policy,...record,native,pixels});return record;
+   results.push({offscreen,policy,...record,native,pixels,paintWait});return record;
   }
   for(const policy of legacy?['logical']:['logical','native','logical','native','logical']) {
    const record=await stable(policy);
@@ -148,9 +158,9 @@ try {
    for(const [key,field] of [['F2','popup_clicks'],['F3','dialog_clicks']]){
     const initial=JSON.parse(await readFile(statePath,'utf8'))[field];
     await page.keyboard.press(key);
-    await page.waitForFunction(()=>Object.values(floeXpraClient.id_to_window).some(win=>win!==primary&&win.canvas));
+    await page.waitForFunction(()=>Object.values(floeXpraClient.id_to_window).some(win=>win!==primary&&floeXpraClient.floePointer.targetForWindow(win)));
     const target=await page.evaluate(()=>{
-     const win=Object.values(floeXpraClient.id_to_window).find(win=>win!==primary&&win.canvas);
+     const win=Object.values(floeXpraClient.id_to_window).find(win=>win!==primary&&floeXpraClient.floePointer.targetForWindow(win));
      const rect=win.canvas.getBoundingClientRect();
      return {wid:win.wid,x:rect.x+rect.width/2,y:rect.y+rect.height/2};
     });
