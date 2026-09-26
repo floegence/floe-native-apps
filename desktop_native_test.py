@@ -78,6 +78,36 @@ class NativeTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.native.observe('window-instance 2')
 
+    def test_x11_resource_binding_belongs_to_one_native_window_instance(self):
+        self.native.observe('window-instance 2')
+        self.native.observe('window-state 2 0 x11 -1 1000 700 0')
+        self.native.observe('window-x11 2 4194308')
+        self.assertEqual(self.native.x11_windows, {2: 4194308})
+        self.native.observe('window-x11 2 4194308')
+        with self.assertRaises(ValueError):
+            self.native.observe('window-x11 2 4194309')
+        with self.assertRaises(ValueError):
+            self.native.observe('window-x11 1 4194308')
+        self.native.observe('window-retired 2')
+        self.assertEqual(self.native.x11_windows, {})
+        with self.assertRaises(ValueError):
+            self.native.observe('window-x11 2 4194308')
+        self.native.observe('window-instance 3')
+        self.native.observe('window-state 3 0 x11 -1 1000 700 0')
+        self.native.observe('window-x11 3 4194308')
+        self.assertEqual(self.native.x11_windows, {3: 4194308})
+
+    def test_x11_binding_is_bounded_and_cannot_alias_a_live_window(self):
+        for window in (2, 3):
+            self.native.observe(f'window-instance {window}')
+            self.native.observe(f'window-state {window} 0 x11 -1 1000 700 0')
+        for value in (0, -1, 4294967296):
+            with self.assertRaises(ValueError):
+                self.native.observe(f'window-x11 2 {value}')
+        self.native.observe('window-x11 2 4194308')
+        with self.assertRaises(ValueError):
+            self.native.observe('window-x11 3 4194308')
+
     def test_surface_map_order_does_not_change_instance_creation_order(self):
         self.native.observe('window-instance 2')
         self.native.observe('window-instance 3')

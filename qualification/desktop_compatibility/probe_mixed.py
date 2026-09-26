@@ -217,6 +217,7 @@ def main():
              sum(e.startswith("frame ") for e in events) == 5, "No distinct mapped Xwayland fixture")
         second = int([e.split()[1] for e in events if e.startswith('window-instance ')][-1])
         paint("mixed", (155, 49, 19))
+        assert wire.native.x11_windows.get(second), 'Native Xwayland surface has no authoritative X11 binding'
         control.send(second, b"motion 250 180\nbutton 272 1\nbutton 272 0\nkey 48 1\nkey 48 0\n")
         wait(lambda: json.loads(receipts[1].read_text()) == ["b", ""], "No actual Xwayland seat input")
         result['xwayland_window_manipulation'] = qualify_windows(
