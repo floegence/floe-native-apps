@@ -100,6 +100,14 @@ class DesktopHelperTests(unittest.TestCase):
         self.assertFalse(self.helper.channel.closed)
         self.assertEqual(len(self.loop.selector.get_map()), 1)
 
+    def test_helper_disposal_releases_its_native_input_context(self):
+        from desktop_context import NativeContexts
+        contexts = NativeContexts(self.helper.native, object(), '/private/instance')
+        # Reproduce the previous native fixture's direct service wiring.
+        self.helper.native.contexts = contexts
+        self.helper.close()
+        self.assertTrue(contexts.closed)
+
     def test_sharing_shutdown_never_closes_the_native_channel(self):
         self.listen()
         self.connect()
