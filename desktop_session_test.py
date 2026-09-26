@@ -92,6 +92,27 @@ class SessionTests(unittest.TestCase):
                         completed=Mock(), record=Mock(), host_bus=address)
         self.assertEqual(list(Path(self.directory.name).iterdir()), [])
 
+    def test_flatpak_ibus_portal_identity_is_ready_before_input_activation(self):
+        session = self.module.DesktopSession.__new__(self.module.DesktopSession)
+        session.plan = {'observation': {'services': ['ibus-portal']}}
+        session.closed, session.failed = False, False
+        session.helper, session.spawn, session.service = Mock(), Mock(), Mock()
+        session.ibus_portal_command = ('/private/ibus-portal',)
+        session.ibus_environment, session.start_portals = {'IBUS_ADDRESS': 'private'}, Mock()
+        daemon, portal = Mock(), Mock()
+        session.input_ready(daemon)
+        session.helper.enable_ibus.assert_not_called()
+        session.service.assert_called_once()
+        name, child, ready = session.service.call_args.args
+        self.assertEqual(name, 'org.freedesktop.portal.IBus')
+        self.assertIs(child, session.spawn.return_value)
+        ready(portal)
+        args, options = session.helper.enable_ibus.call_args
+        self.assertIs(args[0], daemon)
+        self.assertIs(options['portal'], portal)
+        args[1](None)
+        session.start_portals.assert_called_once()
+
     def test_dead_bus_cannot_interrupt_support_disposal(self):
         session = self.module.DesktopSession.__new__(self.module.DesktopSession)
         completed, tree, process = Mock(), Mock(), Mock()
