@@ -64,7 +64,7 @@
     "Authenticated reconnectable frame and input API with complete window and popup lifecycle",
     "Private portal document grants, concurrent sessions and sandbox-accessible paths",
     "Pinned production component catalog, complete native architecture qualification and release validation",
-    "Chromium GTK3/Xpra and the complete browser package matrix"
+    "Chromium confirmed text on the new Wayland/Xwayland backend and the complete browser package matrix; existing GTK3/Xpra receipts do not qualify the new backend"
   ],
   "observed_prototypes": [
     {
@@ -242,11 +242,11 @@
       "limits": "These are unpublished native source builds and isolated application fixtures. XIM terminal integration is qualified separately; Chromium uses the GTK3/Xpra path. Pinned native module provenance, durable helper preparation, complete package/desktop qualification and release checks remain unfinished."
     },
     {
-      "case": "Chromium GTK3 module through the production Xpra qualification on amd64 and arm64",
+      "case": "Baseline Chromium GTK3 module through the released Xpra qualification on amd64 and arm64",
       "result": "The native Chromium executable runs with its normal sandbox through Xpra and the private GTK3 floe-client module. Actual page readiness, pointer focus, 40 exact Unicode/Enter pairs, selection replacement, deletion, clipboard, multiline input and a 15000-byte Unicode commit are acknowledged by the page and application receipts on both architectures.",
       "input": "GTK3 floe-client with private GTK_IM_MODULE_FILE and GTK_PATH; this is the supported Chromium input contract and does not depend on XMODIFIERS/XIM.",
       "evidence": "qualification/input.py, qualification/input_client.py, and the native Chromium Xpra qualification receipts under the release acceptance record",
-      "limits": "The disposable XIM probe does not qualify Chromium. Complete package, desktop, Wayland and release qualification remain governed by the separate matrix."
+      "limits": "These baseline Xpra receipts predate this feature and do not prove Chromium input on the new combined display. The disposable XIM probe did not establish a Chromium context. New-backend Chromium, complete package/desktop qualification and release validation remain required."
     },
     {
       "case": "Native XIM terminal qualification on amd64 and arm64",

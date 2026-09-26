@@ -95,12 +95,15 @@ class ToolkitDriver:
 
 
 def qualify(root, evidence, environment, control, wire, start, wait, paint, display=None):
-    from gi.repository import Gio, GLib
     toolkit = os.environ.get('FLOE_PROBE_CONTEXT_TOOLKIT', 'qt6')
-    if toolkit in ('terminal', 'chromium'):
+    if toolkit == 'terminal':
+        if not display:
+            raise ValueError('XIM qualification requires an X11 display')
         from xim_context_probe import qualify as qualify_xim
         return qualify_xim(root, evidence, environment, control, wire, start, wait, paint, display)
-    assert toolkit in ('qt5', 'qt6', 'gtk', 'gtk4')
+    if toolkit not in ('qt5', 'qt6', 'gtk', 'gtk4'):
+        raise ValueError('Unsupported native context toolkit: ' + toolkit)
+    from gi.repository import Gio, GLib
     protocol = os.environ.get('FLOE_PROBE_CONTEXT_PROTOCOL', 'wayland')
     assert protocol in ('wayland', 'x11') and (protocol != 'x11' or display)
     gtk = toolkit in ('gtk', 'gtk4')

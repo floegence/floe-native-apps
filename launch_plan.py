@@ -179,7 +179,8 @@ def launch_tokens(app, environment, GLib):
     executable = os.path.abspath(executable)
     # Exported Snap desktop files may put a desktop hint before their launcher.
     # Other wrappers remain native executables; never inspect or execute shell code.
-    if os.path.realpath(executable) == os.path.realpath('/usr/bin/env'):
+    # BusyBox applets share a binary but select behavior by the invoked name.
+    if Path(executable).name == 'env' and os.path.realpath(executable) == os.path.realpath('/usr/bin/env'):
         tokens = tokens[1:]
         while tokens and re.match(r'^[A-Za-z_][A-Za-z_0-9]*=', tokens[0]):
             key, value = tokens.pop(0).split('=', 1)
