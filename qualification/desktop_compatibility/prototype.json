@@ -268,6 +268,11 @@
       "case": "Native musl input-service candidate on amd64 and arm64",
       "result": "Signed Alpine builder closure and original patched IBus 1.5.33 produce private daemon, portal and library without host glibc or RPATH. Actual GTK4 Wayland/Xwayland and Chromium/Xwayland Unicode receipts pass on both native architectures. Strict Snap Firefox amd64 and Flatpak GTK/Qt arm64 preserve repeated Unicode, long text and exact remote-saved bytes. Source snapshots reject stale copied fixture code; Chromium final capture verifies the actual document marker.",
       "limits": "Unactivated artifacts; portable helper preparation, pinned release distribution and the complete package/desktop matrix remain incomplete. Pure Wayland Chromium confirmed text remains unsupported; normal key and pointer success does not qualify that adapter."
+    },
+    {
+      "case": "Shared private service preparation with native Snap and Flatpak",
+      "result": "One reusable resource preparer replaces the fixture-only assembler. Failed/empty/timed-out generators leave no prepared directory, preserve existing files and permit retry. Native generators receive private environment settings; contained component paths and literal font paths are enforced. Real strict Snap Firefox amd64 and concurrent Flatpak GTK/Qt arm64 retain input stress, remote file chooser and exact saved bytes.",
+      "limits": "Source resource preparation is implemented. Full installed component activation, durable helper orchestration and the package/desktop release matrix are still incomplete."
     }
   ],
   "rejected_assumptions": [

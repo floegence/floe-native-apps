@@ -53,8 +53,8 @@ def main():
     support = None
     native = None
     if os.environ.get('FLOE_PROBE_COMPONENT'):
-        from portable_services import PortableServices
-        support = PortableServices(os.environ['FLOE_PROBE_COMPONENT'], evidence)
+        from desktop_services import DesktopServices
+        support = DesktopServices(os.environ['FLOE_PROBE_COMPONENT'], evidence)
         outcome['support_processes'] = 'private original Alpine component'
 
     def record(event):

@@ -245,6 +245,17 @@ separate acceptance evidence. Pure Wayland Chromium has no qualified confirmed-t
 adapter yet. These artifacts are not an activated catalog or a published support
 claim; prepared helper resources, distribution and the full matrix remain required.
 
+`DesktopServices` owns support-process resource preparation. Its input component
+must already be verified by the distribution owner, and its instance directory
+must be private. MIME, schema, image-loader and input-module caches are derived in
+one new instance-owned directory. Generator errors and timeouts remove only that
+incomplete directory; existing instance resources remain untouched and preparation
+can be retried. Native generators receive the same isolated support environment
+as the services. Resource paths must stay inside the component, including resolved
+symlinks. XML paths are encoded as data. This implementation replaces the old
+qualification-only resource assembler; it does not itself activate a component,
+start services, or alter application environments.
+
 ## Component compatibility qualification
 
 An SDK release must preserve supported installed recipe identities independently
