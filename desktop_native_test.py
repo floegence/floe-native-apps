@@ -43,6 +43,37 @@ class Attachment:
 
 
 class NativeTests(unittest.TestCase):
+    def test_display_startup_uses_one_native_response_and_never_reuses_it(self):
+        sent, completed = [], []
+        native = NativeDesktop(sent.append, None)
+        with self.assertRaises(ValueError):
+            native.query_display(completed.append)
+        native.observe('native-version 1')
+        native.query_display(completed.append)
+        self.assertEqual(sent, ['display-query\n'])
+        native.observe('native-display :17')
+        self.assertEqual(completed, [':17'])
+        with self.assertRaises(ValueError):
+            native.query_display(completed.append)
+        with self.assertRaises(ValueError):
+            native.observe('native-display :18')
+
+    def test_native_display_loss_completes_pending_startup_once(self):
+        completed = []
+        self.native.query_display(completed.append)
+        self.native.lost()
+        self.native.lost()
+        self.native.observe('native-display :17')
+        self.assertEqual(completed, [None])
+
+    def test_native_display_rejects_remote_or_malformed_addresses(self):
+        for display in ('remote:1', ':1.0', ':1/other', ':123456', ':', ':１'):
+            native = NativeDesktop(lambda _line: None, None)
+            native.observe('native-version 1')
+            native.query_display(lambda _display: self.fail('Invalid display was admitted'))
+            with self.assertRaises(ValueError):
+                native.observe('native-display ' + display)
+
     def setUp(self):
         self.sent = []
         self.frames = Frames()

@@ -6,7 +6,6 @@ does not qualify production X11 authorization, Unicode or sandbox admission.
 import json
 import os
 from pathlib import Path
-import re
 import shutil
 import socket
 import subprocess
@@ -97,7 +96,7 @@ def main():
         if os.environ.get('FLOE_PROBE_COMPONENT'):
             from desktop_graphics import DesktopGraphics
             graphics = DesktopGraphics(os.environ['FLOE_PROBE_COMPONENT'], evidence, environment,
-                shell=root / 'alpine-wayland-probe/probe-shell.so', capture=root / 'alpine-wayland-probe/frame-probe',
+                shell=Path(os.environ['FLOE_PROBE_NATIVE']) / 'probe-shell.so', capture=Path(os.environ['FLOE_PROBE_NATIVE']) / 'frame-probe',
                 library=Path(os.environ['FLOE_PROBE_WESTON_LIBRARY']) / 'libweston-14.so.0',
                 xwayland=Path(os.environ['FLOE_PROBE_WESTON_LIBRARY']).parent / 'xwayland/xwayland.so')
             command, server_environment, capture_command = graphics.command, graphics.environment, graphics.capture_command
@@ -107,16 +106,12 @@ def main():
                            "compositor", pass_fds=(right.fileno(),))
         right.close()
         wait(lambda: (runtime / "wayland-0").exists(), "No private compositor socket")
-        pattern = r"xserver listening on display (:[0-9]+)"
-        log = evidence / "compositor.log"
-        wait(lambda: re.search(pattern, log.read_text()) or compositor.poll() is not None,
-             "Xwayland did not reserve a display")
-        assert compositor.poll() is None, "Compositor exited"
-        display = re.search(pattern, log.read_text()).group(1)
-        result["xwayland_display"] = display
-        wire.send('display-query\n')
-        wait(lambda: 'native-display ' + display in events, 'No authoritative X11 display startup receipt')
-        result['native_display_receipt'] = display
+        displays = []
+        wire.invoke(lambda: wire.native.query_display(displays.append))
+        wait(lambda: bool(displays) or compositor.poll() is not None, 'No authoritative X11 display startup receipt')
+        assert compositor.poll() is None and displays and displays[0], 'Private Xwayland is unavailable'
+        display = displays[0]
+        result['xwayland_display'] = result['native_display_receipt'] = display
         if authorize:
             environment.update(authorize(display))
             denied = subprocess.run(['python3', '-c', 'from Xlib.display import Display; import sys; Display(sys.argv[1])', display],

@@ -376,7 +376,7 @@ def main():
         if support:
             from desktop_graphics import DesktopGraphics
             graphics = DesktopGraphics(os.environ['FLOE_PROBE_COMPONENT'], evidence, environment,
-                shell=root / 'alpine-wayland-probe/probe-shell.so', capture=root / 'alpine-wayland-probe/frame-probe',
+                shell=Path(os.environ['FLOE_PROBE_NATIVE']) / 'probe-shell.so', capture=Path(os.environ['FLOE_PROBE_NATIVE']) / 'frame-probe',
                 library=Path(os.environ['FLOE_PROBE_WESTON_LIBRARY']) / 'libweston-14.so.0',
                 xwayland=Path(os.environ['FLOE_PROBE_WESTON_LIBRARY']).parent / 'xwayland/xwayland.so')
             compositor_command, compositor_environment = graphics.command, graphics.environment

@@ -338,7 +338,7 @@ def main():
             app_environment = {**os.environ, 'DBUS_SESSION_BUS_ADDRESS': address,
                 'XDG_RUNTIME_DIR': str(runtime), 'WAYLAND_DISPLAY': display.name}
             graphics = DesktopGraphics(os.environ['FLOE_PROBE_COMPONENT'], evidence, app_environment,
-                shell=root / 'alpine-wayland-probe/probe-shell.so', capture=root / 'alpine-wayland-probe/frame-probe',
+                shell=Path(os.environ['FLOE_PROBE_NATIVE']) / 'probe-shell.so', capture=Path(os.environ['FLOE_PROBE_NATIVE']) / 'frame-probe',
                 library=Path(os.environ['FLOE_PROBE_WESTON_LIBRARY']) / 'libweston-14.so.0',
                 xwayland=Path(os.environ['FLOE_PROBE_WESTON_LIBRARY']).parent / 'xwayland/xwayland.so',
                 authentication=profile / 'Xauthority')

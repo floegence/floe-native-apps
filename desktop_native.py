@@ -133,6 +133,7 @@ class NativeDesktop:
         self.surfaces, self.last_surface, self.focus = set(), 0, None
         self.epoch, self.last_epoch = 0, 0
         self.query, self.query_id = None, 0
+        self.display_requested, self.display_query = False, None
         self.version, self.closed = None, False
 
     def observe(self, line):
@@ -146,6 +147,15 @@ class NativeDesktop:
             if fields != ['native-version', '1'] or self.version is not None:
                 raise ValueError('Unsupported native version')
             self.version = 1
+        elif kind == 'native-display':
+            if self.version != 1 or len(fields) != 2 or self.display_query is None:
+                raise ValueError('Unexpected native display response')
+            display = fields[1]
+            if display != '-' and (not display.startswith(':') or not 1 <= len(display[1:]) <= 5 or
+                                   any(c not in '0123456789' for c in display[1:])):
+                raise ValueError('Invalid native display')
+            callback, self.display_query = self.display_query, None
+            callback(None if display == '-' else display)
         elif kind == 'window-instance':
             if self.version != 1 or len(fields) != 2:
                 raise ValueError('Invalid native instance')
@@ -287,10 +297,22 @@ class NativeDesktop:
         if self.closed:
             return
         self.closed, self.target, self.focus, self.epoch = True, None, None, 0
+        if self.display_query:
+            callback, self.display_query = self.display_query, None
+            callback(None)
         if self.query:
             callback, self.query = self.query, None
             callback(0, 0)
         self.changed()
+
+    def query_display(self, completed):
+        if self.closed or self.version != 1 or self.display_requested:
+            raise ValueError('Native display query is unavailable')
+        self.display_requested, self.display_query = True, completed
+        try:
+            self.send('display-query\n')
+        except (OSError, ValueError):
+            self.lost()
 
     def query_scene(self, completed):
         if self.closed or self.query is not None:

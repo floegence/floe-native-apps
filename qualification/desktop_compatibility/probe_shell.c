@@ -857,6 +857,18 @@ static const struct weston_desktop_api desktop_api = {
 };
 
 static void command(struct probe *p, char *line) {
+    if (!strcmp(line, "display-query")) {
+        /* The main compositor initializes Xwayland before dispatching control
+         * requests. Its reserved display is authoritative, not log output. */
+        const struct weston_xwayland_api *api = weston_xwayland_get_api(p->compositor);
+        const char *display = getenv("DISPLAY");
+        bool valid = api && api->get(p->compositor) && display && display[0] == ':' &&
+                     strlen(display) >= 2 && strlen(display) <= 6;
+        for (const char *digit = valid ? display + 1 : ""; *digit; digit++)
+            if (*digit < '0' || *digit > '9') valid = false;
+        emit(p, "native-display %s\n", valid ? display : "-");
+        return;
+    }
     unsigned int key, state;
     uint64_t connection, identity, generation;
     int prefix = 0;
