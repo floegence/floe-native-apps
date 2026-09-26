@@ -64,6 +64,7 @@ def main():
         address = bus.stdout.readline().strip()
         environment = {**os.environ, "DBUS_SESSION_BUS_ADDRESS": address,
                        "XDG_RUNTIME_DIR": str(runtime), "WAYLAND_DISPLAY": "wayland-0",
+                       "XDG_CONFIG_HOME": str(evidence / 'config'), "XDG_CACHE_HOME": str(evidence / 'cache'),
                        "GDK_BACKEND": "wayland", "QT_QPA_PLATFORM": "wayland",
                        "GTK_IM_MODULE": "wayland"}
         for key in ("DISPLAY", "XAUTHORITY", "QT_IM_MODULE", "GTK_PATH", "GTK_IM_MODULE_FILE"):
@@ -79,14 +80,16 @@ def main():
             result["ibus_sync_mode"] = environment["IBUS_ENABLE_SYNC_MODE"]
             components = evidence / "ibus-components"
             components.mkdir()
-            start(["ibus-daemon", "--single", "--panel=disable", "--config=disable", "--emoji-extension=disable",
+            daemon = os.environ.get('FLOE_PROBE_IBUS_DAEMON', 'ibus-daemon')
+            daemon_process = start([daemon, "--single", "--panel=disable", "--config=disable", "--emoji-extension=disable",
                    "--cache=none", "--address=" + os.environ["IBUS_ADDRESS"]],
                   {**environment, "IBUS_COMPONENT_PATH": str(components)}, "ibus")
             def owns_ibus():
                 return connection.call_sync("org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus",
                     "NameHasOwner", GLib.Variant("(s)", ("org.freedesktop.IBus",)), GLib.VariantType.new("(b)"),
                     Gio.DBusCallFlags.NONE, 2000, None).unpack()[0]
-            wait(owns_ibus, "Private IBus did not start")
+            wait(lambda: owns_ibus() or daemon_process.poll() is not None, "Private IBus did not start")
+            assert daemon_process.poll() is None, 'Private IBus exited: ' + str(daemon_process.returncode)
             from ibus_probe import IBusProbe
             ibus = IBusProbe(lambda event: events.append(json.dumps(event)))
             ibus.activate()
@@ -99,12 +102,20 @@ def main():
         right.close()
         threading.Thread(target=controls, daemon=True).start()
         wait(lambda: (runtime / "wayland-0").exists(), "Private display unavailable")
-        start(["python3", str(root / "input_fixture.py"), toolkit, str(receipt)], environment, "application")
+        application = start(["python3", str(root / "input_fixture.py"), toolkit, str(receipt)], environment, "application")
         def context_ready():
             if ibus is None:
                 return any(e.startswith("context ") and e.endswith(" 1") for e in events)
             return ibus.active is not None
         wait(lambda: receipt.exists() and context_ready(), "No native focused input context")
+        if os.environ.get('FLOE_PROBE_CONTEXT_SOURCE'):
+            source = ibus.bus.get_connection().call_sync('org.freedesktop.IBus', '/org/freedesktop/IBus',
+                'org.floegence.IBus.ContextSource', 'Describe', GLib.Variant('(o)', (ibus.active.input_path,)),
+                GLib.VariantType.new('(usuubb)'), Gio.DBusCallFlags.NONE, 2000, None).unpack()
+            assert source[0] == 1 and source[2] == application.pid and source[3] == os.getuid()
+            assert source[4] and source[5], 'No focused synchronous toolkit context'
+            result['native_context_source'] = {'version': source[0], 'sender': source[1], 'pid': source[2],
+                                               'uid': source[3], 'focused': source[4], 'post_process': source[5]}
         captured = evidence / "loaded"
         captured.mkdir()
         from capture_probe import capture

@@ -49,6 +49,7 @@ def main():
     capture_command, authorize = None, None
     app_environment = None
     support = None
+    native = None
     if os.environ.get('FLOE_PROBE_COMPONENT'):
         from portable_services import PortableServices
         support = PortableServices(os.environ['FLOE_PROBE_COMPONENT'], evidence)
@@ -166,7 +167,10 @@ def main():
                 outcome['offered_protocols'] = ['wayland', 'x11']
                 outcome['graphical_protocol_forced'] = False
             if input_kind == "ibus":
-                ibus.activate()
+                if native:
+                    native.enable_ibus(daemon.pid)
+                else:
+                    ibus.activate()
             original = Path("/var/lib/snapd/desktop/applications/firefox_firefox.desktop")
             entry = GLib.KeyFile.new()
             entry.load_from_file(str(original), GLib.KeyFileFlags.NONE)
@@ -210,11 +214,20 @@ def main():
             left.sendall(b"motion 300 280\nbutton 272 1\nbutton 272 0\n")
             wait_until(lambda: any(r.get("event") == "pointerdown" for r in receipts), "No actual field click receipt")
             if input_kind == "ibus":
-                wait_until(lambda: ibus.active is not None, "No native IBus context")
+                wait_until(lambda: native.input_path is not None if native else ibus.active is not None,
+                           "No native IBus context")
+                if os.environ.get('FLOE_PROBE_CONTEXT_SOURCE') and not native:
+                    from ibus_source_probe import qualify
+                    focus = next(e['control'].split() for e in reversed(events)
+                                 if e.get('control', '').startswith('focus ') and e['control'].endswith(' 1'))
+                    outcome['ibus_context_source'] = qualify(ibus, private, None, runtime, int(focus[3]))
             else:
                 wait_until(lambda: any(e.get("control", "").startswith("context ") and
                     e["control"].endswith(" 1") for e in events), "No native text-input context")
             def text_command(value):
+                if native:
+                    native.commit(value)
+                    return b''
                 if input_kind == "ibus":
                     return ibus.enqueue(value)
                 return ("text " + value + "\n").encode()
@@ -228,14 +241,18 @@ def main():
             if os.environ.get("FLOE_PROBE_STRESS"):
                 assert input_kind == "ibus"
                 for value in [text] * 64 + ["界🙂" * 2000]:
-                    ibus.transactions.wait_drained(5)
+                    if not native:
+                        ibus.transactions.wait_drained(5)
                     left.sendall(text_command(value))
-                    ibus.transactions.wait_drained(5)
+                    if not native:
+                        ibus.transactions.wait_drained(5)
                     left.sendall(b"key 28 1\nkey 28 0\n")
                     expected += value + "\n"
                 wait_until(lambda: any(r.get("value") == expected for r in receipts),
                            "Actual Snap browser did not receive ordered repeated and long Unicode")
                 outcome["stress"] = {"repeated_commits": 64, "long_commit_bytes": 14000}
+            if native:
+                outcome['native_context'] = next(e['native_context'] for e in events if 'native_context' in e)
             capture("received")
             outcome.update(expected=expected, composition="native protocol; client IME not exercised")
             left.sendall(b"motion 105 585\nbutton 272 1\nbutton 272 0\n")
@@ -288,16 +305,24 @@ def main():
                 "XDG_CONFIG_HOME": str(evidence / "ibus-config"), "XDG_CACHE_HOME": str(evidence / "ibus-cache"),
                 "IBUS_COMPONENT_PATH": str(components)}
             daemon_command = support.command('usr/bin/ibus-daemon') if support else ['ibus-daemon']
-            start([*daemon_command, "--single", "--panel=disable", "--config=disable", "--emoji-extension=disable",
+            derived_daemon = os.environ.get('FLOE_PROBE_IBUS_DAEMON')
+            if derived_daemon:
+                daemon_command = [derived_daemon]
+            daemon = start([*daemon_command, "--single", "--panel=disable", "--config=disable", "--emoji-extension=disable",
                    "--cache=none", "--address=" + os.environ["IBUS_ADDRESS"]],
-                  support.environment(daemon_environment) if support else daemon_environment, "ibus")
+                  support.environment(daemon_environment) if support and not derived_daemon else daemon_environment, "ibus")
             def daemon_ready():
                 return private.call_sync("org.freedesktop.DBus", "/org/freedesktop/DBus",
                     "org.freedesktop.DBus", "NameHasOwner", GLib.Variant("(s)", ("org.freedesktop.IBus",)),
                     GLib.VariantType.new("(b)"), Gio.DBusCallFlags.NONE, 2000, None).unpack()[0]
             wait_until(daemon_ready, "Private IBus daemon did not become ready")
-            from ibus_probe import IBusProbe
-            ibus = IBusProbe(record)
+            if os.environ.get('FLOE_PROBE_CONTEXT'):
+                from context_probe import ToolkitDriver
+                native = ToolkitDriver(private, left, runtime, 'org.floegence.DesktopInput', record)
+                ibus = None
+            else:
+                from ibus_probe import IBusProbe
+                ibus = IBusProbe(record)
         libraries = root / "stack/usr/lib/x86_64-linux-gnu"
         weston_environment = {**os.environ, "XDG_RUNTIME_DIR": str(runtime),
             "DBUS_SESSION_BUS_ADDRESS": address, "FLOE_PROBE_CONTROL_FD": str(right.fileno()),
@@ -322,6 +347,8 @@ def main():
             with left.makefile("r") as stream:
                 for line in stream:
                     record({"control": line.strip()})
+                    if native:
+                        native.observe(line.strip())
 
         control_thread = threading.Thread(target=controls, daemon=True)
         control_thread.start()
@@ -330,6 +357,8 @@ def main():
         mainloop.run()
         thread.join()
     finally:
+        if native:
+            native.close()
         # The application supervisor owns its descendants, including the sandbox.
         for process, start_ticks, name in reversed(processes):
             if process.poll() is None and identity(process.pid)[1] == start_ticks:

@@ -47,6 +47,13 @@
       "version": "1.20.3",
       "source": "https://github.com/flatpak/xdg-desktop-portal/blob/1.20.3/src/xdp-app-info-flatpak.c",
       "use": "Reviewed official Flatpak proxy metadata and bwrap child identity lookup; no third-party source copied"
+    },
+    {
+      "project": "IBus private context origin",
+      "version": "1.5.33",
+      "source": "https://github.com/ibus/ibus/releases/download/1.5.33/ibus-1.5.33.tar.gz",
+      "use": "Read-only daemon credentials and original portal caller extension; native source builds and exact patch provenance in native/patches/ibus-1.5-context-source.json",
+      "license": "LGPL-2.1-or-later"
     }
   ],
   "unproven_release_requirements": [
@@ -192,6 +199,11 @@
       "case": "Native surface-bound Qt confirmed text, native amd64 and arm64",
       "result": "Authenticated attachment, actual wl_surface ID, live application/sandbox peer, bounded native markers and the shared scheduler deliver 64 alternating-field Unicode/Enter transactions plus 14000 bytes, with exact actual Qt document receipts. Flatpak KWrite uses the same context service and saves exact bytes through its remote official portal.",
       "limits": "amd64 runs in an unprivileged disposable Ubuntu24 distribution fixture; arm64 runs directly in the task VM. GTK IBus production context provenance, pinned module baseline/distribution and full helper preparation remain incomplete."
+    },
+    {
+      "case": "Native GTK IBus source and completion admission",
+      "result": "Derived original daemon and portal report live connection credentials; current native surface, process/sandbox and synchronous context must agree. Shared authenticated input scheduler on native amd64 and arm64 delivers 64 alternating-field Unicode/Enter pairs plus 14000 bytes. Strict Snap Firefox amd64 and Flatpak GTK/Qt arm64 receive exact Unicode and save exact bytes using the same native context owner; Qt and GTK FileChooser use different adapters beneath that one owner.",
+      "limits": "Pinned distribution components, production helper realization, full package/desktop matrix and release validation remain unfinished. No direct text-input-v3 completion or real client IME claim."
     }
   ],
   "rejected_assumptions": [
@@ -208,6 +220,8 @@
     "xdg_popup commits are not top-level shell commits. Damage follows the native desktop parent chain; transient toplevel parent metadata has a separate shell callback and must be registered explicitly.",
     "Weston 14 accepts only the last keyboard serial for popup grabs: a release arriving before a press-triggered GTK request dismisses the popup. Actual protocol traces prove the failure. The bounded per-focus keyboard serial history fixes this without delaying or replaying keys.",
     "Weston 14 advertises wl_seat version 7 and cannot deliver high-resolution wheel metadata. GTK 4.14 discards the first smooth scroll delta in the tested scrolled window. The reviewed source patch enables standard value120 on seat version 8, with native legacy detents and per-target fractional remainder.",
-    "A minimal Xwayland fixture needs the standard X11 socket directory; the native amd64 distribution fixture supplies a private tmpfs at /tmp/.X11-unix. Production resource realization must handle this prerequisite without depending on a pre-existing desktop."
+    "A minimal Xwayland fixture needs the standard X11 socket directory; the native amd64 distribution fixture supplies a private tmpfs at /tmp/.X11-unix. Production resource realization must handle this prerequisite without depending on a pre-existing desktop.",
+    "Selecting an IBus engine synchronously on the helper event loop blocks the factory callback on that same loop; startup must use the official asynchronous result before application launch.",
+    "IBus intentionally exits when its non-daemon parent is PID 1. Distribution fixtures use a real init process; the production parent-death behavior is retained."
   ]
 }

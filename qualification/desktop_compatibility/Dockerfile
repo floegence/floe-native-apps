@@ -4,4 +4,5 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
     gcc g++ pkg-config libwayland-dev libxkbcommon-dev \
     libpixman-1-dev libgtk-4-dev wayland-protocols qt6-base-private-dev \
     qt6-wayland python3-pyqt6 python3-gi python3-pil python3-xlib \
-    dbus-daemon xauth && rm -rf /var/lib/apt/lists/*
+    dbus-daemon xauth make gettext libtool iso-codes patch libdbus-1-dev \
+    libxfixes-dev gir1.2-ibus-1.0 ibus ibus-gtk4 && rm -rf /var/lib/apt/lists/*

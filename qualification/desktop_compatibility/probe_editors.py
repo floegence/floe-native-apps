@@ -104,13 +104,19 @@ def main():
                           host_documents=document_bridge is not None, tools=support, package_runtime=runtime)
             portal_command = support.command('usr/lib/ibus/ibus-portal') if support else [
                 os.environ.get("FLOE_PROBE_IBUS_PORTAL", "/usr/libexec/ibus-portal")]
+            derived_portal = os.environ.get('FLOE_PROBE_IBUS_PORTAL')
+            if derived_portal:
+                portal_command = [derived_portal]
             portal_binary = portal_command[-1]
             outcome["ibus_portal"] = {"path": portal_binary,
                                       "sha256": hashlib.sha256(Path(portal_binary).read_bytes()).hexdigest()}
-            portal = start(portal_command, support.environment(environment) if support else environment, "ibus-portal")
+            portal = start(portal_command, support.environment(environment) if support and not derived_portal else environment, "ibus-portal")
             wait_until(lambda: owns("org.freedesktop.portal.IBus") or portal.poll() is not None, "No IBus portal")
             assert portal.poll() is None, "IBus portal exited"
-            ibus.activate()
+            if native:
+                native.enable_ibus(daemon.pid, portal.pid)
+            else:
+                ibus.activate()
             if authorize:
                 log = evidence / 'compositor.log'
                 pattern = r'xserver listening on display (:[0-9]+)'
@@ -170,13 +176,21 @@ def main():
             if input_kind == "module":
                 wait_until(lambda: len(native.clients) == 1, "No sandbox native Qt input context")
             elif input_kind == "ibus":
-                wait_until(lambda: ibus.active is not None and any(e.get("ibus") == "context" and e.get("client") != "fake" for e in events),
-                           "No sandbox toolkit input context")
+                if native:
+                    wait_until(lambda: native.input_path is not None, 'No native sandbox toolkit context')
+                else:
+                    wait_until(lambda: ibus.active is not None and any(e.get("ibus") == "context" and e.get("client") != "fake" for e in events),
+                               "No sandbox toolkit input context")
+                if os.environ.get('FLOE_PROBE_CONTEXT_SOURCE') and not native:
+                    from ibus_source_probe import qualify
+                    focus = next(e['control'].split() for e in reversed(events)
+                                 if e.get('control', '').startswith('focus ') and e['control'].endswith(' 1'))
+                    outcome['ibus_context_source'] = qualify(ibus, connection, portal.pid, runtime, int(focus[3]))
             else:
                 wait_until(lambda: any(e.get("control", "").startswith("context ") and
                     e["control"].endswith(" 1") for e in events), "No native text-input context")
             def submit_text(value):
-                if input_kind == "module":
+                if native:
                     native.commit(value)
                 elif input_kind == "ibus":
                     left.sendall(ibus.enqueue(value))
@@ -204,24 +218,32 @@ def main():
                 left.sendall(b"key 18 1\nkey 18 0\nkey 49 1\nkey 49 0\nkey 32 1\nkey 32 0\n")
                 expected = contents + "end\n"
                 outcome["stress"] = {"repeated_commits": 64, "long_commit_bytes": 14000,
-                                     "completion": "toolkit event loop" if native else "IBus marker release"}
+                                     "completion": ('synchronous IBus context release' if input_kind == 'ibus'
+                                                    else 'toolkit event loop') if native else 'prototype marker receipt'}
             outcome["expected"] = expected
             if native:
                 outcome['sandbox_peer'] = next(e['native_context'] for e in events if 'native_context' in e)
                 assert outcome['sandbox_peer']['bus_pid'] != outcome['sandbox_peer']['native_pid']
             if os.environ.get("FLOE_PROBE_SAVE_DIALOG"):
-                previous_context = ibus.active.input_path if ibus.active else None
+                previous_context = native.input_path if native else (
+                    ibus.active.input_path if ibus.active else None)
                 frames = sum(e.get("control", "").startswith("frame ") for e in events)
                 left.sendall(b"key 29 1\nkey 42 1\nkey 31 1\nkey 31 0\nkey 42 0\nkey 29 0\n")
                 wait_until(lambda: sum(e.get("control", "").startswith("frame ") for e in events) > frames,
                            "No remote Save As dialog")
                 capture("save-dialog")
                 destination = evidence / "portal-copy.txt"
-                wait_until(lambda: ibus.active is not None and ibus.active.input_path != previous_context,
+                wait_until(lambda: (native.input_path is not None and native.input_path != previous_context)
+                           if native else
+                           (ibus.active is not None and ibus.active.input_path != previous_context),
                            "No distinct FileChooser IBus context")
                 # The official GTK backend owns this context. Its stock chooser
                 # preselects the stem and retains '.txt'. Submit exactly once.
-                left.sendall(ibus.enqueue("portal-copy") + b"key 28 1\nkey 28 0\n")
+                if native:
+                    native.commit('portal-copy')
+                    left.sendall(b'key 28 1\nkey 28 0\n')
+                else:
+                    left.sendall(ibus.enqueue("portal-copy") + b"key 28 1\nkey 28 0\n")
                 wait_until(lambda: destination.exists() and destination.read_bytes() == expected.encode(),
                            "Save As did not grant and save the exact document")
                 capture("saved-copy")
@@ -283,6 +305,9 @@ def main():
             from context_probe import ToolkitDriver
             shutil.copytree(root / "qt-native/platforminputcontexts", fixture_state / "input-module/platforminputcontexts")
             native = ToolkitDriver(connection, left, runtime, app_id + ".FloeClientInput", record)
+        elif input_kind == 'ibus' and os.environ.get('FLOE_PROBE_CONTEXT'):
+            from context_probe import ToolkitDriver
+            native = ToolkitDriver(connection, left, runtime, 'org.floegence.DesktopInput', record)
         if input_kind == "ibus":
             environment["QT_IM_MODULE"] = "ibus"
         else:
@@ -292,14 +317,19 @@ def main():
         components = evidence / "ibus-components"
         components.mkdir()
         daemon_command = support.command('usr/bin/ibus-daemon') if support else ['ibus-daemon']
+        derived_daemon = os.environ.get('FLOE_PROBE_IBUS_DAEMON')
+        if derived_daemon:
+            daemon_command = [derived_daemon]
         daemon_environment = {**environment, "IBUS_COMPONENT_PATH": str(components),
             "XDG_CONFIG_HOME": str(evidence / "ibus-config"), "XDG_CACHE_HOME": str(evidence / "ibus-cache")}
-        start([*daemon_command, "--single", "--panel=disable", "--config=disable", "--emoji-extension=disable",
+        daemon = start([*daemon_command, "--single", "--panel=disable", "--config=disable", "--emoji-extension=disable",
                "--cache=none", "--address=" + os.environ["IBUS_ADDRESS"]],
-              support.environment(daemon_environment) if support else daemon_environment, "ibus")
+              support.environment(daemon_environment) if support and not derived_daemon else daemon_environment, "ibus")
         wait_until(lambda: owns("org.freedesktop.IBus"), "No private IBus daemon")
-        from ibus_probe import IBusProbe
-        ibus = IBusProbe(record)
+        ibus = None
+        if not native:
+            from ibus_probe import IBusProbe
+            ibus = IBusProbe(record)
         compositor_command = ["weston", "--backend=headless", "--renderer=pixman", "--shell=" + str(root / "probe/probe-shell.so"),
                "--socket=" + display.name, "--width=1000", "--height=700", "--idle-time=0", "--no-config"]
         compositor_environment = dict(environment)

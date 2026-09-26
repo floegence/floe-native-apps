@@ -13,6 +13,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import traceback
 
 from application_processes import identity
 
@@ -45,6 +46,8 @@ def main():
         process = subprocess.Popen(command, env=environment, stdout=log, stderr=log,
                                    start_new_session=True, **kwargs)
         processes.append((process, identity(process.pid)[1], name))
+        (evidence / 'processes.json').write_text(json.dumps([
+            {'pid': p.pid, 'start_ticks': ticks, 'name': kind} for p, ticks, kind in processes], indent=2))
         return process
 
     def start_capture():
@@ -288,10 +291,14 @@ def main():
         result["passed"] = True
     except Exception as error:
         result["error"] = str(error)
+        result['traceback'] = traceback.format_exc()
     finally:
-        if control:
-            control.close()
-        wire.close()
+        for close in ([control.close] if control else []) + [wire.close]:
+            try:
+                close()
+            except Exception:
+                result.setdefault('cleanup_errors', []).append(traceback.format_exc())
+                result['passed'] = False
         if frame_socket:
             frame_socket.close()
         for process, ticks, _name in reversed(processes):

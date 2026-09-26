@@ -60,3 +60,15 @@ library from that verified source without modifying publisher archives or an
 activated installation. Native qualification records the compiler, packages,
 derived source and library hashes. These unpublished fixtures do not add a
 released component or redistribute the third-party library with this module.
+
+## IBus context provenance qualification
+
+`native/patches/ibus-1.5-context-source.patch` derives a read-only context
+provenance interface from IBus 1.5.33, under its original
+[LGPL-2.1-or-later license](licenses/ibus-COPYING.txt). The adjacent JSON records
+the original publisher archive and source hashes. The private daemon reports
+the actual context connection; its official portal reports the original
+session-bus owner. Neither interface exposes text or performs input or process
+operations. `qualification/desktop_compatibility/build_ibus.sh` compiles only in
+a disposable native fixture. This unpublished work does not activate a component,
+change original archive hashes or redistribute a derived IBus binary.

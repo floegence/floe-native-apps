@@ -22,12 +22,14 @@ class ContextToken:
     sender: str
     client: object
     surface_peer: object
+    adapter: object = None
 
 
 class NativeContexts:
     def __init__(self, native, tree, runtime):
         self.native, self.tree, self.runtime = native, tree, runtime
         self.clients, self.markers = {}, MarkerTransactions()
+        self.ibus = None
         self.bound, self.pending, self.sequence, self.closed = None, None, 0, False
 
     def register(self, sender, pid, version, toolkit):
@@ -50,6 +52,8 @@ class NativeContexts:
         bound, self.bound = self.bound, None
         if bound:
             bound.surface_peer.close()
+            if bound.adapter:
+                bound.client.close()
 
     def context_for(self, target):
         if self.pending:
@@ -65,11 +69,16 @@ class NativeContexts:
         try:
             surface_peer = ApplicationPeer(self.tree, focus.pid, self.runtime)
             matching = [(sender, peer) for sender, peer in self.clients.items() if peer.matches(surface_peer)]
+            adapter = None
+            if not matching and self.ibus:
+                adapter = self.ibus
+                selected = adapter.select(surface_peer)
+                matching = [selected] if selected else []
             if len(matching) != 1:
                 surface_peer.close()
                 return None
             sender, peer = matching[0]
-            token = ContextToken(self.native.epoch, target, focus, sender, peer, surface_peer)
+            token = ContextToken(self.native.epoch, target, focus, sender, peer, surface_peer, adapter)
             self.bound = token
             if not self.valid(token):
                 self.unbind()
@@ -83,7 +92,9 @@ class NativeContexts:
     def valid(self, token):
         return (not self.closed and self.bound is token and not self.native.closed and
                 self.native.target is token.target and self.native.focus is token.focus and
-                self.native.epoch == token.epoch and self.clients.get(token.sender) is token.client and
+                self.native.epoch == token.epoch and
+                (token.adapter is self.ibus and token.adapter.valid(token) if token.adapter else
+                 self.clients.get(token.sender) is token.client) and
                 token.client.matches(token.surface_peer))
 
     def commit(self, token, text, completed):
