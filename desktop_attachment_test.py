@@ -10,9 +10,15 @@ class Owner:
         self.attachment = attachment
         self.messages, self.frames = [], []
         self.frame_pending = False
+        self.cursor_pending = False
+        self.cursors = []
 
     def send(self, value):
         self.messages.append(value)
+        return True
+
+    def send_cursor(self, description, data):
+        self.cursors.append((description, data))
         return True
 
     def send_frame(self, description, data):
@@ -28,6 +34,7 @@ class Native:
         self.target = SimpleNamespace(window=1, generation=1)
         self.input, self.released, self.captures, self.commits, self.closed = [], [], [], [], []
         self.context = (self, 'context')
+        self.cursor = SimpleNamespace(current=None, revision=0)
 
     def bind(self, epoch):
         self.epoch = epoch
@@ -99,6 +106,25 @@ class AttachmentTests(unittest.TestCase):
     def ready(self):
         self.captured()
         self.acknowledge()
+
+    def test_cursor_updates_coalesce_while_peer_is_backpressured(self):
+        self.native.cursor.current = ({'mode': 'image', 'sequence': 1}, b'first')
+        self.attachment.cursor_changed()
+        self.assertEqual(self.owner.cursors[-1][1], b'first')
+        self.owner.cursor_pending = True
+        for sequence in range(2, 102):
+            self.native.cursor.current = ({'mode': 'image', 'sequence': sequence}, b'latest')
+            self.attachment.cursor_changed()
+        self.assertEqual(len(self.owner.cursors), 1)
+        self.owner.cursor_pending = False
+        self.attachment.writable(self.owner)
+        self.assertEqual(len(self.owner.cursors), 2)
+        self.assertEqual(self.owner.cursors[-1][0]['sequence'], 101)
+        self.native.cursor.current = None
+        self.attachment.cursor_changed()
+        self.assertEqual(self.owner.cursors[-1][0]['mode'], 'default')
+        self.assertIsNone(self.owner.cursors[-1][1])
+        self.assertIsNone(self.attachment.ready)
 
     def test_native_window_and_sent_frame_do_not_grant_input(self):
         self.input()

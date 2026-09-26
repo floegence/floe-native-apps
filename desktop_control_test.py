@@ -105,6 +105,27 @@ class ControlTests(unittest.TestCase):
             data.extend(client.recv(size - len(data)))
         return kind, bytes(data)
 
+    def test_cursor_has_one_bounded_payload_and_independent_frame_pressure(self):
+        client = self.connect()
+        self.receive(client)
+        peer = self.server.current
+        self.assertTrue(peer.send_cursor({'mode': 'image'}, b'cursor-pixels'))
+        self.assertFalse(peer.send_cursor({'mode': 'hidden'}, None))
+        self.assertTrue(peer.send_frame({'sequence': 1}, b'frame-pixels'))
+        self.loop.step()
+        self.assertEqual(json.loads(self.receive(client)[1])['event'], 'cursor')
+        self.assertEqual(self.receive(client), (3, b'cursor-pixels'))
+        self.assertEqual(json.loads(self.receive(client)[1])['event'], 'frame')
+        self.assertEqual(self.receive(client), (2, b'frame-pixels'))
+        self.assertFalse(peer.cursor_pending)
+        self.assertFalse(peer.frame_pending)
+        self.assertTrue(peer.send_cursor({'mode': 'hidden'}, None))
+        self.assertFalse(peer.send_cursor({'mode': 'default'}, None))
+        self.loop.step()
+        self.assertEqual(json.loads(self.receive(client)[1])['cursor']['mode'], 'hidden')
+        self.assertFalse(peer.cursor_pending)
+        self.assertEqual(peer.control_buffered, 0)
+
     def test_valid_private_connection_can_return_after_detach(self):
         first = self.connect()
         self.assertEqual(json.loads(self.receive(first)[1])['connection'], 1)

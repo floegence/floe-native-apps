@@ -32,6 +32,9 @@ class Attachment:
         self.changes, self.damages = 0, 0
         self.metadata = 0
 
+    def cursor_changed(self):
+        pass
+
     def metadata_changed(self):
         self.metadata += 1
 

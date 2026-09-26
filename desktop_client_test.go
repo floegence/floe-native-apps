@@ -330,3 +330,60 @@ func TestDesktopClientRequiresVersionedAuthenticationReply(t *testing.T) {
 		})
 	}
 }
+
+func TestDesktopClientCursorPreservesAlphaAndLogicalGeometry(t *testing.T) {
+	client, peer := desktopTestConnection(t)
+	im := image.NewNRGBA(image.Rect(0, 0, 48, 32))
+	im.SetNRGBA(47, 31, color.NRGBA{R: 200, G: 100, B: 50, A: 128})
+	var encoded bytes.Buffer
+	if err := png.Encode(&encoded, im); err != nil {
+		t.Fatal(err)
+	}
+	pixels := encoded.Bytes()
+	cursor := DesktopCursor{Mode: "image", Sequence: 8, Connection: 7, Window: 12, Generation: 81, Encoding: "png", Width: 48, Height: 32, LogicalWidth: 24, LogicalHeight: 16, XHot: 23, YHot: 15}
+	event := DesktopEvent{Event: "cursor", Cursor: &cursor, Bytes: len(pixels)}
+	go func() { _, _ = peer.Write(append(desktopTestJSON(event), desktopTestPacket(3, pixels)...)) }()
+	result, err := client.Read(t.Context())
+	if err != nil || result.Cursor == nil || *result.Cursor != cursor || !bytes.Equal(result.Pixels, pixels) {
+		t.Fatalf("cursor changed: %#v %v", result, err)
+	}
+	decoded, err := png.Decode(bytes.NewReader(result.Pixels))
+	if err != nil || color.NRGBAModel.Convert(decoded.At(47, 31)) != (color.NRGBA{R: 200, G: 100, B: 50, A: 128}) {
+		t.Fatalf("cursor alpha changed: %v", err)
+	}
+	if client.sequence != 0 {
+		t.Fatal("cursor implicitly acknowledged an application frame")
+	}
+}
+
+func TestDesktopClientCursorRejectsMalformedImages(t *testing.T) {
+	for _, name := range []string{"bounds", "hotspot", "connection", "size", "mixed_frame", "hidden_bytes", "wrong_kind"} {
+		t.Run(name, func(t *testing.T) {
+			client, peer := desktopTestConnection(t)
+			pixels := desktopTestPNG(t)
+			event := DesktopEvent{Event: "cursor", Bytes: len(pixels), Cursor: &DesktopCursor{Mode: "image", Sequence: 1, Connection: 7, Window: 1, Generation: 1, Encoding: "png", Width: 3, Height: 2, LogicalWidth: 3, LogicalHeight: 2}}
+			kind := byte(3)
+			switch name {
+			case "bounds":
+				event.Cursor.Width = 1025
+			case "hotspot":
+				event.Cursor.XHot = 3
+			case "connection":
+				event.Cursor.Connection = 6
+			case "size":
+				event.Bytes = desktopCursorLimit + 1
+			case "mixed_frame":
+				event.Frame = &DesktopFrame{}
+			case "hidden_bytes":
+				event.Cursor.Mode = "hidden"
+			case "wrong_kind":
+				kind = 2
+			}
+			go func() { _, _ = peer.Write(append(desktopTestJSON(event), desktopTestPacket(kind, pixels)...)) }()
+			result, err := client.Read(t.Context())
+			if !errors.Is(err, ErrDesktopProtocol) || len(result.Pixels) != 0 {
+				t.Fatalf("invalid cursor admitted: %v", err)
+			}
+		})
+	}
+}

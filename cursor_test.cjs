@@ -123,3 +123,27 @@ test('shadow pointer reuses normalized dimensions and hotspot, then resets',()=>
   s.client.reset_cursor();assert.equal(s.shadow.style.display,'none');
   s.client._process_pointer_position(['pointer-position',999,200,300]);assert.equal(s.shadow.style.display,'none');
 });
+
+test('native and Xpra share logical sizing while buffer density only improves clarity',()=>{
+  const s=setup(2);
+  vm.runInContext(`globalThis.nativeResults=[];globalThis.nativeCursor=new FloeRemoteCursor(value=>nativeResults.push(value));`,s.context);
+  const cursor=s.context.nativeCursor;
+  cursor.receive({width:48,height:32,logicalWidth:24,logicalHeight:16,xhot:23,yhot:15,png:new Uint8Array([137,80,78,71])});
+  s.load(48,32);
+  assert.deepEqual([cursor.current.width,cursor.current.height,cursor.current.xhot,cursor.current.yhot],[24,16,23,15]);
+  assert.equal(s.context.nativeResults.at(-1),cursor.current);
+  assert.equal(s.cursor.current,null);
+  cursor.hide();assert.equal(cursor.current.css,'none');
+  cursor.reset();assert.equal(cursor.current,null);
+  cursor.dispose();
+});
+
+test('explicit hide invalidates an unfinished image decode without hiding another owner',()=>{
+  const s=setup();
+  vm.runInContext(`globalThis.nativeCursor=new FloeRemoteCursor(()=>{});`,s.context);
+  const cursor=s.context.nativeCursor;
+  cursor.receive({width:48,height:48,logicalWidth:48,logicalHeight:48,xhot:0,yhot:0,png:new Uint8Array([1])});
+  const late=s.images.at(-1).onload;
+  cursor.hide();late();assert.equal(cursor.current.css,'none');
+  assert.equal(s.urls.size,0);assert.equal(s.cursor.current,null);
+});
