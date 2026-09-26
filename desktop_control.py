@@ -15,14 +15,17 @@ import struct
 
 # A 16000-byte confirmed-text operation can expand sixfold in JSON escapes.
 MAX_MESSAGE = 128 * 1024
-MAX_OUTPUT = 1024 * 1024
+# A full 256-window snapshot includes up to 1024 bytes of title per window.
+# JSON escaping can expand that display metadata sixfold. Incoming requests
+# retain the smaller independent bound above.
+MAX_OUTPUT = 2 * 1024 * 1024
 MAX_FRAME = 4096 * 4096 * 4
 MAX_PEERS = 8
 
 
-def encode_message(message):
+def encode_message(message, maximum=MAX_MESSAGE):
     body = json.dumps(message, ensure_ascii=True, allow_nan=False, separators=(',', ':')).encode()
-    if not 0 < len(body) <= MAX_MESSAGE:
+    if not 0 < len(body) <= maximum:
         raise ValueError('Control message exceeds limit')
     return struct.pack('!BI', 1, len(body)) + body
 
@@ -233,7 +236,11 @@ class Peer:
     def send(self, message):
         if self.closed or self.server.current is not self:
             return False
-        data = encode_message(message)
+        try:
+            data = encode_message(message, MAX_OUTPUT - 5)
+        except ValueError:
+            self.close()
+            return False
         if self.control_buffered + len(data) > MAX_OUTPUT or len(self.output) >= 128:
             self.close()
             return False

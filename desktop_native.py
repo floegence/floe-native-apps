@@ -128,7 +128,7 @@ class NativeDesktop:
         self.send, self.frames = send, frames
         self.attachment, self.target = None, None
         self.contexts = None
-        self.windows, self.declared, self.last_window, self.generation = {}, set(), 0, 0
+        self.windows, self.declared, self.last_window, self.generation = {}, {}, 0, 0
         self.surfaces, self.last_surface, self.focus = set(), 0, None
         self.epoch, self.last_epoch = 0, 0
         self.query, self.query_id = None, 0
@@ -151,8 +151,20 @@ class NativeDesktop:
             wid = integer(int(fields[1]))
             if wid <= self.last_window or len(self.declared) >= 256:
                 raise ValueError('Retired native window or window limit')
-            self.declared.add(wid)
+            self.declared[wid] = ''
             self.last_window = wid
+        elif kind == 'window-title':
+            if self.version != 1 or len(fields) != 3:
+                raise ValueError('Invalid native title')
+            wid = integer(int(fields[1]))
+            encoded = fields[2]
+            if wid not in self.declared or len(encoded) > 2048:
+                raise ValueError('Unknown window or oversized native title')
+            title = '' if encoded == '-' else bytes.fromhex(encoded).decode('utf-8', errors='replace')
+            if self.declared[wid] != title:
+                self.declared[wid] = title
+                if self.attachment:
+                    self.attachment.metadata_changed()
         elif kind == 'surface-instance':
             if self.version != 1 or len(fields) != 2:
                 raise ValueError('Invalid native surface')
@@ -210,7 +222,7 @@ class NativeDesktop:
                 raise ValueError('Invalid retirement')
             wid = integer(int(fields[1]))
             self.windows.pop(wid, None)
-            self.declared.discard(wid)
+            self.declared.pop(wid, None)
             if self.target and self.target.window == wid:
                 self.target = None
                 self.changed()
@@ -269,7 +281,8 @@ class NativeDesktop:
         return {'state': 'unavailable' if self.closed else 'running' if self.target else 'waiting',
                 'window': self.target.window if self.target else None, 'generation': self.generation,
                 'windows': [dict(window=w.window, parent=w.parent or None, protocol=w.protocol,
-                                 width=w.width, height=w.height) for w in self.windows.values()]}
+                                 width=w.width, height=w.height, title=self.declared[w.window])
+                            for w in self.windows.values()]}
 
     def bind(self, epoch):
         integer(epoch)

@@ -165,6 +165,8 @@ elif kind in ('gtk4', 'gtk4-entry'):
                         adjustment.connect('changed', bounds)
                     dialog.set_child(scroll)
                     dialog.present()
+                elif keyval == Gdk.KEY_F5:
+                    window.set_title('Document 日本語 🧑🏽\u200d💻\nSave As')
                 else:
                     return False
                 return True

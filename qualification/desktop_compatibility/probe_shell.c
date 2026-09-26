@@ -1,6 +1,6 @@
 /* Unpublished headless feasibility fixture, not the product compositor.
- * Host fixtures use libweston 13.0.0; the portable candidate pins 14.0.2.
- * Internal seat entry points below are exported by both reviewed versions;
+ * The portable candidate pins libweston 14.0.2.
+ * Internal seat entry points below belong to that reviewed version;
  * a release must retain the corresponding original source and native ABI proof.
  * The private inherited socket is available only to the owning test process.
  */
@@ -75,6 +75,8 @@ struct probe {
 };
 struct probe_window {
     struct wl_list link;
+    struct probe *probe;
+    struct wl_listener metadata;
     struct weston_desktop_surface *desktop;
     struct weston_view *view;
     uint64_t identity;
@@ -139,7 +141,7 @@ static void flush_control(struct probe *p) {
 }
 static void emit(struct probe *p, const char *format, ...) {
     if (p->control < 0) return;
-    char record[1024];
+    char record[4096];
     va_list arguments;
     va_start(arguments, format);
     int length = vsnprintf(record, sizeof record, format, arguments);
@@ -235,6 +237,25 @@ static void window_state(struct probe *p, struct probe_window *window) {
     emit(p, "window-state %" PRIu64 " %" PRIu64 " %s %d %d %d\n", window->identity,
         window->parent ? window->parent->identity : 0, x11 ? "x11" : "wayland",
         (int)weston_desktop_surface_get_pid(window->desktop), window->width, window->height);
+}
+static void window_metadata(struct wl_listener *listener, void *data) {
+    (void)data;
+    struct probe_window *window = wl_container_of(listener, window, metadata);
+    const char *title = weston_desktop_surface_get_title(window->desktop);
+    size_t length = title ? strnlen(title, 1024) : 0;
+    /* Bound untrusted display text without truncating a valid UTF-8 character.
+     * Hex keeps newlines and control characters out of the native framing. */
+    if (length == 1024)
+        while (length && ((unsigned char)title[length] & 0xc0) == 0x80) length--;
+    char encoded[2049];
+    const char digits[] = "0123456789abcdef";
+    for (size_t i = 0; i < length; i++) {
+        unsigned char value = title[i];
+        encoded[i * 2] = digits[value >> 4];
+        encoded[i * 2 + 1] = digits[value & 15];
+    }
+    encoded[length * 2] = '\0';
+    emit(window->probe, "window-title %" PRIu64 " %s\n", window->identity, length ? encoded : "-");
 }
 static void scene_changed(struct probe *p) {
     emit(p, "scene %" PRIu64 " %" PRIu64 "\n", ++p->scene, input_window(p));
@@ -453,6 +474,7 @@ static void apply_selection(struct probe *p, struct probe_window *selected) {
 static void surface_added(struct weston_desktop_surface *desktop, void *data) {
     struct probe *p = data;
     struct probe_window *window = calloc(1, sizeof *window);
+    window->probe = p;
     window->desktop = desktop;
     window->identity = ++p->next_window;
     window->view = weston_desktop_surface_create_view(desktop);
@@ -462,6 +484,9 @@ static void surface_added(struct weston_desktop_surface *desktop, void *data) {
     weston_desktop_surface_set_activated(desktop, true);
     emit(p, "window-added\n");
     emit(p, "window-instance %" PRIu64 "\n", window->identity);
+    window->metadata.notify = window_metadata;
+    weston_desktop_surface_add_metadata_listener(desktop, &window->metadata);
+    window_metadata(&window->metadata, NULL);
 }
 static void surface_removed(struct weston_desktop_surface *desktop, void *data) {
     struct probe *p = data;
@@ -479,6 +504,7 @@ static void surface_removed(struct weston_desktop_surface *desktop, void *data) 
     }
     if (p->current == surface) { release_input(p); p->current = NULL; }
     emit(p, "window-retired %" PRIu64 "\n", window->identity);
+    wl_list_remove(&window->metadata.link);
     wl_list_remove(&window->link);
     weston_desktop_surface_unlink_view(window->view);
     weston_view_destroy(window->view);

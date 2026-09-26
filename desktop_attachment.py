@@ -144,9 +144,14 @@ class DesktopAttachment:
 
     def scene_changed(self):
         self.retire_input()
+        self.metadata_changed()
+        self.damage()
+
+    def metadata_changed(self):
+        # Display metadata cannot revoke a painted target or an in-flight
+        # confirmed-text transaction. Only native scene changes do that.
         if self.owner:
             self.owner.send({'event': 'state', 'connection': self.epoch, 'state': self.native.snapshot()})
-        self.damage()
 
     def damage(self):
         self.dirty = True

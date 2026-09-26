@@ -201,6 +201,21 @@ class ControlTests(unittest.TestCase):
         self.assertEqual(self.application.detached, [owner])
         self.assertEqual(owner.buffered, 0)
 
+    def test_bounded_window_snapshot_does_not_expand_incoming_request_limit(self):
+        client = self.connect()
+        self.receive(client)
+        owner = self.server.current
+        snapshot = {'event': 'state', 'state': {'windows': [
+            {'window': i + 1, 'title': '\ufffd' * 1024, 'parent': None,
+             'width': 4096, 'height': 4096, 'protocol': 'wayland'} for i in range(256)]}}
+        self.assertTrue(owner.send(snapshot))
+        self.assertLess(owner.control_buffered, MAX_OUTPUT)
+        self.assertGreater(owner.control_buffered, MAX_MESSAGE)
+        with self.assertRaises(ValueError):
+            encode_message(snapshot)
+        self.assertFalse(owner.send(snapshot))
+        self.assertEqual(self.application.detached, [owner])
+
     def test_late_handshake_timeout_does_not_revoke_authenticated_owner(self):
         client = self.connect(authenticate=False)
         expired = next(iter(self.loop.timers.values()))

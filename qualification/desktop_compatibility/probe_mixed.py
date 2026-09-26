@@ -132,6 +132,13 @@ def main():
         result['first_frame_admission'] = True
         control.send(first, b"motion 250 180\nbutton 272 1\nbutton 272 0\nkey 30 1\nkey 30 0\n")
         wait(lambda: json.loads(receipts[0].read_text()) == ["a", ""], "No actual Wayland seat input")
+        assert control.native.snapshot()['windows'][0]['title'] == 'Floe GTK4 input qualification'
+        target = control.native.target
+        control.send(first, b'key 63 1\nkey 63 0\n')
+        wait(lambda: control.native.snapshot()['windows'][0]['title'] == 'Document 日本語 🧑🏽\u200d💻\nSave As',
+             'Native title update did not reach the window registry')
+        assert control.native.target is target, 'Title update revoked the active input target'
+        result['native_title_preserves_input'] = True
         control.send(first, b'key 60 1\nkey 60 0\n')
         popup = paint('popup', marker=(19, 183, 73), required=((19, 87, 155),))
         click_marker(popup)
