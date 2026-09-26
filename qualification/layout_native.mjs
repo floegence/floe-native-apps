@@ -105,7 +105,12 @@ try {
     return [...copy.getContext('2d').getImageData(0,0,4,4).data];
    },'data:image/png;base64,'+screenshot.toString('base64'));
    let content=0;
-   for(let i=0;i<pixels.length;i+=4)if([19,87,155].every((v,j)=>Math.abs(pixels[i+j]-v)<8))content++;
+   // Toolkit focus palettes and image encoding can shift the exact RGB value.
+   // Require the fixture's dominant blue, rejecting both white and black frames.
+   for(let i=0;i<pixels.length;i+=4){
+    const [r,g,b,a]=pixels.slice(i,i+4);
+    if(a===255 && b>96 && g>32 && b>g && g>r+16)content++;
+   }
    if(content<8) {
     await writeFile(receipt+'.png',screenshot);
     await writeFile(receipt.replace(/\.json$/,'.layout.json'),JSON.stringify({offscreen,policy,record,native,results,pixels},null,2));
