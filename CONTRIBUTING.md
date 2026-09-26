@@ -266,6 +266,17 @@ symlinks. XML paths are encoded as data. This implementation replaces the old
 qualification-only resource assembler; it does not itself activate a component,
 start services, or alter application environments.
 
+`Dockerfile.qt-native` selects an explicitly pinned native `TARGET_ARCH` and
+`QT_MAJOR`, then verifies Debian's signed 20250224 snapshot. Qt 5 uses the 5.15.2 /
+glibc 2.31 baseline; Qt 6 uses 6.4.2 / glibc 2.36. `build_qt_native.sh` records the
+immutable builder identity, signed archive closure, source hashes, ELF requirements
+and module digest. It installs no host or sandbox libraries. The qualification-only
+`prepare_qt_baseline.py` exports an actual widget application and its exact baseline
+library closure through a private loader. Its document and runtime receipts prove
+the library versions actually executing; they are not inferred from linker flags.
+The same adapter is also tested with the normal distribution and Flatpak runtimes.
+These candidates remain outside the activated catalog until full qualification.
+
 ## Component compatibility qualification
 
 An SDK release must preserve supported installed recipe identities independently

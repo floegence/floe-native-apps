@@ -36,6 +36,15 @@ licenses and source obligations remain with the corresponding library
 distributors. Per-architecture build records retain the pinned Debian image,
 snapshot, compiler/package versions, source hashes and binary hashes.
 
+`native/qt_native.cpp` is the first-party confirmed-text adapter candidate for
+the combined Wayland/Xwayland backend. Its native build fixtures use the same
+Debian Qt ABI baselines, with original Wayland client headers and libraries from
+the signed snapshot. The adapter dynamically links the application's Qt and
+Wayland libraries. `prepare_qt_baseline.py` copies original runtime libraries only
+inside disposable native test resources to verify those exact baseline versions;
+neither those libraries nor these unpublished candidates are added to the released
+component catalog by the qualification scripts.
+
 The GTK4 build fixture compiles the original GTK 4.0.3 source archive from
 https://download.gnome.org/sources/gtk/4.0/gtk-4.0.3.tar.xz (SHA-256
 `d7c9893725790b50bd9a3bb278856d9d543b44b6b9b951d7b60e7bdecc131890`), under

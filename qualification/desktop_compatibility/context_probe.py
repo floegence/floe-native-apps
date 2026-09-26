@@ -1,6 +1,8 @@
 """Actual toolkit documents through the production authenticated input boundary."""
 import json
+import hashlib
 import os
+from pathlib import Path
 import secrets
 from threading import Event
 
@@ -113,8 +115,9 @@ def qualify(root, evidence, environment, control, wire, start, wait, paint, disp
     connection.set_exit_on_close(False)
     input_service, daemon, daemon_peer, resources = None, None, None, None
     browser = None
+    plugins = Path(os.environ.get('FLOE_PROBE_QT_PLUGINS', root / ('qt5-native' if toolkit == 'qt5' else 'qt-native')))
     app_environment = {**environment, 'QT_QPA_PLATFORM': 'xcb' if protocol == 'x11' else 'wayland', 'QT_IM_MODULE': 'floe-client-native',
-                       'QT_PLUGIN_PATH': str(root / ('qt5-native' if toolkit == 'qt5' else 'qt-native')),
+                       'QT_PLUGIN_PATH': str(plugins),
                        'FLOE_TEST_WINDOW_COLOR': '3b759f'}
     if protocol == 'x11':
         app_environment.update(DISPLAY=display, QT_XCB_NO_XI2='1', FLOE_TEST_NATIVE_KEYS='1')
@@ -205,6 +208,8 @@ def qualify(root, evidence, environment, control, wire, start, wait, paint, disp
             from chromium_context_probe import ChromiumPage
             browser = ChromiumPage(evidence, receipt, protocol)
             command = browser.command
+        elif toolkit in ('qt5', 'qt6') and os.environ.get('FLOE_PROBE_QT_BINARY'):
+            command = [os.environ['FLOE_PROBE_QT_BINARY'], str(receipt)]
         else:
             command = ['python3', str(root / 'input_fixture.py'), toolkit, str(receipt)]
         app = start(command, app_environment, toolkit + '-context')
@@ -231,6 +236,11 @@ def qualify(root, evidence, environment, control, wire, start, wait, paint, disp
             wait(lambda: json.loads(receipt.read_text()) == ['', ''], 'Native Chromium deletion failed')
             wait(lambda: wire.invoke(registered), 'Chromium did not register a qualified confirmed-text context')
         result = exercise_fields(control, window, receipt, wait)
+        if toolkit in ('qt5', 'qt6'):
+            result['qt_modules_sha256'] = {path.name: hashlib.sha256(path.read_bytes()).hexdigest()
+                for path in sorted((plugins / 'platforminputcontexts').glob('*.so'))}
+            if os.environ.get('FLOE_PROBE_QT_BINARY'):
+                result['native_runtime'] = json.loads(Path(str(receipt) + '.runtime.json').read_text())
         committed = paint(toolkit + '-context-committed',
             **({'marker': browser.commit_marker(result['actual'])} if browser else {}))
         if browser:

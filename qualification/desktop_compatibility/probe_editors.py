@@ -340,7 +340,10 @@ def main():
         if input_kind == "module":
             assert app_id == "org.kde.kwrite"
             from context_probe import ToolkitDriver
-            shutil.copytree(root / "qt-native/platforminputcontexts", fixture_state / "input-module/platforminputcontexts")
+            plugins = Path(os.environ.get('FLOE_PROBE_QT_PLUGINS', root / 'qt-native'))
+            shutil.copytree(plugins / 'platforminputcontexts', fixture_state / "input-module/platforminputcontexts")
+            outcome['qt_modules_sha256'] = {path.name: hashlib.sha256(path.read_bytes()).hexdigest()
+                for path in sorted((plugins / 'platforminputcontexts').glob('*.so'))}
             native = ToolkitDriver(connection, left, runtime, app_id + ".FloeClientInput", record)
         elif input_kind == 'ibus' and os.environ.get('FLOE_PROBE_CONTEXT'):
             from context_probe import ToolkitDriver

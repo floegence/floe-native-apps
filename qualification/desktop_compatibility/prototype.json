@@ -278,6 +278,11 @@
       "case": "Shared helper assembly on native amd64 and arm64",
       "result": "The native window registry, capture barriers, painted-frame gate, ordered input and authenticated endpoint now have one event-loop assembly. Actual mixed Wayland/Xwayland windows retain input across viewer detach and takeover; GTK4 Unicode/focus ordering remains qualified. Failed listener setup contains capture resources and native EOF reports unavailable without application-exit inference.",
       "limits": "This internal boundary takes prepared native sockets. Complete durable launch/resource orchestration, installed artifact activation, clipboard/cursor transfer and the remaining desktop/package matrix are still required."
+    },
+    {
+      "case": "Native Qt5/Qt6 module baselines and single-directory ABI discovery",
+      "result": "Both native architectures build the module from signed fixed Debian snapshots. Actual widget receipts prove Qt 5.15.2/glibc 2.31 and Qt 6.4.2/glibc 2.36 execution through Xwayland, including 64 alternating-field Unicode/Enter transactions and 14000-byte text. The same artifacts coexist in one plugin directory and pass current distribution Wayland Qt5/Qt6 on amd64 and arm64. Flatpak KWrite arm64 discovers the Qt6 artifact and saves exact bytes through its official remote portal. Build/source/ELF/artifact identities and actual runtime versions are recorded.",
+      "limits": "Minimum-runtime receipts cover X11; newer distribution tests cover Wayland. Artifacts remain unactivated candidates. Complete prepared helper, production distribution and full desktop/package matrix remain unfinished."
     }
   ],
   "rejected_assumptions": [

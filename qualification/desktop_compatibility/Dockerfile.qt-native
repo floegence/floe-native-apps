@@ -1,0 +1,23 @@
+# Disposable native Qt ABI baselines; never a production application runtime.
+ARG QT_MAJOR=6
+ARG TARGET_ARCH
+FROM public.ecr.aws/docker/library/debian@sha256:032c9cd584e6c6d7a98e7edb50ce9233b2c585f4f7e2a5cd093521af779886df AS qt5amd64
+ENV FLOE_QT_MAJOR=5 FLOE_QT_SUITE=bullseye FLOE_BUILD_ARCH=amd64
+FROM public.ecr.aws/docker/library/debian@sha256:ceac69add95cb9ac0d99d9569350cc36838b76397d986e1ccc284bd034b58a9f AS qt6amd64
+ENV FLOE_QT_MAJOR=6 FLOE_QT_SUITE=bookworm FLOE_BUILD_ARCH=amd64
+FROM public.ecr.aws/docker/library/debian@sha256:131ddca8f135f432bbf51f9e7523d246634a68ccadb14469f1050f882c86f0a9 AS qt5arm64
+ENV FLOE_QT_MAJOR=5 FLOE_QT_SUITE=bullseye FLOE_BUILD_ARCH=arm64
+FROM public.ecr.aws/docker/library/debian@sha256:d03c875b13ee95b71bf0977cb17e409655d8dbe5ccbbb7ffedaceb69c8027279 AS qt6arm64
+ENV FLOE_QT_MAJOR=6 FLOE_QT_SUITE=bookworm FLOE_BUILD_ARCH=arm64
+FROM qt${QT_MAJOR}${TARGET_ARCH} AS builder
+# The fixture's existing system trust roots enable HTTPS acquisition; APT still
+# verifies Debian's original archive signatures and the fixed snapshot hashes.
+COPY ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+RUN test "$(dpkg --print-architecture)" = "$FLOE_BUILD_ARCH" && \
+    rm -f /etc/apt/sources.list.d/* /etc/apt/apt.conf.d/docker-clean && \
+    printf 'deb [check-valid-until=no] https://snapshot-cloudflare.debian.org/archive/debian/20250224T000000Z/ %s main\n' "$FLOE_QT_SUITE" > /etc/apt/sources.list && \
+    printf 'deb [check-valid-until=no] https://snapshot-cloudflare.debian.org/archive/debian-security/20250224T000000Z/ %s-security main\n' "$FLOE_QT_SUITE" >> /etc/apt/sources.list && \
+    apt-get update && \
+    if [ "$FLOE_QT_MAJOR" = 5 ]; then qt_package=qtbase5-private-dev; else qt_package=qt6-base-private-dev; fi && \
+    apt-get install -y --no-install-recommends build-essential pkg-config python3 libwayland-dev "$qt_package" && \
+    sha256sum /var/lib/apt/lists/*InRelease /var/cache/apt/archives/*.deb > /native-builder-archives.sha256
