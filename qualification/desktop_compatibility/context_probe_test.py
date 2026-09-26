@@ -7,9 +7,9 @@ from qualification.desktop_compatibility import context_probe
 
 
 class ContextSelectionTests(unittest.TestCase):
-    def test_chromium_cannot_silently_run_the_terminal_probe(self):
+    def test_unknown_toolkit_cannot_silently_run_the_terminal_probe(self):
         bridge = Mock()
-        with patch.dict(os.environ, {'FLOE_PROBE_CONTEXT_TOOLKIT': 'chromium'}), \
+        with patch.dict(os.environ, {'FLOE_PROBE_CONTEXT_TOOLKIT': 'unsupported'}), \
                 patch.dict('sys.modules', {'gi': Mock(), 'gi.repository': Mock(), 'xim_context_probe': bridge}):
             with self.assertRaisesRegex(ValueError, 'Unsupported native context toolkit'):
                 context_probe.qualify(*([None] * 8))

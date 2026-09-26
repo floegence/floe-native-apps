@@ -101,17 +101,18 @@ def qualify(root, evidence, environment, control, wire, start, wait, paint, disp
             raise ValueError('XIM qualification requires an X11 display')
         from xim_context_probe import qualify as qualify_xim
         return qualify_xim(root, evidence, environment, control, wire, start, wait, paint, display)
-    if toolkit not in ('qt5', 'qt6', 'gtk', 'gtk4'):
+    if toolkit not in ('qt5', 'qt6', 'gtk', 'gtk4', 'chromium'):
         raise ValueError('Unsupported native context toolkit: ' + toolkit)
     from gi.repository import Gio, GLib
     protocol = os.environ.get('FLOE_PROBE_CONTEXT_PROTOCOL', 'wayland')
     assert protocol in ('wayland', 'x11') and (protocol != 'x11' or display)
-    gtk = toolkit in ('gtk', 'gtk4')
+    gtk = toolkit in ('gtk', 'gtk4', 'chromium')
     tree = ProcessTree(os.getpid(), identity(os.getpid())[1])
     connection = Gio.DBusConnection.new_for_address_sync(environment['DBUS_SESSION_BUS_ADDRESS'],
         Gio.DBusConnectionFlags.AUTHENTICATION_CLIENT | Gio.DBusConnectionFlags.MESSAGE_BUS_CONNECTION, None, None)
     connection.set_exit_on_close(False)
     input_service, daemon, daemon_peer, resources = None, None, None, None
+    browser = None
     app_environment = {**environment, 'QT_QPA_PLATFORM': 'xcb' if protocol == 'x11' else 'wayland', 'QT_IM_MODULE': 'floe-client-native',
                        'QT_PLUGIN_PATH': str(root / ('qt5-native' if toolkit == 'qt5' else 'qt-native')),
                        'FLOE_TEST_WINDOW_COLOR': '3b759f'}
@@ -200,8 +201,13 @@ def qualify(root, evidence, environment, control, wire, start, wait, paint, disp
             assert activated == [None], activated
         receipt = evidence / (toolkit + '-context.json')
         previous = wire.native.target
-        app = start(['python3', str(root / 'input_fixture.py'), toolkit, str(receipt)],
-            app_environment, toolkit + '-context')
+        if toolkit == 'chromium':
+            from chromium_context_probe import ChromiumPage
+            browser = ChromiumPage(evidence, receipt, protocol)
+            command = browser.command
+        else:
+            command = ['python3', str(root / 'input_fixture.py'), toolkit, str(receipt)]
+        app = start(command, app_environment, toolkit + '-context')
         def registered():
             if input_service is None:
                 return bool(wire.native.contexts.clients)
@@ -212,21 +218,31 @@ def qualify(root, evidence, environment, control, wire, start, wait, paint, disp
                 return input_service.adapter.sources.read(active[1]).pid == app.pid
             except (OSError, ValueError):
                 return False
-        wait(lambda: receipt.exists() and wire.native.target is not None and wire.native.target is not previous and
-             wire.invoke(registered),
-             'No ready native toolkit context')
+        wait(lambda: (browser.ready if browser else receipt.exists()) and wire.native.target is not None and wire.native.target is not previous and
+             (browser is not None or wire.invoke(registered)),
+             'No ready native browser page' if browser else 'No ready native toolkit context')
         frame = paint(toolkit + '-context', marker=(59, 117, 159))
         window = frame['window']
+        if browser:
+            control.send(window, b'motion 200 120\nbutton 272 1\nbutton 272 0\nkey 30 1\nkey 30 0\n')
+            wait(lambda: browser.clicked and receipt.exists() and json.loads(receipt.read_text()) == ['a', ''],
+                 'Native Chromium click and ordinary key did not reach the actual page')
+            control.send(window, b'key 14 1\nkey 14 0\n')
+            wait(lambda: json.loads(receipt.read_text()) == ['', ''], 'Native Chromium deletion failed')
+            wait(lambda: wire.invoke(registered), 'Chromium did not register a qualified confirmed-text context')
         result = exercise_fields(control, window, receipt, wait)
         paint(toolkit + '-context-committed')
         control.send(window, b'close\n')
         app.wait(timeout=10)
         assert app.returncode == 0
-        return {**result, 'toolkit': toolkit, 'protocol': protocol, 'pid': app.pid,
+        return {**result, **({'browser': browser.version, 'click_and_key_receipt': True} if browser else {}),
+                'toolkit': toolkit, 'protocol': protocol, 'pid': app.pid,
                 'surface_binding': ('native XWM resource binding and XRes' if protocol == 'x11' else 'native surface ID') + ' and live process identity',
                 'completion': ('synchronous IBus context release' if input_service else 'toolkit event loop') +
                               ', shared scheduler and authenticated attachment'}
     finally:
+        if browser:
+            browser.close()
         def stop():
             if input_service:
                 input_service.close()

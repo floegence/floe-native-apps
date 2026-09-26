@@ -64,7 +64,7 @@
     "Authenticated reconnectable frame and input API with complete window and popup lifecycle",
     "Private portal document grants, concurrent sessions and sandbox-accessible paths",
     "Pinned production component catalog, complete native architecture qualification and release validation",
-    "Chromium confirmed text on the new Wayland/Xwayland backend and the complete browser package matrix; existing GTK3/Xpra receipts do not qualify the new backend"
+    "Pure Wayland Chromium confirmed-text ordering and the complete browser package matrix; native Chromium/Xwayland is qualified separately and must not imply text-input-v3 support"
   ],
   "observed_prototypes": [
     {
@@ -252,6 +252,17 @@
       "case": "Native XIM terminal qualification on amd64 and arm64",
       "result": "Actual xterm XIM contexts receive the reserved native marker through xcb-imdkit, with X11 resource/XRes ownership and real X11 focus. 64 Unicode commits with intervening ordinary keys and Enter plus a 14000-byte commit match terminal bytes exactly on both architectures. Marker release and XIM sync completion are both required; cancellation and context replacement reject late delivery.",
       "limits": "This qualifies only terminal XIM. Chromium is not an XIM consumer; its supported path is the private GTK3 module launched through the Xpra qualification. Pinned xcb-imdkit module provenance, production helper packaging and release qualification remain unfinished."
+    },
+    {
+      "case": "Native Chromium/Xwayland confirmed text on amd64 and arm64",
+      "result": "The actual Chromium page on the combined compositor acknowledges pointer focus, an ordinary key and deletion, then 64 alternating-field Unicode/Enter transactions and a 14000-byte commit with exact two-field contents. Native XWM binding, XRes identity, synchronous IBus, the authenticated attachment and the shared scheduler remain unchanged. The browser keeps its normal sandbox.",
+      "evidence": "qualification/desktop_compatibility/chromium_context_probe.py and context_probe.py; native Chrome for Testing 145.0.7632.6 amd64 and Chromium 145.0.7632.0 arm64 receipts",
+      "limits": "Xwayland only. The same pure Wayland browser paints and receives clicks/ordinary keys, but selects text-input-v3 instead of GTK IBus and has no qualified confirmed-text adapter. That native test remains failed. No protocol, application flag, security policy or production admission rule was weakened to make it pass."
+    },
+    {
+      "case": "Native Go helper attachment on amd64 and arm64",
+      "result": "The Go client authenticates against the actual Python control and attachment modules. Wrong credentials preserve the current owner; input before paint is rejected; a replacement survives old-owner cleanup; detach allows reconnection. Framing, cancellation and concurrent request sequencing are checked, including cancelling a queued write without corrupting the active packet.",
+      "limits": "Synthetic native callbacks qualify the wire boundary only. This does not prove production compositor preparation or graphical/package support."
     }
   ],
   "rejected_assumptions": [
