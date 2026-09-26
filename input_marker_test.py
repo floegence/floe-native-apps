@@ -81,6 +81,19 @@ class MarkerTests(unittest.TestCase):
         self.assertNotIn(code, queue.slots)
         self.assertEqual(queue.key(replacement, False, True, owner=':1.5'), 'replacement')
 
+    def test_x11_marker_cannot_be_reused_until_its_matching_native_release(self):
+        queue = MarkerTransactions()
+        self.assertEqual(queue.enqueue('old', owner=':1.4', x11=True), 0)
+        queue.revoke()
+        with self.assertRaisesRegex(RuntimeError, 'capacity'):
+            queue.enqueue('new', owner=':1.4', x11=True)
+        queue.key(0, True, False, owner=':1.4')
+        self.assertIn(0, queue.slots)
+        self.assertIsNone(queue.key(0, False, True, owner=':1.4'))
+        queue.key(0, True, False, owner=':1.4')
+        self.assertEqual(queue.enqueue('new', owner=':1.4', x11=True), 0)
+        self.assertEqual(queue.key(0, False, True, owner=':1.4'), 'new')
+
 
 if __name__ == "__main__":
     unittest.main()

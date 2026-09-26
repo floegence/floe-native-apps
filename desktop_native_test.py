@@ -240,6 +240,7 @@ class NativeTests(unittest.TestCase):
         for value in [
             {'kind': 'fixture', 'commands': 'capture-authorize 123'},
             {'kind': 'key', 'code': 2048, 'pressed': True},
+            {'kind': 'key', 'code': 0, 'pressed': True},
             {'kind': 'key', 'code': True, 'pressed': True},
             {'kind': 'key', 'code': 30, 'pressed': 1},
             {'kind': 'move', 'x': float('nan'), 'y': 0},

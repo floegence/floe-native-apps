@@ -11,6 +11,7 @@ from threading import Condition
 
 FIRST_CODE = 2048
 SLOT_COUNT = 32
+X11_CODE = 0
 
 
 @dataclass
@@ -33,16 +34,17 @@ class MarkerTransactions:
         with self.lock:
             return any(t.text is not None for t in self.slots.values())
 
-    def enqueue(self, text, owner=None):
+    def enqueue(self, text, owner=None, x11=False):
         with self.lock:
             if self.pending:
                 raise RuntimeError("A native text transaction is already pending")
-            for offset in range(SLOT_COUNT):
-                slot = (self.next_slot + offset) % SLOT_COUNT
-                code = FIRST_CODE + slot
+            codes = [X11_CODE] if x11 else [FIRST_CODE + (self.next_slot + offset) % SLOT_COUNT
+                                          for offset in range(SLOT_COUNT)]
+            for code in codes:
                 if code not in self.slots:
                     self.slots[code] = Transaction(self.generation, text, owner)
-                    self.next_slot = (slot + 1) % SLOT_COUNT
+                    if not x11:
+                        self.next_slot = (code - FIRST_CODE + 1) % SLOT_COUNT
                     return code
             raise RuntimeError("Native marker capacity is exhausted")
 

@@ -10,6 +10,7 @@ from desktop_native import NativeFocus, NativeTarget
 class Peer:
     def __init__(self, tree, pid, _runtime):
         self.tree, self.pid, self.closed = tree, pid, False
+        self.process = SimpleNamespace(pid=pid)
 
     def valid(self):
         return self.pid in self.tree and not self.closed
@@ -34,7 +35,7 @@ class ContextTests(unittest.TestCase):
         self.addCleanup(mock.stop)
         self.contexts = NativeContexts(self.native, self.tree, '/private/runtime')
         self.addCleanup(self.contexts.close)
-        self.contexts.register(':1.7', 121, 1, 'qt6-wayland')
+        self.contexts.register(':1.7', 121, 1, 'qt6-native')
 
     def begin(self, text='同🙂'):
         token = self.contexts.context_for(self.native.target)
@@ -43,8 +44,8 @@ class ContextTests(unittest.TestCase):
         return token, next(reversed(self.contexts.markers.slots))
 
     def test_registration_and_matching_do_not_grant_other_window_or_toolkit(self):
-        for args in ((':1.8', 121, 2, 'qt6-wayland'), (':1.8', 121, 1, 'unknown'),
-                     (':1.7', 121, 1, 'qt6-wayland')):
+        for args in ((':1.8', 121, 2, 'qt6-native'), (':1.8', 121, 1, 'unknown'),
+                     (':1.7', 121, 1, 'qt6-native')):
             with self.assertRaises(ValueError):
                 self.contexts.register(*args)
         self.native.focus = NativeFocus(4, 1, 150, 19, True)
@@ -60,14 +61,15 @@ class ContextTests(unittest.TestCase):
         self.assertIsNone(self.contexts.take(':1.7', code, 19))
         self.assertEqual(self.completed, [])
         self.assertTrue(self.contexts.done(':1.7', 1))
-        self.assertEqual(self.completed, [None])
+        self.assertEqual(self.completed, [])
         self.assertFalse(self.contexts.done(':1.7', 1))
         self.contexts.released(':1.7', code)
+        self.assertEqual(self.completed, [None])
         self.assertFalse(self.contexts.markers.slots)
 
     def test_unrelated_sender_cannot_take_or_complete_other_context(self):
         _, code = self.begin()
-        self.contexts.register(':1.8', 150, 1, 'qt6-wayland')
+        self.contexts.register(':1.8', 150, 1, 'qt6-native')
         self.assertIsNone(self.contexts.take(':1.8', code, 19))
         self.assertFalse(self.contexts.done(':1.8', 1))
         self.assertEqual(self.contexts.take(':1.7', code, 19), (1, '同🙂'))
@@ -117,6 +119,7 @@ class ContextTests(unittest.TestCase):
         self.assertFalse(self.contexts.done(':1.7', 1))
         self.assertEqual(self.contexts.take(':1.7', current, 19), (2, '同🙂'))
         self.assertTrue(self.contexts.done(':1.7', 2))
+        self.contexts.released(':1.7', current)
         self.assertEqual(self.completed, [None])
 
     def test_dead_proxy_and_bus_owner_loss_revoke_transaction(self):
@@ -132,7 +135,7 @@ class ContextTests(unittest.TestCase):
         self.assertIsNone(self.contexts.context_for(self.native.target))
 
     def test_two_matching_registrations_are_ambiguous_without_fallback(self):
-        self.contexts.register(':1.8', 120, 1, 'qt6-wayland')
+        self.contexts.register(':1.8', 120, 1, 'qt6-native')
         self.assertIsNone(self.contexts.context_for(self.native.target))
         self.assertFalse(self.sent)
 
@@ -140,6 +143,7 @@ class ContextTests(unittest.TestCase):
         token, code = self.begin()
         self.contexts.take(':1.7', code, 19)
         self.contexts.done(':1.7', 1)
+        self.contexts.released(':1.7', code)
         self.assertTrue(token.surface_peer.closed)
         self.contexts.commit(token, 'late', self.completed.append)
         self.assertEqual(self.completed, [None, 'INPUT_CONTEXT_UNAVAILABLE'])

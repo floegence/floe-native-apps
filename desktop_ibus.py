@@ -10,7 +10,7 @@ from dataclasses import dataclass
 import os
 
 from application_peer import ApplicationPeer
-from input_marker import FIRST_CODE, SLOT_COUNT
+from input_marker import FIRST_CODE, SLOT_COUNT, X11_CODE
 
 
 @dataclass(frozen=True)
@@ -33,12 +33,12 @@ class IBusSources:
         self.daemon, self.portal = daemon, portal
         self.describe, self.describe_portal, self.credentials = describe, describe_portal, credentials
 
-    def read(self, path):
+    def read(self, path, require_focus=True):
         if not self.daemon.valid():
             raise ValueError('Private IBus daemon is unavailable')
         version, owner, pid, uid, focused, post_process = self.describe(path)
         if (version != 1 or not owner.startswith(':') or uid != os.getuid() or
-                pid <= 1 or not focused or not post_process):
+                pid <= 1 or (require_focus and not focused) or not post_process):
             raise ValueError('Synchronous native input context is unavailable')
         portal_owner, portal_context = '', ''
         if self.portal and pid == self.portal.pid:
@@ -56,11 +56,11 @@ class IBusSources:
             pid = source['ProcessID']
         return IBusSource(path, owner, pid, portal_owner, portal_context)
 
-    def lease(self, path):
-        source = self.read(path)
+    def lease(self, path, require_focus=True):
+        source = self.read(path, require_focus)
         peer = ApplicationPeer(self.tree, source.pid, self.runtime)
         try:
-            if not peer.valid() or self.read(path) != source:
+            if not peer.valid() or self.read(path, require_focus) != source:
                 raise ValueError('Private IBus source changed during admission')
             return source, peer
         except BaseException:
@@ -75,6 +75,7 @@ class IBusContexts:
             raise ValueError('An IBus context adapter already exists')
         self.contexts, self.sources = contexts, sources
         self.active, self.closed = None, False
+        self.routes = {}
         contexts.ibus = self
 
     def focus(self, engine, path):
@@ -83,28 +84,48 @@ class IBusContexts:
         if active is None and previous and previous[0] is not engine:
             return
         self.active = active
+        if path and (path in self.routes or len(self.routes) < 256):
+            self.routes[path] = engine
         operation = self.contexts.pending
         if (active != previous and operation and operation['token'].adapter is self and
                 operation['taken']):
             self.contexts.finish('INPUT_TARGET_UNAVAILABLE')
 
+    def destroy(self, engine):
+        self.focus(engine, None)
+        self.routes = {path: owner for path, owner in self.routes.items() if owner is not engine}
+
     def select(self, surface):
-        if self.closed or not self.active:
+        if self.closed:
             return None
-        try:
-            source, peer = self.sources.lease(self.active[1])
-            if peer.matches(surface):
-                return source.sender, peer
+        # Pointer input preceding this operation may still be crossing the
+        # toolkit's FocusOut/FocusIn. A registered source establishes its route,
+        # not the editable widget. Only the native marker admits that widget.
+        paths = set(self.routes)
+        if self.active:
+            paths.add(self.active[1])
+        matching = {}
+        for path in paths:
+            try:
+                source, peer = self.sources.lease(path, require_focus=False)
+            except (OSError, ValueError):
+                self.routes.pop(path, None)
+                continue
+            if peer.matches(surface) and source.sender not in matching:
+                matching[source.sender] = peer
+            else:
+                peer.close()
+        if len(matching) == 1:
+            return next(iter(matching.items()))
+        for peer in matching.values():
             peer.close()
-        except (OSError, ValueError):
-            pass
         return None
 
     def valid(self, _token):
         return not self.closed and self.sources.daemon.valid()
 
     def key(self, engine, code, released, commit):
-        if not FIRST_CODE <= code < FIRST_CODE + SLOT_COUNT:
+        if code != X11_CODE and not FIRST_CODE <= code < FIRST_CODE + SLOT_COUNT:
             return False
         operation = self.contexts.pending
         owned = bool(operation and operation['code'] == code and operation['token'].adapter is self)
@@ -127,7 +148,7 @@ class IBusContexts:
                     raise ValueError('Private IBus completion belongs to another context')
                 self.contexts.done(token.sender, operation['sequence'])
             else:
-                taken = self.contexts.take(token.sender, code, token.focus.surface)
+                taken = self.contexts.take(token.sender, code, token.surface)
                 if taken is not None:
                     operation['ibus_source'] = source
                     commit(taken[1])
@@ -149,3 +170,4 @@ class IBusContexts:
             self.contexts.unbind()
         self.contexts.ibus = None
         self.active = None
+        self.routes.clear()

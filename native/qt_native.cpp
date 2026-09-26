@@ -16,7 +16,7 @@
 #include <QWindow>
 #include <wayland-client-core.h>
 
-class FloeWaylandContext : public QPlatformInputContext {
+class FloeNativeContext : public QPlatformInputContext {
     Q_OBJECT
     QDBusInterface broker{qEnvironmentVariable("FLOE_NATIVE_DESKTOP_INPUT", "org.floegence.DesktopInput"),
         QStringLiteral("/org/floegence/DesktopInput"), QStringLiteral("org.floegence.DesktopInput"),
@@ -26,14 +26,18 @@ class FloeWaylandContext : public QPlatformInputContext {
     static uint surfaceId(QWindow *window) {
         auto native = QGuiApplication::platformNativeInterface();
         const auto platform = QGuiApplication::platformName();
-        if (!window || !native || (platform != QStringLiteral("wayland") && platform != QStringLiteral("wayland-egl")))
+        if (!window || !native)
+            return 0;
+        if (platform == QStringLiteral("xcb"))
+            return uint(window->winId());
+        if (platform != QStringLiteral("wayland") && platform != QStringLiteral("wayland-egl"))
             return 0;
         auto surface = static_cast<wl_proxy *>(native->nativeResourceForWindow(QByteArrayLiteral("surface"), window));
         return surface ? wl_proxy_get_id(surface) : 0;
     }
 public:
-    FloeWaylandContext() {
-        const QString toolkit = QT_VERSION_MAJOR == 6 ? QStringLiteral("qt6-wayland") : QStringLiteral("qt5-wayland");
+    FloeNativeContext() {
+        const QString toolkit = QT_VERSION_MAJOR == 6 ? QStringLiteral("qt6-native") : QStringLiteral("qt5-native");
         registered = broker.call(QDBus::Block, QStringLiteral("Register"), uint(1), toolkit).type() == QDBusMessage::ReplyMessage;
     }
 
@@ -44,7 +48,8 @@ public:
             return false;
         const auto key = static_cast<const QKeyEvent *>(event);
         const uint code = key->nativeScanCode() - 8;
-        if (code < 2048 || code >= 2080)
+        const bool x11 = QGuiApplication::platformName() == QStringLiteral("xcb");
+        if (x11 ? code != 0 : code < 2048 || code >= 2080)
             return false;
         if (event->type() == QEvent::KeyRelease) {
             broker.asyncCall(QStringLiteral("Released"), code);
@@ -54,8 +59,12 @@ public:
         QPointer<QObject> target = QGuiApplication::focusObject();
         QPointer<QWindow> window = QGuiApplication::focusWindow();
         const uint surface = surfaceId(window);
-        if (!target || !surface || !inputMethodAccepted())
+        if (!target || !surface || !inputMethodAccepted()) {
+            // Retire this exact press without claiming an editable surface.
+            // The matching release can then free its bounded marker slot.
+            broker.asyncCall(QStringLiteral("Take"), code, uint(0));
             return true;
+        }
         const auto reply = broker.call(QDBus::Block, QStringLiteral("Take"), code, surface);
         if (reply.type() != QDBusMessage::ReplyMessage || reply.arguments().size() != 2)
             return true;
@@ -73,12 +82,12 @@ public:
     }
 };
 
-class FloeWaylandPlugin : public QPlatformInputContextPlugin {
+class FloeNativePlugin : public QPlatformInputContextPlugin {
     Q_OBJECT
-    Q_PLUGIN_METADATA(IID QPlatformInputContextFactoryInterface_iid FILE "qt_wayland.json")
+    Q_PLUGIN_METADATA(IID QPlatformInputContextFactoryInterface_iid FILE "qt_native.json")
 public:
     QPlatformInputContext *create(const QString &key, const QStringList &) override {
-        return key == QStringLiteral("floe-client-wayland") ? new FloeWaylandContext : nullptr;
+        return key == QStringLiteral("floe-client-native") ? new FloeNativeContext : nullptr;
     }
 };
-#include "qt_wayland.moc"
+#include "qt_native.moc"

@@ -514,7 +514,13 @@ static void apply_selection(struct probe *p, struct probe_window *selected) {
         weston_desktop_surface_propagate_layer(window->desktop);
         weston_desktop_surface_set_activated(window->desktop, window == selected);
     }
-    weston_seat_set_keyboard_focus(&p->seat, surface);
+    /* Activation also notifies XWM to set the actual X11 input focus. Setting
+     * only the Wayland seat leaves Xwayland at PointerRoot and routes keys to
+     * whichever X11 window happens to be under the pointer. */
+    if (selected)
+        weston_view_activate_input(selected->view, &p->seat, WESTON_ACTIVATE_FLAG_NONE);
+    else
+        weston_seat_set_keyboard_focus(&p->seat, NULL);
     weston_compositor_damage_all(p->compositor);
 }
 
@@ -1060,16 +1066,16 @@ WL_EXPORT int wet_shell_init(struct weston_compositor *compositor, int *argc, ch
     weston_seat_init(&p->seat, compositor, "floe-prototype");
     weston_seat_init_pointer(&p->seat);
     struct xkb_context *xkb = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
-    /* Fixture-only, non-text, non-repeating marker slots outside physical
-     * evdev codes. Xwayland's narrower keycode range is not qualified here. */
+    /* Native markers do not consume physical evdev keys. X11's reserved code 8
+     * retains its slot until press and release; Wayland has distinct bounded slots. */
     char map[8192];
     size_t used = (size_t)snprintf(map, sizeof map,
-        "xkb_keymap { xkb_keycodes { include \"evdev+aliases(qwerty)\" ");
+        "xkb_keymap { xkb_keycodes { include \"evdev+aliases(qwerty)\" <XCOM> = 8; ");
     for (unsigned int i = 0; i < 32; i++)
         used += (size_t)snprintf(map + used, sizeof map - used, "<F%03u> = %u; ", i, 2048 + i + 8);
     used += (size_t)snprintf(map + used, sizeof map - used,
         "}; xkb_types { include \"complete\" }; xkb_compatibility { include \"complete\" };"
-        "xkb_symbols { include \"pc+us+inet(evdev)\" ");
+        "xkb_symbols { include \"pc+us+inet(evdev)\" key <XCOM> { repeat=no, [ F24 ] }; ");
     for (unsigned int i = 0; i < 32; i++)
         used += (size_t)snprintf(map + used, sizeof map - used,
             "key <F%03u> { repeat=no, [ F24 ] }; ", i);

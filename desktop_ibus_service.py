@@ -33,7 +33,7 @@ class CommitEngine(IBus.Engine):
         return self.owner.adapter.key(self, code, bool(state & IBus.ModifierType.RELEASE_MASK), commit)
 
     def do_destroy(self):
-        self.owner.adapter.focus(self, None)
+        self.owner.adapter.destroy(self)
         self.owner.engines.discard(self)
         IBus.Engine.do_destroy(self)
 

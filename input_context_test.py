@@ -12,7 +12,6 @@ class ContextTests(unittest.TestCase):
         self.contexts.sequence = 0
         self.contexts.marker_clock = lambda: 0
         self.contexts.marker = lambda sequence, xid: True
-        self.contexts.valid_target = None
         self.contexts.display = SimpleNamespace(descendant=lambda child, parent: child in (42, 43) and parent == 42,
                                                focused_within=lambda xid: xid == 42)
         self.completed = []
@@ -114,20 +113,6 @@ class ContextTests(unittest.TestCase):
         self.contexts.commit(self.token,'late',self.completed.append)
         self.assertEqual(self.completed, ['INPUT_CONTEXT_UNAVAILABLE'])
         self.assertIsNone(self.contexts.take(':1.9',1,42))
-
-    def test_native_generation_is_checked_at_take_and_completion(self):
-        active = [True]
-        self.contexts.valid_target = lambda token: token == self.token and active[0]
-        self.begin()
-        active[0] = False
-        self.assertIsNone(self.contexts.take(':1.5', 1, 42))
-        self.assertEqual(self.completed, ['INPUT_TARGET_UNAVAILABLE'])
-        active[0] = True
-        self.begin()
-        self.assertEqual(self.contexts.take(':1.5', 2, 42), (2, '你好🙂'))
-        active[0] = False
-        self.assertFalse(self.contexts.done(':1.5', 2))
-        self.assertEqual(self.completed, ['INPUT_TARGET_UNAVAILABLE', 'INPUT_TARGET_UNAVAILABLE'])
 
 
 if __name__ == '__main__':

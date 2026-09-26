@@ -173,7 +173,8 @@ def main():
         wait(lambda: json.loads(actions.read_text())['popup_clicks'] == 1, 'Popup did not receive the actual click')
         wait(lambda: control.native.generation > popup['generation'],
              'Popup resize/reposition did not revoke the previous frame and coordinates')
-        resized = paint('popup-resized', marker=(19, 183, 73))
+        resized = paint('popup-resized', marker=(19, 183, 73),
+                        accept_bounds=lambda bounds: bounds[2] - bounds[0] >= 370)
         assert resized['marker_bounds'][2] - resized['marker_bounds'][0] >= 370
         assert resized['generation'] > popup['generation']
         click_marker(resized)
@@ -302,7 +303,7 @@ def main():
         result["rejected_stale_input"] = {"old_connection": 2, "retired_window": 2}
         if os.environ.get('FLOE_PROBE_CONTEXT'):
             from context_probe import qualify
-            result['native_context'] = qualify(root, evidence, environment, control, wire, start, wait, paint)
+            result['native_context'] = qualify(root, evidence, environment, control, wire, start, wait, paint, display)
             paint('context-restored', (19, 87, 155))
         control.close()
         control = None
@@ -334,7 +335,9 @@ def main():
         result['native_controller_loss'] = {'mode': control_loss, 'application_preserved': True, 'modifier_released': True}
         result["actual"] = [json.loads(path.read_text()) for path in receipts]
         protocols = [line.split()[2] for line in events if line.startswith('window-protocol ')]
-        expected_protocols = ['wayland', 'wayland', 'wayland', 'wayland', 'x11', 'x11'] + (['wayland'] if os.environ.get('FLOE_PROBE_CONTEXT') else [])
+        expected_protocols = ['wayland', 'wayland', 'wayland', 'wayland', 'x11', 'x11']
+        if os.environ.get('FLOE_PROBE_CONTEXT'):
+            expected_protocols.append(os.environ.get('FLOE_PROBE_CONTEXT_PROTOCOL', 'wayland'))
         assert protocols == expected_protocols, 'Compositor did not confirm actual surface protocols'
         result['actual_protocols'] = protocols
         result["passed"] = True

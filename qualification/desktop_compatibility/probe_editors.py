@@ -170,7 +170,7 @@ def main():
                 command = command.replace("flatpak run ", "flatpak run --nofilesystem=host --nofilesystem=home ", 1)
             overrides = ["GSETTINGS_BACKEND=memory"]
             if input_kind == "module":
-                overrides += ["QT_IM_MODULE=floe-client-wayland", "QT_PLUGIN_PATH=" + str(fixture_state / "input-module"),
+                overrides += ["QT_IM_MODULE=floe-client-native", "QT_PLUGIN_PATH=" + str(fixture_state / "input-module"),
                               "FLOE_NATIVE_DESKTOP_INPUT=" + app_id + ".FloeClientInput"]
             if os.environ.get("FLOE_PROBE_TRACE"):
                 overrides.append("WAYLAND_DEBUG=client")

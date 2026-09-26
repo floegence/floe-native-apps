@@ -234,6 +234,11 @@
       "case": "Authoritative Xwayland native resource identity on amd64 and arm64",
       "result": "The derived XWM exposes its exact surface-to-XID binding through one read-only versioned plugin API. Native bindings cannot change or alias a live window instance; retirement allows later XID reuse under a new native identity. Actual XRes queries identify the GTK X11 process even after its _NET_WM_PID property is changed to the helper PID. Window metadata publishes no advisory X11 process identity. Both native mixed-window, pixels, input, manipulation and reconnect suites pass.",
       "limits": "Resource identity establishes a necessary admission boundary, not confirmed-text ordering or toolkit completion. Xwayland confirmed text and complete prepared helper qualification remain required."
+    },
+    {
+      "case": "Unified native Qt and synchronous IBus across Wayland and Xwayland on amd64 and arm64",
+      "result": "All 16 architecture/protocol/toolkit combinations pass actual GTK3, GTK4, Qt5 and Qt6 field contents: 64 alternating Unicode/Enter pairs and a 14000-byte commit per case. Xwayland uses its authoritative XWM resource and XRes owner, real X11 focus, and the same native marker owner. Completion requires the native release and toolkit processing acknowledgement. The shell activates through the Weston view API so XWM sets X11 focus. The fixture requires an actual application input context and identifiable widget pixels before stress. Mixed window, popup, decoration, capture backpressure and reconnect checks remain green.",
+      "limits": "These are unpublished native source builds and isolated application fixtures. XIM browser/terminal integration, pinned native module provenance, durable helper preparation, complete package/desktop qualification and release checks remain unfinished."
     }
   ],
   "rejected_assumptions": [
@@ -256,6 +261,9 @@
     "An Add reply may reuse a pre-existing host document grant. A facade must not treat every returned ID as newly owned or delete host grants when a viewer/helper closes; the official persistence flags remain authoritative.",
     "A top-level surface commit runs before the shell has positioned its new geometry. Sampling both callbacks can revoke the subsequent ordinary repaint again; the desktop callback alone owns top-level geometry.",
     "Forcing an initial X11 size cannot be undone with a later zero-size request as with xdg-shell. X11 applications retain their supplied initial sizes, including dialogs.",
-    "Xwayland removes its binding before the desktop surface removal callback finishes. Ending a grab during that callback must not emit another window state; retirement is the sole final publication."
+    "Xwayland removes its binding before the desktop surface removal callback finishes. Ending a grab during that callback must not emit another window state; retirement is the sole final publication.",
+    "Xwayland may normalize a native key timestamp; the requested marker timestamp 61261328 arrived as 61261329. Native transactions use reserved press/release slots instead of timestamp identity, and cannot reuse an undrained slot.",
+    "Setting only weston_seat_set_keyboard_focus does not activate XWM. It leaves X11 PointerRoot focus even when a key happens to reach the window under the pointer; use the compositor view activation API and retain actual X11 focus checks.",
+    "An IBus engine can focus its internal placeholder before any application registers. Native qualification requires real application provenance, not merely a non-empty engine focus path. Registered routing and the editable widget at native marker consumption are distinct boundaries."
   ]
 }

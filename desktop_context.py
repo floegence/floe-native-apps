@@ -23,6 +23,11 @@ class ContextToken:
     client: object
     surface_peer: object
     adapter: object = None
+    xid: int = 0
+
+    @property
+    def surface(self):
+        return self.xid or self.focus.surface
 
 
 class NativeContexts:
@@ -30,10 +35,11 @@ class NativeContexts:
         self.native, self.tree, self.runtime = native, tree, runtime
         self.clients, self.markers = {}, MarkerTransactions()
         self.ibus = None
+        self.x11 = None
         self.bound, self.pending, self.sequence, self.closed = None, None, 0, False
 
     def register(self, sender, pid, version, toolkit):
-        if (self.closed or version != 1 or toolkit not in ('qt5-wayland', 'qt6-wayland') or
+        if (self.closed or version != 1 or toolkit not in ('qt5-native', 'qt6-native') or
                 sender in self.clients or len(self.clients) >= 64):
             raise ValueError('Native context registration is unavailable')
         self.clients[sender] = ApplicationPeer(self.tree, pid, self.runtime)
@@ -62,12 +68,20 @@ class NativeContexts:
         focus = self.native.focus
         window = self.native.windows.get(target.window) if target else None
         if (self.closed or self.native.closed or not self.native.epoch or self.native.target is not target or
-                not focus or not focus.available or not window or window.protocol != 'wayland' or
+                not focus or not focus.available or not window or
                 focus.window != target.window):
             return None
         surface_peer = None
         try:
-            surface_peer = ApplicationPeer(self.tree, focus.pid, self.runtime)
+            xid, pid = 0, focus.pid
+            if window.protocol == 'x11':
+                xid = self.native.x11_windows.get(target.window)
+                if not xid or not self.x11:
+                    return None
+                pid = self.x11.owner_pid(xid)
+                if not pid:
+                    return None
+            surface_peer = ApplicationPeer(self.tree, pid, self.runtime)
             matching = [(sender, peer) for sender, peer in self.clients.items() if peer.matches(surface_peer)]
             adapter = None
             if not matching and self.ibus:
@@ -78,7 +92,7 @@ class NativeContexts:
                 surface_peer.close()
                 return None
             sender, peer = matching[0]
-            token = ContextToken(self.native.epoch, target, focus, sender, peer, surface_peer, adapter)
+            token = ContextToken(self.native.epoch, target, focus, sender, peer, surface_peer, adapter, xid)
             self.bound = token
             if not self.valid(token):
                 self.unbind()
@@ -93,6 +107,9 @@ class NativeContexts:
         return (not self.closed and self.bound is token and not self.native.closed and
                 self.native.target is token.target and self.native.focus is token.focus and
                 self.native.epoch == token.epoch and
+                (not token.xid or self.x11 is not None and
+                 self.native.x11_windows.get(token.target.window) == token.xid and
+                 self.x11.owner_pid(token.xid) == token.surface_peer.process.pid) and
                 (token.adapter is self.ibus and token.adapter.valid(token) if token.adapter else
                  self.clients.get(token.sender) is token.client) and
                 token.client.matches(token.surface_peer))
@@ -110,7 +127,7 @@ class NativeContexts:
             completed('INPUT_SESSION_EXHAUSTED')
             return
         try:
-            code = self.markers.enqueue(text, owner=token.sender)
+            code = self.markers.enqueue(text, owner=token.sender, x11=bool(token.xid))
         except RuntimeError:
             self.unbind()
             completed('INPUT_MARKER_UNAVAILABLE')
@@ -126,7 +143,9 @@ class NativeContexts:
     def take(self, sender, code, surface):
         operation = self.pending
         owned = bool(operation and operation['code'] == code and operation['token'].sender == sender)
-        admitted = owned and self.valid(operation['token']) and surface == operation['token'].focus.surface
+        token = operation['token'] if owned else None
+        admitted = (owned and self.valid(token) and surface == token.surface and
+                    (not token.xid or self.x11.focused_within(token.xid)))
         text = self.markers.key(code, False, admitted, owner=sender)
         if owned and not admitted:
             self.finish('INPUT_TARGET_UNAVAILABLE')
@@ -137,17 +156,29 @@ class NativeContexts:
 
     def released(self, sender, code):
         self.markers.key(code, True, False, owner=sender)
+        self.complete()
 
     def done(self, sender, sequence):
         operation = self.pending
         if (not operation or operation['token'].sender != sender or
-                operation['sequence'] != sequence or not operation['taken']):
+                operation['sequence'] != sequence or not operation['taken'] or operation.get('done')):
             return False
-        if not self.valid(operation['token']):
+        token = operation['token']
+        if not self.valid(token) or token.xid and not self.x11.focused_within(token.xid):
             self.finish('INPUT_TARGET_UNAVAILABLE')
             return False
-        self.finish(None)
+        operation['done'] = True
+        self.complete()
         return True
+
+    def complete(self):
+        operation = self.pending
+        if operation and operation.get('done') and operation['code'] not in self.markers.slots:
+            token = operation['token']
+            if not self.valid(token) or token.xid and not self.x11.focused_within(token.xid):
+                self.finish('INPUT_TARGET_UNAVAILABLE')
+            else:
+                self.finish(None)
 
     def failed(self, sender, sequence):
         if (self.pending and self.pending['token'].sender == sender and

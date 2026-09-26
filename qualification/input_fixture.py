@@ -6,6 +6,10 @@ import sys
 
 kind, filename = sys.argv[1:3]
 receipt = Path(filename)
+color = os.environ.get('FLOE_TEST_WINDOW_COLOR')
+if color:
+    import re
+    assert re.fullmatch('[0-9a-f]{6}', color)
 
 
 def save(value):
@@ -19,6 +23,10 @@ if kind == 'gtk':
     gi.require_version('Gtk', '3.0')
     from gi.repository import Gtk, GLib
     window = Gtk.Window(title='Floe client input qualification')
+    if color:
+        css = Gtk.CssProvider()
+        css.load_from_data(('textview text { background-color: #' + color + '; }').encode())
+        Gtk.StyleContext.add_provider_for_screen(window.get_screen(), css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
     editors = [Gtk.TextView(), Gtk.TextView()]
     row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, homogeneous=True)
     buffers = [editor.get_buffer() for editor in editors]
@@ -50,10 +58,7 @@ elif kind in ('gtk4', 'gtk4-entry'):
                           flags=Gio.ApplicationFlags.NON_UNIQUE)
     def activate(application):
         window = Gtk.ApplicationWindow(application=application, title='Floe GTK4 input qualification')
-        color = os.environ.get('FLOE_TEST_WINDOW_COLOR')
         if color:
-            import re
-            assert re.fullmatch('[0-9a-f]{6}', color)
             css = Gtk.CssProvider()
             css.load_from_data(('textview text { background-color: #' + color + '; }').encode())
             Gtk.StyleContext.add_provider_for_display(window.get_display(), css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
@@ -250,7 +255,26 @@ elif kind in ('gtk4', 'gtk4-entry'):
 elif kind in ('qt5', 'qt6'):
     module = __import__('PyQt' + kind[-1] + '.QtWidgets', fromlist=['QApplication', 'QTextEdit'])
     app = module.QApplication(sys.argv)
+    if os.environ.get('FLOE_TEST_NATIVE_KEYS'):
+        import ctypes
+        import struct
+        core = __import__('PyQt' + kind[-1] + '.QtCore', fromlist=['QAbstractNativeEventFilter'])
+        class NativeKeys(core.QAbstractNativeEventFilter):
+            def __init__(self):
+                super().__init__()
+                self.events = []
+            def nativeEventFilter(self, event_type, message):
+                if bytes(event_type) == b'xcb_generic_event_t':
+                    raw = ctypes.string_at(int(message), 32)
+                    if raw[0] & 127 in (2, 3) and len(self.events) < 512:
+                        self.events.append({'type': raw[0], 'code': raw[1], 'time': struct.unpack_from('=I', raw, 4)[0]})
+                        receipt.with_suffix('.keys.json').write_text(json.dumps(self.events))
+                return False, 0
+        native_keys = NativeKeys()
+        app.installNativeEventFilter(native_keys)
     window = module.QWidget()
+    if color:
+        window.setStyleSheet('QTextEdit { background-color: #' + color + '; }')
     window.setWindowTitle('Floe client input qualification')
     window.resize(640, 320)
     layout = module.QHBoxLayout(window)

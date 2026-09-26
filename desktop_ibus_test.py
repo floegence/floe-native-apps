@@ -102,18 +102,31 @@ class IBusTests(unittest.TestCase):
         self.assertFalse(self.commits)
         self.assertEqual(self.completed, ['INPUT_TARGET_UNAVAILABLE'])
 
-    def test_async_unfocused_dead_and_foreign_user_contexts_fail_before_input(self):
+    def test_async_dead_and_foreign_user_contexts_fail_before_input(self):
         original = self.described
         for index, value in ((0, 2), (1, 'gtk4-im-fake-identity'), (3, os.getuid() + 1),
-                             (4, False), (5, False)):
+                             (5, False)):
             values = list(original)
             values[index] = value
             self.described = tuple(values)
+            self.adapter.focus(self.engine, '/context/first')
             self.assertIsNone(self.contexts.context_for(self.native.target))
         self.described = original
         self.daemon.valid = lambda: False
         self.assertIsNone(self.contexts.context_for(self.native.target))
         self.assertFalse(self.sent)
+
+    def test_unfocused_source_cannot_consume_a_native_marker(self):
+        _, code = self.begin()
+        self.described = (1, ':1.9', 120, os.getuid(), False, True)
+        self.key(code)
+        self.assertFalse(self.commits)
+        self.assertEqual(self.completed, ['INPUT_TARGET_UNAVAILABLE'])
+
+    def test_destroyed_engine_forgets_routes_without_admitting_late_focus_out(self):
+        self.adapter.destroy(self.engine)
+        self.assertFalse(self.adapter.routes)
+        self.assertIsNone(self.contexts.context_for(self.native.target))
 
     def test_flatpak_original_sender_must_match_native_sandbox(self):
         self.described = (1, ':1.9', 140, os.getuid(), True, True)
