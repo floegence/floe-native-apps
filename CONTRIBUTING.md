@@ -219,13 +219,13 @@ before that backend can be published as a supported capability.
 
 The internal `DesktopHelper` composes the native channel/window registry, bounded
 capture, decoded-frame gate, ordered input and authenticated endpoint on one event
-loop. The supervisor supplies its prepared sockets. It starts sharing only after
+loop. The persistent launch owner supplies its prepared sockets. It starts sharing only after
 the native protocol is identified and owns cleanup if endpoint creation fails.
 Viewer detach leaves the registry and capture process intact; native channel loss
 reports unavailable state without inventing application exit. Full helper disposal
 closes its channels, while process lifetime remains with the launch supervisor.
 Authenticated mixed-window probes use this same assembly rather than a second test
-implementation. This boundary does not yet provide the complete prepared launcher.
+implementation. Complete package admission and installed-component activation remain separate release prerequisites.
 
 The helper also owns one `NativeContexts` registry and its toolkit, IBus and XIM
 services. It borrows the private bus and supervisor process authority, and takes
@@ -236,6 +236,32 @@ An initialized context owner cannot be recreated within the same native lifetime
 so old registration and marker callbacks cannot enter a new owner. Partial D-Bus
 registration releases only the name and objects acquired by that attempt. Engine
 activation remains asynchronous on the sole helper event loop.
+
+The internal `DesktopSession` owns the private bus, combined compositor, capture,
+input services and official file/settings portals before executing the application
+supervisor. Its one preparation deadline ends before application execution; a
+first window may appear arbitrarily later. The compositor returns its reserved
+Xwayland display on the native control channel. Log text is never a startup API.
+Service names are accepted only after the real bus credentials match the launched
+child. Capture admission similarly binds the native child before enabling it.
+
+Viewer detach affects only sharing. Service loss revokes input and reports an
+unavailable graphical session while preserving the application and remaining
+services. Session disposal rejects a still-running application supervisor. The
+supervisor's bounded private receipt supplies authoritative launcher errors and
+exit status; a missing or inconsistent receipt is a failure. Nonzero launcher
+exit before any native window is a startup failure, while a running process with
+no windows continues waiting. This internal assembly does not yet provide the
+public installed launcher, package-specific resource realization or a complete
+Wayland/browser support claim.
+
+`qualification/desktop_compatibility/session_probe.py` runs this owner as an
+independent process. Its viewer knows only authenticated IPC, decodes actual PNG
+frames and checks toolkit document bytes. Native cases include ordered Unicode
+and Enter, detach/reconnect and modifier release, a 42-second first window,
+launcher exit 46, support failure before execution and capture/private-bus loss
+without application termination. The fixture may explicitly terminate only its
+recorded test supervisor for failure cleanup; this is never viewer behavior.
 
 ### Unpublished combined-display qualification
 

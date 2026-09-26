@@ -79,32 +79,28 @@ class ControlWire:
             self.helper.close()
 
 
-class ControlProbe:
-    def __init__(self, directory, wire, frames):
+class ControlClient:
+    """A viewer fixture using only the public authenticated local protocol."""
+    def __init__(self, directory, endpoint, instance, token):
         self.request_id, self.client = 0, None
         self.trace = []
         self.frames, self.responses, self.events = deque(), {}, []
-        self.directory = Path(directory) / 'helper'
-        self.directory.mkdir(mode=0o700)
-        self.token = secrets.token_hex(32)
-        self.wire, self.loop, self.native = wire, wire.loop, wire.native
-        self.pointer = (0, 0)
-        def start():
-            wire.helper.listen(self.directory, self.directory.name, self.token, frames)
-            self.attachment, self.server = wire.helper.attachment, wire.helper.server
-        wire.invoke(start)
+        self.directory = Path(directory)
+        self.endpoint, self.instance, self.token = str(endpoint), instance, token
+        self.state = None
 
     def reconnect(self):
         if self.client:
             self.client.close()
         self.client = socket.socket(socket.AF_UNIX)
         self.client.settimeout(5)
-        self.client.connect(self.server.path)
-        self.client.sendall(encode_message({'version': 1, 'instance': self.directory.name, 'token': self.token}))
+        self.client.connect(self.endpoint)
+        self.client.sendall(encode_message({'version': 1, 'instance': self.instance, 'token': self.token}))
         kind, body = self.receive()
         response = json.loads(body)
         assert kind == 1 and response['event'] == 'attached'
         self.generation = response['connection']
+        self.state = response['state']
         self.frames.clear()
         self.responses.clear()
         return self.generation
@@ -135,6 +131,8 @@ class ControlProbe:
         elif 'id' in message:
             self.responses[message['id']] = message
         else:
+            if message.get('event') == 'state':
+                self.state = message['state']
             self.events.append(message)
 
     def response(self, request):
@@ -147,28 +145,6 @@ class ControlProbe:
         self.trace.append({'sent': {'id': self.request_id, 'method': method, **values}})
         self.client.sendall(encode_message({'id': self.request_id, 'method': method, **values}))
         return self.request_id
-
-    def send(self, window, commands):
-        if commands == b'close\n':
-            return self.request('close_window', window=window)
-        for line in commands.decode().splitlines():
-            parts = line.split()
-            if parts[0] == 'motion':
-                self.pointer = tuple(float(v) for v in parts[1:])
-                value = {'kind': 'move', 'x': self.pointer[0], 'y': self.pointer[1]}
-            elif parts[0] == 'key':
-                value = {'kind': 'key', 'code': int(parts[1]), 'pressed': parts[2] == '1'}
-            elif parts[0] == 'button':
-                value = {'kind': 'button', 'button': {272: 0, 273: 2, 274: 1}[int(parts[1])],
-                         'pressed': parts[2] == '1', 'x': self.pointer[0], 'y': self.pointer[1]}
-            elif parts[0] == 'scroll':
-                value = {'kind': 'scroll', 'dx': float(parts[1]), 'dy': float(parts[2]),
-                         'x': self.pointer[0], 'y': self.pointer[1]}
-            else:
-                raise ValueError('Unknown fixture instruction')
-            request = self.request('input', connection=self.generation, window=window,
-                                   generation=self.native.generation, operation=value)
-        return request
 
     def paint(self, stage, expected=None, marker=None, required=(), absent=(), accept_bounds=None):
         from PIL import Image
@@ -219,6 +195,46 @@ class ControlProbe:
             if matches:
                 assert all(colors.get(color, 0) >= 20 for color in required), 'Transient surface omitted its parent'
                 return recorded
+
+    def close(self):
+        if self.client:
+            self.client.close()
+            self.client = None
+
+
+class ControlProbe(ControlClient):
+    def __init__(self, directory, wire, frames):
+        directory = Path(directory) / 'helper'
+        directory.mkdir(mode=0o700)
+        super().__init__(directory, directory / 'control.sock', directory.name, secrets.token_hex(32))
+        self.wire, self.loop, self.native = wire, wire.loop, wire.native
+        self.pointer = (0, 0)
+        def start():
+            wire.helper.listen(self.directory, self.instance, self.token, frames)
+            self.attachment, self.server = wire.helper.attachment, wire.helper.server
+        wire.invoke(start)
+
+    def send(self, window, commands):
+        if commands == b'close\n':
+            return self.request('close_window', window=window)
+        for line in commands.decode().splitlines():
+            parts = line.split()
+            if parts[0] == 'motion':
+                self.pointer = tuple(float(v) for v in parts[1:])
+                value = {'kind': 'move', 'x': self.pointer[0], 'y': self.pointer[1]}
+            elif parts[0] == 'key':
+                value = {'kind': 'key', 'code': int(parts[1]), 'pressed': parts[2] == '1'}
+            elif parts[0] == 'button':
+                value = {'kind': 'button', 'button': {272: 0, 273: 2, 274: 1}[int(parts[1])],
+                         'pressed': parts[2] == '1', 'x': self.pointer[0], 'y': self.pointer[1]}
+            elif parts[0] == 'scroll':
+                value = {'kind': 'scroll', 'dx': float(parts[1]), 'dy': float(parts[2]),
+                         'x': self.pointer[0], 'y': self.pointer[1]}
+            else:
+                raise ValueError('Unknown fixture instruction')
+            request = self.request('input', connection=self.generation, window=window,
+                                   generation=self.native.generation, operation=value)
+        return request
 
     def block_frame(self):
         ready = Event()

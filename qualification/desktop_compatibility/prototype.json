@@ -297,6 +297,11 @@
       "case": "Shared private portal and bus preparation with actual sandbox file dialogs",
       "result": "A missing backend description previously stranded four partial directories. Official service commands, private configuration and the limited portal bus policy now have one reusable preparation owner. Failure and retry preserve existing instance resources and real Flatpak metadata. Strict Snap Firefox amd64 and Flatpak GTK/Qt arm64 pass repeated Unicode, visible remote save dialogs, actual file bytes and denial of out-of-scope portal interfaces after the fixture-only configuration path is removed.",
       "limits": "Native fixture service startup still owns process orchestration. The durable helper entrypoint, installed component activation and complete package/desktop release matrix remain unfinished."
+    },
+    {
+      "case": "Persistent private helper service ownership on native arm64",
+      "result": "A separate helper prepares and starts the private bus, compositor, authorized capture, one input assembly and official file/settings portals. Actual GTK4 document receipts preserve 32 Unicode/Enter pairs, detach/reconnect and modifier release. Native tests retain a window delayed 42 seconds, preserve launcher exit 46, fail support startup before application execution and retain application/document state after capture or private-bus loss.",
+      "limits": "arm64 native prototype evidence; public installed launch preparation, package-specific service realization, final amd64 qualification, component activation and complete package/desktop matrix remain unfinished."
     }
   ],
   "rejected_assumptions": [
