@@ -53,6 +53,12 @@ struct probe {
     struct wl_list contexts;
     struct wl_list windows;
     struct wl_listener focus;
+    struct wl_listener cursor_changed, pointer_focus;
+    bool cursor_dirty;
+    uint64_t cursor_revision;
+    uint8_t *cursor_pixels;
+    size_t cursor_length;
+    bool cursor_valid, cursor_hidden;
     struct wl_listener destroy;
     struct wl_listener capture_authority;
     struct weston_surface *current;
@@ -106,7 +112,7 @@ struct probe_background {
     struct probe *probe;
     struct weston_output *output;
     struct weston_curtain *curtain;
-    struct wl_listener destroy;
+    struct wl_listener destroy, frame;
 };
 struct probe_surface {
     struct wl_list link;
@@ -132,6 +138,7 @@ struct text_context {
 };
 
 static void release_input(struct probe *p);
+static void schedule_cursor(struct probe *p);
 static void end_window_grab(struct weston_pointer_grab *base);
 static void control_lost(struct probe *p) {
     if (p->control < 0) return;
@@ -143,6 +150,9 @@ static void control_lost(struct probe *p) {
     p->output_start = p->output_end = p->used = 0;
     p->connection = 0;
     p->capture_pid = 0;
+    free(p->cursor_pixels);
+    p->cursor_pixels = NULL;
+    p->cursor_length = 0;
     release_input(p);
 }
 static void flush_control(struct probe *p) {
@@ -239,6 +249,104 @@ static uint64_t input_window(struct probe *p) {
     return focus && focus->width > 0 && focus->height > 0 && window &&
         window->identity == current_window(p) ? window->identity : 0;
 }
+/* Cursor images never enter the display frame. Native logical geometry and
+ * buffer density stay separate; the shared client alone imposes the CSS cap. */
+static void snapshot_cursor(void *data) {
+    struct probe *p = data;
+    p->cursor_dirty = false;
+    free(p->cursor_pixels);
+    p->cursor_pixels = NULL;
+    p->cursor_length = 0;
+    if (!p->connection || p->control < 0) return;
+    uint64_t revision = ++p->cursor_revision;
+    struct weston_pointer *pointer = weston_seat_get_pointer(&p->seat);
+    struct probe_window *window = pointer->focus ? window_for_surface(p, pointer->focus->surface) : NULL;
+    uint64_t identity = input_window(p);
+    const char *mode = "default";
+    if (!p->cursor_valid || !window || window->identity != identity) goto unavailable;
+    if (!pointer->sprite) { mode = p->cursor_hidden ? "hidden" : "default"; goto unavailable; }
+    struct weston_surface *surface = pointer->sprite->surface;
+    int bw, bh, lw = surface->width, lh = surface->height;
+    weston_surface_get_content_size(surface, &bw, &bh);
+    double hx = pointer->hotspot.c.x, hy = pointer->hotspot.c.y;
+    if (bw < 1 || bh < 1 || bw > 1024 || bh > 1024 || lw < 1 || lh < 1 || lw > 1024 || lh > 1024 ||
+        !isfinite(hx) || !isfinite(hy) || hx < 0 || hy < 0 || hx >= lw || hy >= lh) goto unavailable;
+    /* The surface matrix includes buffer scale, transforms and viewport.
+     * Retain its pixel density while applying that mapping exactly once. */
+    struct weston_coord_buffer origin = weston_coord_surface_to_buffer(surface, weston_coord_surface(0, 0, surface));
+    struct weston_coord_buffer dx = weston_coord_surface_to_buffer(surface, weston_coord_surface(1, 0, surface));
+    struct weston_coord_buffer dy = weston_coord_surface_to_buffer(surface, weston_coord_surface(0, 1, surface));
+    double sx = hypot(dx.c.x - origin.c.x, dx.c.y - origin.c.y);
+    double sy = hypot(dy.c.x - origin.c.x, dy.c.y - origin.c.y);
+    if (!isfinite(sx) || !isfinite(sy) || sx <= 0 || sy <= 0 || lw * sx > 1024 || lh * sy > 1024) goto unavailable;
+    int width = (int)ceil(lw * sx), height = (int)ceil(lh * sy);
+    size_t length = (size_t)width * height * 4, source_length = (size_t)bw * bh * 4;
+    uint8_t *source = malloc(source_length), *pixels = malloc(length);
+    if (!source || !pixels) { free(source); free(pixels); goto unavailable; }
+    struct weston_buffer *buffer = surface->buffer_ref.buffer;
+    struct wl_shm_buffer *shm = buffer && buffer->type == WESTON_BUFFER_SHM ? buffer->shm_buffer : NULL;
+    if (shm) wl_shm_buffer_begin_access(shm);
+    int copied = weston_surface_copy_content(surface, source, source_length, 0, 0, bw, bh);
+    if (shm) wl_shm_buffer_end_access(shm);
+    if (copied < 0) { free(source); free(pixels); goto unavailable; }
+    for (int y = 0; y < height; y++) for (int x = 0; x < width; x++) {
+        struct weston_coord_buffer at = weston_coord_surface_to_buffer(surface,
+            weston_coord_surface((x + 0.5) * lw / width, (y + 0.5) * lh / height, surface));
+        int bx = (int)floor(at.c.x), by = (int)floor(at.c.y);
+        if (bx < 0 || by < 0 || bx >= bw || by >= bh) { free(source); free(pixels); goto unavailable; }
+        uint8_t *src = source + ((size_t)by * bw + bx) * 4, *dst = pixels + ((size_t)y * width + x) * 4;
+        unsigned alpha = src[3];
+        for (int c = 0; c < 3; c++) {
+            unsigned value = alpha ? (src[c] * 255u + alpha / 2) / alpha : 0;
+            dst[c] = value > 255 ? 255 : value;
+        }
+        dst[3] = alpha;
+    }
+    free(source);
+    p->cursor_pixels = pixels; p->cursor_length = length;
+    emit(p, "cursor-state %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " image %d %d %d %d %.9g %.9g\n",
+         revision, p->connection, p->scene, identity, width, height, lw, lh, hx, hy);
+    return;
+unavailable:
+    emit(p, "cursor-state %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %s\n", revision, p->connection, p->scene, identity, mode);
+}
+static void schedule_cursor(struct probe *p) {
+    if (p->control >= 0 && p->connection) {
+        p->cursor_dirty = true;
+        weston_compositor_schedule_repaint(p->compositor);
+    }
+}
+static void cursor_changed(struct wl_listener *listener, void *data) {
+    struct probe *p = wl_container_of(listener, p, cursor_changed);
+    struct weston_pointer *pointer = data;
+    p->cursor_valid = true;
+    p->cursor_hidden = pointer->cursor_hidden;
+    if (pointer->sprite) weston_view_move_to_layer(pointer->sprite, &p->hidden_layer.view_list);
+    schedule_cursor(p);
+}
+static void pointer_focus_changed(struct wl_listener *listener, void *data) {
+    (void)data;
+    struct probe *p = wl_container_of(listener, p, pointer_focus);
+    p->cursor_valid = false;
+    schedule_cursor(p);
+}
+static void read_cursor(struct probe *p, uint64_t revision, size_t offset) {
+    if (revision != p->cursor_revision || offset >= p->cursor_length || !p->cursor_pixels) {
+        emit(p, "cursor-data %" PRIu64 " %zu -\n", revision, offset);
+        return;
+    }
+    size_t length = p->cursor_length - offset;
+    if (length > 1024) length = 1024;
+    char bytes[2049];
+    static const char hex[] = "0123456789abcdef";
+    for (size_t i = 0; i < length; i++) {
+        uint8_t value = p->cursor_pixels[offset + i];
+        bytes[i * 2] = hex[value >> 4]; bytes[i * 2 + 1] = hex[value & 15];
+    }
+    bytes[length * 2] = 0;
+    emit(p, "cursor-data %" PRIu64 " %zu %s\n", revision, offset, bytes);
+}
+
 static void emit_focus(struct probe *p) {
     struct weston_surface *focus = weston_seat_get_keyboard(&p->seat)->focus;
     struct probe_window *window = window_for_surface(p, focus);
@@ -305,6 +413,7 @@ static void window_metadata(struct wl_listener *listener, void *data) {
 }
 static void scene_changed(struct probe *p) {
     emit(p, "scene %" PRIu64 " %" PRIu64 "\n", ++p->scene, input_window(p));
+    schedule_cursor(p);
 }
 
 static void context_state(struct text_context *ctx) {
@@ -459,10 +568,18 @@ static void background_paint(struct probe_background *background) {
     weston_view_move_to_layer(view, &background->probe->background_layer.view_list);
     weston_view_set_output(view, output);
 }
+static void cursor_frame(struct wl_listener *listener, void *data) {
+    (void)data;
+    struct probe_background *background = wl_container_of(listener, background, frame);
+    // Copy only after the renderer has attached and painted committed buffers.
+    // The native frame signal is the completion boundary, never an idle delay.
+    if (background->probe->cursor_dirty) snapshot_cursor(background->probe);
+}
 static void background_destroy(struct wl_listener *listener, void *data) {
     (void)data;
     struct probe_background *background = wl_container_of(listener, background, destroy);
     wl_list_remove(&background->destroy.link);
+    wl_list_remove(&background->frame.link);
     wl_list_remove(&background->link);
     weston_shell_utils_curtain_destroy(background->curtain);
     free(background);
@@ -473,6 +590,8 @@ static void output_created(struct wl_listener *listener, void *data) {
     struct probe_background *background = calloc(1, sizeof *background);
     background->probe = p; background->output = output;
     background->destroy.notify = background_destroy;
+    background->frame.notify = cursor_frame;
+    wl_signal_add(&output->frame_signal, &background->frame);
     wl_signal_add(&output->destroy_signal, &background->destroy);
     wl_list_insert(&p->backgrounds, &background->link);
     background_paint(background);
@@ -1026,12 +1145,18 @@ static void command(struct probe *p, char *line) {
         if (p->barrier_client && p->barrier_sequence == identity) p->barrier_client = NULL;
         return;
     }
+    size_t cursor_offset;
+    if (sscanf(line, "cursor-read %" SCNu64 " %zu", &identity, &cursor_offset) == 2) {
+        read_cursor(p, identity, cursor_offset);
+        return;
+    }
     if (sscanf(line, "connection %" SCNu64, &connection) == 1) {
         if (connection > p->last_connection) {
             release_input(p);
             p->connection = connection;
             p->last_connection = connection;
             emit(p, "connection-ready %" PRIu64 "\n", connection);
+            schedule_cursor(p);
         }
         return;
     }
@@ -1039,6 +1164,9 @@ static void command(struct probe *p, char *line) {
         if (connection == p->connection) {
             release_input(p);
             p->connection = 0;
+            free(p->cursor_pixels);
+            p->cursor_pixels = NULL;
+            p->cursor_length = 0;
         }
         return;
     }
@@ -1180,6 +1308,9 @@ static void destroy_probe(struct wl_listener *listener, void *data) {
     wl_list_remove(&p->destroy.link);
     wl_list_remove(&p->capture_authority.link);
     wl_list_remove(&p->focus.link);
+    wl_list_remove(&p->cursor_changed.link);
+    wl_list_remove(&p->pointer_focus.link);
+    free(p->cursor_pixels);
     wl_list_remove(&p->output_created.link);
     wl_list_remove(&p->output_resized.link);
     wl_list_remove(&p->surface_created.link);
@@ -1230,6 +1361,10 @@ WL_EXPORT int wet_shell_init(struct weston_compositor *compositor, int *argc, ch
     wl_list_for_each(output, &compositor->output_list, link) output_created(&p->output_created, output);
     weston_seat_init(&p->seat, compositor, "floe-prototype");
     weston_seat_init_pointer(&p->seat);
+    p->cursor_changed.notify = cursor_changed;
+    p->pointer_focus.notify = pointer_focus_changed;
+    wl_signal_add(&weston_seat_get_pointer(&p->seat)->cursor_signal, &p->cursor_changed);
+    wl_signal_add(&weston_seat_get_pointer(&p->seat)->focus_signal, &p->pointer_focus);
     struct xkb_context *xkb = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
     /* Native markers do not consume physical evdev keys. X11's reserved code 8
      * retains its slot until press and release; Wayland has distinct bounded slots. */

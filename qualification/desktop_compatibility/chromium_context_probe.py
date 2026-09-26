@@ -12,7 +12,7 @@ class ChromiumPage:
         self.version = subprocess.check_output([binary, '--version'], text=True).strip()
         self.receipt, self.ready, self.clicked = receipt, False, False
         self.protocol = protocol
-        self.input_events, self.rejected_receipts = [], []
+        self.input_events, self.rejected_receipts, self.cursor_hits = [], [], []
         page = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -65,6 +65,9 @@ for(const field of fields){
  }));
 }
 </script>'''
+                if os.environ.get('FLOE_PROBE_CURSOR') == '1':
+                    from cursor_fixture import markup
+                    body += markup()
                 self.send_response(200)
                 self.send_header('Content-Type', 'text/html; charset=utf-8')
                 self.send_header('Content-Length', str(len(body)))
@@ -82,6 +85,8 @@ for(const field of fields){
                     page.ready = True
                 elif self.path == '/clicked':
                     page.clicked = True
+                elif self.path == '/cursor-hit':
+                    page.cursor_hits.append(json.loads(data))
                 elif self.path == '/received':
                     snapshot = json.loads(data)
                     values = snapshot['values']
@@ -124,7 +129,7 @@ for(const field of fields){
                 ensure_ascii=False, indent=2) + '\n')
         self.receipt.with_suffix('.browser.json').write_text(json.dumps({
             'version': self.version, 'protocol': self.protocol,
-            'page_ready': self.ready, 'actual_click': self.clicked,
+            'page_ready': self.ready, 'actual_click': self.clicked, 'cursor_hits': self.cursor_hits,
             'rejected_receipts': self.rejected_receipts,
             'actual_fields': json.loads(self.receipt.read_text()) if self.receipt.exists() else None,
         }, ensure_ascii=False, indent=2) + '\n')

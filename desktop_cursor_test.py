@@ -11,10 +11,11 @@ class CursorTests(unittest.TestCase):
     def setUp(self):
         self.sent, self.updates = [], []
         self.target = SimpleNamespace(window=1, generation=2)
-        self.cursor = NativeCursor(self.sent.append, lambda: self.target, lambda: self.updates.append(True))
+        self.epoch = 1
+        self.cursor = NativeCursor(self.sent.append, lambda: self.target, lambda: self.updates.append(True), lambda: self.epoch)
 
     def state(self, revision=1, width=2, height=1, logical_width=2, logical_height=1, xhot=1):
-        self.cursor.observe(f'cursor-state {revision} 2 1 image {width} {height} {logical_width} {logical_height} {xhot} 0'.split())
+        self.cursor.observe(f'cursor-state {revision} 1 2 1 image {width} {height} {logical_width} {logical_height} {xhot} 0'.split())
 
     def chunk(self, revision, offset, data):
         self.cursor.observe(f'cursor-data {revision} {offset} {data.hex() if data else "-"}'.split())
@@ -46,7 +47,7 @@ class CursorTests(unittest.TestCase):
 
     def test_hidden_reset_and_target_retirement_discard_late_pixels(self):
         self.state()
-        self.cursor.observe('cursor-state 2 2 1 hidden'.split())
+        self.cursor.observe('cursor-state 2 1 2 1 hidden'.split())
         self.chunk(1, 0, bytes(8))
         self.assertEqual(self.cursor.current[0]['mode'], 'hidden')
         self.assertIsNone(self.cursor.current[1])
@@ -77,9 +78,19 @@ class CursorTests(unittest.TestCase):
         self.assertEqual(self.cursor.current[0]['height'], 64)
 
     def test_loss_and_stale_scene_cannot_publish(self):
-        self.cursor.observe('cursor-state 1 1 1 hidden'.split())
+        self.cursor.observe('cursor-state 1 1 1 1 hidden'.split())
         self.assertIsNone(self.cursor.current)
         self.state(2)
         self.cursor.close()
         self.chunk(2, 0, bytes(8))
         self.assertIsNone(self.cursor.current)
+
+    def test_takeover_rejects_late_snapshot_from_old_connection(self):
+        self.state()
+        self.epoch = 2
+        self.cursor.invalidate()
+        self.cursor.observe('cursor-state 2 1 2 1 hidden'.split())
+        self.chunk(1, 0, bytes(8))
+        self.assertIsNone(self.cursor.current)
+        self.cursor.observe('cursor-state 3 2 2 1 hidden'.split())
+        self.assertEqual(self.cursor.current[0]['mode'], 'hidden')

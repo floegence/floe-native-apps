@@ -504,10 +504,35 @@ HTML v20/v21. Remote PNGs preserve their shape and alpha, with a maximum longest
 edge of 24 CSS pixels and no enlargement of smaller images. Hotspots scale with
 the image. Integral backing density (ceil DPR, bounded to 1 through 4) is declared
 through CSS image-set; it changes resolution, never logical geometry. Malformed
-metadata, images over 1024 pixels per edge or 4 MiB encoded, and failed decodes
+metadata, images over 1024 pixels per edge or 5 MiB encoded, and failed decodes
 reset to the system cursor. Reset, disconnect and newer packets revoke unfinished
 decodes. Existing shares pin their immutable resources; preparing a new viewer does not
 rewrite live application modules or directories.
+
+`CursorClientSource` exposes the same normalization owner for canvas viewers.
+`FloeRemoteCursor` accepts one apply callback and `{width, height, logicalWidth,
+logicalHeight, xhot, yhot, png}`. Native image size is independent of surface size;
+buffer scale must never enlarge CSS geometry. Explicit `hide` and `reset` retain
+distinct hidden/default semantics and invalidate unfinished decodes. Xpra has only
+a packet/window-list adapter around this owner.
+
+The unpublished combined backend observes the native pointer's cursor and focus
+signals. It copies the current image only after the renderer's frame signal;
+copying at surface commit can pair new geometry with an old renderer buffer.
+The shell applies the surface's buffer transform once, preserves pixel density,
+converts premultiplied pixels to straight RGBA and excludes the cursor from the
+application frame. One current snapshot is transferred over the existing native
+control channel in 1024-byte pull chunks. A newer revision or scene invalidates
+unfinished reads. The helper exposes a bounded PNG on the existing authenticated
+attachment, with at most one cursor payload in flight and only the latest pending
+snapshot. Cursor updates never authorize input or acknowledge an application frame.
+
+`FLOE_PROBE_CURSOR=1` adds known PNG cursor tiles to the persistent Chromium
+fixture. Acceptance compares actual received RGBA bytes, native logical geometry,
+application click coordinates, explicit hide and decoded frames without burned-in
+cursor pixels. Source tests cover scene retirement, stale chunks and peer pressure.
+These receipts supplement, rather than replace, actual system-pointer inspection
+in the final consuming viewer.
 
 The source gate runs deterministic geometry, ordering and lifecycle tests against
 both original client fixtures without installing a browser. Release qualification

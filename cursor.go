@@ -9,6 +9,12 @@ import (
 //go:embed cursor.js
 var cursorSource []byte
 
+// CursorClientSource returns the shared standalone JavaScript cursor owner.
+// Consumers build this released asset into their viewer instead of duplicating
+// normalization. FloeRemoteCursor accepts an apply callback and PNG metadata.
+// Its receive, hide, reset and dispose methods own decode/DPR resource lifetime.
+func CursorClientSource() []byte { return append([]byte(nil), cursorSource...) }
+
 // All reviewed HTML versions share this cursor owner. The original client still
 // owns pointer packets; normalization changes neither coordinates nor buttons.
 func prepareCursorHTML(index, client, window []byte) ([]byte, []byte, []byte, error) {

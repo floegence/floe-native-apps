@@ -1,9 +1,9 @@
-/* One cursor owner for a prepared Xpra connection. Sizes are CSS pixels. */
+/* One cursor normalization owner for a remote connection. Sizes are CSS pixels. */
 "use strict";
 
-class FloeXpraCursor {
-  constructor(client) {
-    this.client = client;
+class FloeRemoteCursor {
+  constructor(apply) {
+    this.applyResult = apply;
     this.generation = 0;
     this.current = null;
     this.source = null;
@@ -42,17 +42,18 @@ class FloeXpraCursor {
     this.pending = null;
   }
 
-  receive(packet) {
+  receive(cursor) {
     if (this.disposed) return;
     const generation = ++this.generation;
     this.cancelPending();
-    if (packet.length < 9) { this.reset(); return; }
-    const [width, height, xhot, yhot] = packet.slice(4, 8);
-    const bytes = packet[9];
-    if (packet[1] !== "png" || ![width, height, xhot, yhot].every(Number.isInteger) ||
+    if (!cursor) { this.reset(); return; }
+    const {width, height, logicalWidth=width, logicalHeight=height, xhot, yhot, png:bytes} = cursor;
+    if (![width, height, logicalWidth, logicalHeight].every(Number.isInteger) ||
+        ![xhot, yhot].every(Number.isFinite) ||
+        logicalWidth < 1 || logicalHeight < 1 || logicalWidth > 1024 || logicalHeight > 1024 ||
         width < 1 || height < 1 || width > 1024 || height > 1024 ||
-        xhot < 0 || yhot < 0 || xhot >= width || yhot >= height ||
-        !(bytes instanceof Uint8Array) || !bytes.length || bytes.length > 4 * 1024 * 1024) {
+        xhot < 0 || yhot < 0 || xhot >= logicalWidth || yhot >= logicalHeight ||
+        !(bytes instanceof Uint8Array) || !bytes.length || bytes.length > 5 * 1024 * 1024) {
       this.reset(); return;
     }
     const url = URL.createObjectURL(new Blob([bytes], {type:"image/png"}));
@@ -64,7 +65,7 @@ class FloeXpraCursor {
       this.pending = null;
       image.onload = image.onerror = null;
       if (image.naturalWidth !== width || image.naturalHeight !== height) { this.reset(); return; }
-      this.source = {image, width, height, xhot, yhot};
+      this.source = {image, width:logicalWidth, height:logicalHeight, xhot, yhot};
       this.render();
     };
     image.onerror = () => { if (generation === this.generation) this.reset(); };
@@ -97,11 +98,16 @@ class FloeXpraCursor {
   }
 
   apply() {
-    for (const win of Object.values(this.client.id_to_window)) win.set_cursor(this.current);
-    // A shadow pointer uses the same geometry as the CSS cursor. Its next
-    // position packet makes it visible again; never leave a stale bitmap showing.
-    const shadow = document.querySelector("#shadow_pointer");
-    if (shadow) shadow.style.display = "none";
+    this.applyResult(this.current);
+  }
+
+  hide() {
+    if (this.disposed) return;
+    this.generation++;
+    this.cancelPending();
+    this.source = null;
+    this.current = Object.freeze({css:"none", url:null, width:0, height:0, xhot:0, yhot:0});
+    this.apply();
   }
 
   reset() {
@@ -118,5 +124,25 @@ class FloeXpraCursor {
     window.removeEventListener("resize", this.densityChanged);
     this.media?.removeEventListener("change", this.densityChanged);
     this.reset();
+  }
+}
+
+// Xpra owns packet decoding and its window list; normalization has no backend.
+class FloeXpraCursor extends FloeRemoteCursor {
+  constructor(client) {
+    super(cursor => {
+      for (const win of Object.values(client.id_to_window)) win.set_cursor(cursor);
+      // A shadow pointer is repainted by its next position packet.
+      const shadow = document.querySelector("#shadow_pointer");
+      if (shadow) shadow.style.display = "none";
+    });
+  }
+
+  receive(packet) {
+    if (this.disposed) return;
+    if (!packet || packet.length < 10 || packet[1] !== "png") { this.reset(); return; }
+    const [width, height, xhot, yhot] = packet.slice(4, 8);
+    if (![xhot, yhot].every(Number.isInteger)) { this.reset(); return; }
+    super.receive({width, height, xhot, yhot, png:packet[9]});
   }
 }

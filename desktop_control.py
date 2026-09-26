@@ -20,6 +20,7 @@ MAX_MESSAGE = 128 * 1024
 # retain the smaller independent bound above.
 MAX_OUTPUT = 2 * 1024 * 1024
 MAX_FRAME = 4096 * 4096 * 4
+MAX_CURSOR = 5 * 1024 * 1024
 MAX_PEERS = 8
 
 
@@ -175,6 +176,7 @@ class Peer:
         self.input, self.output = bytearray(), deque()
         self.buffered, self.control_buffered = 0, 0
         self.frame_pending = False
+        self.cursor_pending = False
         self.timer = server.loop.later(3000, self.expired)
         self.watch()
 
@@ -227,13 +229,13 @@ class Peer:
             # No parser exception or request body belongs in production logs.
             self.close()
 
-    def append(self, data, frame=False):
-        self.output.append((memoryview(data), frame))
+    def append(self, data, *, payload=False, completed=None):
+        self.output.append((memoryview(data), payload, completed))
         self.buffered += len(data)
-        if not frame:
+        if not payload:
             self.control_buffered += len(data)
 
-    def send(self, message):
+    def send(self, message, *, completed=None):
         if self.closed or self.server.current is not self:
             return False
         try:
@@ -244,7 +246,7 @@ class Peer:
         if self.control_buffered + len(data) > MAX_OUTPUT or len(self.output) >= 128:
             self.close()
             return False
-        self.append(data)
+        self.append(data, completed=completed)
         self.watch()
         return True
 
@@ -257,7 +259,22 @@ class Peer:
             return False
         self.frame_pending = True
         self.append(struct.pack('!BI', 2, len(pixels)))
-        self.append(pixels, frame=True)
+        self.append(pixels, payload=True, completed='frame')
+        self.watch()
+        return True
+
+    def send_cursor(self, description, pixels):
+        if self.closed or self.server.current is not self or self.cursor_pending:
+            return False
+        if pixels is not None and (not isinstance(pixels, bytes) or not 0 < len(pixels) <= MAX_CURSOR):
+            raise ValueError('Invalid native cursor size')
+        if not self.send({'event': 'cursor', 'cursor': description, 'bytes': len(pixels) if pixels else 0},
+                         completed=None if pixels else 'cursor'):
+            return False
+        self.cursor_pending = True
+        if pixels:
+            self.append(struct.pack('!BI', 3, len(pixels)))
+            self.append(pixels, payload=True, completed='cursor')
         self.watch()
         return True
 
@@ -265,31 +282,33 @@ class Peer:
         if self.closed:
             return
         budget = MAX_MESSAGE
-        frame_drained = False
+        drained = False
         try:
             while self.output and budget > 0:
-                data, frame = self.output[0]
+                data, payload, completed = self.output[0]
                 count = self.socket.send(data[:budget])
                 if not count:
                     self.close()
                     return
                 self.buffered -= count
-                if not frame:
+                if not payload:
                     self.control_buffered -= count
                 budget -= count
                 if count == len(data):
                     self.output.popleft()
-                    if frame:
+                    if completed == 'cursor':
+                        self.cursor_pending = False
+                    elif completed == 'frame':
                         self.frame_pending = False
-                        frame_drained = True
+                    drained = drained or completed is not None
                 else:
-                    self.output[0] = (data[count:], frame)
+                    self.output[0] = (data[count:], payload, completed)
         except BlockingIOError:
             pass
         except OSError:
             self.close()
         self.watch()
-        if frame_drained and not self.closed and self.server.current is self:
+        if drained and not self.closed and self.server.current is self:
             self.server.application.writable(self)
 
     def close(self):
@@ -303,6 +322,7 @@ class Peer:
         self.output.clear()
         self.buffered = self.control_buffered = 0
         self.frame_pending = False
+        self.cursor_pending = False
         self.server.peers.discard(self)
         if self.server.current is self:
             self.server.current = None

@@ -14,6 +14,7 @@ class DesktopAttachment:
         self.owner, self.epoch, self.last_request = None, 0, 0
         self.ready, self.capture, self.awaiting = None, None, None
         self.frame_sequence, self.dirty, self.failed = 0, False, False
+        self.cursor_sent = None
         self.order = OrderedInput(self.available, self.admit, self.input_result,
                                   lambda owner: owner.close(), timeout_add, timeout_remove)
 
@@ -24,11 +25,13 @@ class DesktopAttachment:
         if self.owner:
             self.detach(self.owner)
         self.owner, self.last_request = owner, 0
+        self.cursor_sent = None
         self.epoch += 1
         self.failed = False
         self.native.bind(self.epoch)
         owner.send({'event': 'attached', 'version': 1, 'connection': self.epoch,
                     'state': self.native.snapshot()})
+        self.cursor_changed()
         self.damage()
 
     def detach(self, owner):
@@ -157,8 +160,23 @@ class DesktopAttachment:
         self.dirty = True
         self.pump()
 
+    def cursor_changed(self):
+        if not self.owner or self.owner.cursor_pending:
+            return
+        current = self.native.cursor.current
+        if current is self.cursor_sent:
+            return
+        if current:
+            description, pixels = current
+        else:
+            description, pixels = {'mode': 'default', 'sequence': self.native.cursor.revision,
+                                   'window': 0, 'generation': 0}, None
+        if self.owner.send_cursor({**description, 'connection': self.epoch}, pixels):
+            self.cursor_sent = current
+
     def writable(self, owner):
         if self.owner is owner:
+            self.cursor_changed()
             self.pump()
 
     def pump(self):

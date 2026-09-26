@@ -15,11 +15,12 @@
     "xwayland/launcher.c": "f2cebfa6c2767e22c30f87da8d3aee56fb6146473dcb7f281e84c7918de1af37"
   },
   "patch": "weston-14-input-events.patch",
-  "patch_sha256": "03aae91bdd3120018c27cca76413a65e7e3a952dca43ed26c6aae9457ec51cc1",
+  "patch_sha256": "ec299461e7f8fa00835bfa5b01049d00c37877e5fad2a7ff56307ffab73e14ff",
   "changes": [
     "Validate keyboard popup grabs against the last 32 actual keyboard event serials of the same client and focus lifetime; release cannot invalidate the preceding press",
     "Advertise wl_seat version 8 and carry value120 wheel metadata through the existing native grab and axis dispatch",
-    "Expose the compositor-owned Xwayland surface-to-resource binding through a separate read-only versioned plugin API; advisory PID and title never authorize an input context"
+    "Expose the compositor-owned Xwayland surface-to-resource binding through a separate read-only versioned plugin API; advisory PID and title never authorize an input context",
+    "Expose one pointer cursor signal for committed image, hotspot, explicit hide and surface destruction; the shell owns bounded transfer and no polling"
   ],
   "abi": "Fields append to core-allocated pointer/keyboard objects; existing member offsets and axis event layout remain unchanged. The native shell requires floe_notify_axis_value120 from this derived library.",
   "limitations": [

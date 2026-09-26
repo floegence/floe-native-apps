@@ -8,6 +8,7 @@ window metadata alone never selects an input method or proves application exit.
 """
 from dataclasses import dataclass
 import math
+from desktop_cursor import NativeCursor
 
 
 MAX_BUFFER = 128 * 1024
@@ -146,6 +147,7 @@ class NativeDesktop:
         self.version, self.closed = None, False
         self.text_contexts, self.last_text_context = {}, 0
         self.text_request, self.last_text_request = None, 0
+        self.cursor = NativeCursor(send, lambda: self.target if self.epoch else None, self.cursor_changed, lambda: self.epoch)
 
     def observe(self, line):
         if self.closed:
@@ -158,6 +160,10 @@ class NativeDesktop:
             if fields != ['native-version', '1'] or self.version is not None:
                 raise ValueError('Unsupported native version')
             self.version = 1
+        elif kind in ('cursor-state', 'cursor-data'):
+            if self.version != 1:
+                raise ValueError('Native cursor is unavailable')
+            self.cursor.observe(fields)
         elif kind in ('client-barrier-done', 'client-barrier-cancelled', 'text-dispatched', 'text-rejected'):
             if self.version != 1 or len(fields) != 2:
                 raise ValueError('Invalid native text response')
@@ -346,7 +352,12 @@ class NativeDesktop:
                           'selection-unavailable', 'text-queued', 'text-unavailable'):
             raise ValueError('Unsupported native record')
 
+    def cursor_changed(self):
+        if self.attachment:
+            self.attachment.cursor_changed()
+
     def changed(self):
+        self.cursor.invalidate()
         if self.attachment:
             self.attachment.scene_changed()
 
@@ -355,6 +366,7 @@ class NativeDesktop:
             return
         self.closed, self.target, self.focus, self.epoch = True, None, None, 0
         self.text_contexts.clear()
+        self.cursor.close()
         request, self.text_request = self.text_request, None
         if request:
             request[4]('INPUT_TARGET_UNAVAILABLE')
@@ -407,6 +419,7 @@ class NativeDesktop:
         if not self.closed and epoch == self.epoch:
             self.send(f'detach {epoch}\n')
             self.epoch = 0
+            self.cursor.invalidate()
         self.frames.cancel()
 
     def capture(self, target, completed):

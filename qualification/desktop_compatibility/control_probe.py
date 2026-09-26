@@ -124,7 +124,7 @@ class ControlClient:
                 value.extend(chunk)
             return bytes(value)
         kind, size = struct.unpack('!BI', read(5))
-        assert kind in (1, 2) and size <= 64 * 1024 * 1024
+        assert kind in (1, 2, 3) and size <= 64 * 1024 * 1024
         return kind, read(size)
 
     def record(self):
@@ -137,6 +137,20 @@ class ControlClient:
             assert kind == 2 and len(data) == message['bytes']
             self.frames.append((message['frame'], data))
             assert len(self.frames) <= 4, 'Fixture consumer accumulated unbounded native frames'
+        elif message.get('event') == 'cursor':
+            from PIL import Image
+            description = message['cursor']
+            assert description['connection'] == self.generation
+            if description['mode'] == 'image':
+                kind, data = self.receive()
+                assert kind == 3 and len(data) == message['bytes']
+                image = Image.open(io.BytesIO(data))
+                image.load()
+                assert image.mode == 'RGBA' and image.size == (description['width'], description['height'])
+                (self.directory.parent / f"cursor-{self.generation}-{description['sequence']}.png").write_bytes(data)
+            else:
+                assert description['mode'] in ('default', 'hidden') and message['bytes'] == 0
+            self.events.append(message)
         elif 'id' in message:
             self.responses[message['id']] = message
         else:

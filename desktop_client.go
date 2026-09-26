@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"math"
 	"net"
 	"time"
 	"unicode/utf8"
@@ -15,6 +16,7 @@ const (
 	desktopRequestLimit = 128 * 1024
 	desktopMessageLimit = 2 * 1024 * 1024
 	desktopFrameLimit   = 4096 * 4096 * 4
+	desktopCursorLimit  = 5 * 1024 * 1024
 	desktopMaxID        = 1<<53 - 1
 )
 
@@ -76,6 +78,25 @@ type DesktopFrame struct {
 	Generation uint64 `json:"generation"`
 }
 
+// DesktopCursor carries the current native pointer shape. Image dimensions
+// describe PNG pixels; LogicalWidth/Height and the hotspot are surface units.
+// The shared cursor client caps CSS size without applying buffer scale twice.
+// Hidden and default modes contain no pixel payload. Sequence is compositor-wide.
+type DesktopCursor struct {
+	Mode          string  `json:"mode"`
+	Sequence      uint64  `json:"sequence"`
+	Connection    uint64  `json:"connection"`
+	Window        uint64  `json:"window"`
+	Generation    uint64  `json:"generation"`
+	Encoding      string  `json:"encoding,omitempty"`
+	Width         int     `json:"width,omitempty"`
+	Height        int     `json:"height,omitempty"`
+	LogicalWidth  int     `json:"logical_width,omitempty"`
+	LogicalHeight int     `json:"logical_height,omitempty"`
+	XHot          float64 `json:"xhot,omitempty"`
+	YHot          float64 `json:"yhot,omitempty"`
+}
+
 // DesktopEvent contains one complete helper event or request result. A frame
 // event includes its bounded PNG payload. The caller owns those returned bytes.
 // Result and Error preserve helper semantics: submitted is not a widget receipt.
@@ -86,6 +107,7 @@ type DesktopEvent struct {
 	Connection uint64          `json:"connection,omitempty"`
 	State      *DesktopState   `json:"state,omitempty"`
 	Frame      *DesktopFrame   `json:"frame,omitempty"`
+	Cursor     *DesktopCursor  `json:"cursor,omitempty"`
 	Bytes      int             `json:"bytes,omitempty"`
 	Code       string          `json:"code,omitempty"`
 	Error      string          `json:"error,omitempty"`
@@ -199,6 +221,9 @@ func (c *DesktopConnection) read() (DesktopEvent, error) {
 	if !utf8.Valid(body) || json.Unmarshal(body, &event) != nil {
 		return DesktopEvent{}, ErrDesktopProtocol
 	}
+	if event.Event != "cursor" && event.Cursor != nil {
+		return DesktopEvent{}, ErrDesktopProtocol
+	}
 	if event.Event == "" {
 		if !desktopID(event.ID) || (event.Error == "") == (len(event.Result) == 0) || event.Frame != nil || event.Bytes != 0 {
 			return DesktopEvent{}, ErrDesktopProtocol
@@ -221,6 +246,39 @@ func (c *DesktopConnection) read() (DesktopEvent, error) {
 		if event.Code != "CAPTURE_UNAVAILABLE" || event.Frame != nil || event.Bytes != 0 {
 			return DesktopEvent{}, ErrDesktopProtocol
 		}
+	case "cursor":
+		cursor := event.Cursor
+		if cursor == nil || event.Frame != nil || event.State != nil || cursor.Connection != c.connection ||
+			cursor.Sequence > desktopMaxID || cursor.Window > desktopMaxID || cursor.Generation > desktopMaxID {
+			return DesktopEvent{}, ErrDesktopProtocol
+		}
+		if cursor.Mode == "hidden" || cursor.Mode == "default" {
+			if event.Bytes != 0 || cursor.Encoding != "" || cursor.Width != 0 || cursor.Height != 0 ||
+				cursor.LogicalWidth != 0 || cursor.LogicalHeight != 0 || cursor.XHot != 0 || cursor.YHot != 0 ||
+				cursor.Mode == "hidden" && (!desktopID(cursor.Sequence) || !desktopID(cursor.Window) || !desktopID(cursor.Generation)) {
+				return DesktopEvent{}, ErrDesktopProtocol
+			}
+			break
+		}
+		if cursor.Mode != "image" || cursor.Encoding != "png" || !desktopID(cursor.Sequence) ||
+			!desktopID(cursor.Window) || !desktopID(cursor.Generation) ||
+			cursor.Width < 1 || cursor.Width > 1024 || cursor.Height < 1 || cursor.Height > 1024 ||
+			cursor.LogicalWidth < 1 || cursor.LogicalWidth > 1024 || cursor.LogicalHeight < 1 || cursor.LogicalHeight > 1024 ||
+			math.IsNaN(cursor.XHot) || math.IsInf(cursor.XHot, 0) || math.IsNaN(cursor.YHot) || math.IsInf(cursor.YHot, 0) ||
+			cursor.XHot < 0 || cursor.XHot >= float64(cursor.LogicalWidth) || cursor.YHot < 0 || cursor.YHot >= float64(cursor.LogicalHeight) ||
+			event.Bytes < 45 || event.Bytes > desktopCursorLimit {
+			return DesktopEvent{}, ErrDesktopProtocol
+		}
+		data, err := readDesktopPacket(c.conn, 3, event.Bytes)
+		if err != nil {
+			return DesktopEvent{}, err
+		}
+		if len(data) != event.Bytes || string(data[:16]) != "\x89PNG\r\n\x1a\n\x00\x00\x00\x0dIHDR" ||
+			binary.BigEndian.Uint32(data[16:20]) != uint32(cursor.Width) || binary.BigEndian.Uint32(data[20:24]) != uint32(cursor.Height) ||
+			string(data[24:29]) != "\x08\x06\x00\x00\x00" {
+			return DesktopEvent{}, ErrDesktopProtocol
+		}
+		event.Pixels = data
 	case "frame":
 		f := event.Frame
 		if f == nil || f.Encoding != "png" || f.Width < 1 || f.Width > 4096 || f.Height < 1 || f.Height > 4096 ||

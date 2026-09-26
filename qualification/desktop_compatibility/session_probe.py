@@ -258,6 +258,9 @@ def main():
         if browser:
             result['browser'] = browser.version
             result['protocol'] = 'wayland'
+        if browser and os.environ.get('FLOE_PROBE_CURSOR') == '1':
+            from cursor_fixture import exercise
+            exercise(client, target, browser, result)
         if mode in ('capture-loss', 'bus-loss'):
             service_name = 'capture' if mode == 'capture-loss' else 'bus'
             service = next(x for x in records() if x.get('service') == service_name)
