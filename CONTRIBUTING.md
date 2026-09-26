@@ -240,7 +240,9 @@ activation remains asynchronous on the sole helper event loop.
 The internal `DesktopSession` owns the private bus, combined compositor, capture,
 input services and official file/settings portals before executing the application
 supervisor. Its one preparation deadline ends before application execution; a
-first window may appear arbitrarily later. The compositor returns its reserved
+first window may appear arbitrarily later. The private socket runtime and the
+instance resource directory are distinct: runtime mounts may prohibit execution,
+so prepared Xwayland launchers live with the instance resources. The compositor returns its reserved
 Xwayland display on the native control channel. Log text is never a startup API.
 Service names are accepted only after the real bus credentials match the launched
 child. Capture admission similarly binds the native child before enabling it.
@@ -260,7 +262,10 @@ independent process. Its viewer knows only authenticated IPC, decodes actual PNG
 frames and checks toolkit document bytes. Native cases include ordered Unicode
 and Enter, detach/reconnect and modifier release, a 42-second first window,
 launcher exit 46, support failure before execution and capture/private-bus loss
-without application termination. The fixture may explicitly terminate only its
+without application termination. A restrictive task-only runtime mount verifies
+that no generated executable lives on a noexec runtime. Cleanup must finish even
+when the private bus is already closed; qualification checks every recorded child
+and removes its own mount normally. The fixture may explicitly terminate only its
 recorded test supervisor for failure cleanup; this is never viewer behavior.
 
 ### Unpublished combined-display qualification

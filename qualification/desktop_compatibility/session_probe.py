@@ -9,7 +9,6 @@ import json
 import os
 from pathlib import Path
 import secrets
-import shutil
 import signal
 import subprocess
 import sys
@@ -22,7 +21,7 @@ from source_proof import record_sources
 
 
 def helper(root, runtime, evidence, token, mode):
-    from gi.repository import GLib
+    from gi.repository import Gio, GLib
     from desktop_graphics import DesktopGraphics
     from desktop_services import DesktopServices
     from desktop_session import DesktopSession
@@ -37,10 +36,10 @@ def helper(root, runtime, evidence, token, mode):
         path = runtime / name
         path.mkdir(mode=0o700)
         environment[key] = str(path)
-    services = DesktopServices(os.environ['FLOE_PROBE_COMPONENT'], runtime)
+    services = DesktopServices(os.environ['FLOE_PROBE_COMPONENT'], evidence)
     native = Path(os.environ['FLOE_PROBE_NATIVE'])
     library = Path(os.environ['FLOE_PROBE_WESTON_LIBRARY'])
-    graphics = DesktopGraphics(services.component, runtime, environment, shell=native / 'probe-shell.so',
+    graphics = DesktopGraphics(services.component, evidence, environment, shell=native / 'probe-shell.so',
         capture=native / 'frame-probe', library=library / 'libweston-14.so.0',
         xwayland=library.parent / 'xwayland/xwayland.so')
     if mode == 'support-failure':
@@ -49,13 +48,29 @@ def helper(root, runtime, evidence, token, mode):
     def record(value):
         with (evidence / 'helper.jsonl').open('a') as stream:
             stream.write(json.dumps(value) + '\n')
-    session = DesktopSession(runtime, runtime.name, token, services, graphics,
+    session = DesktopSession(evidence, runtime.name, token, services, graphics,
         ibus_command=[os.environ['FLOE_PROBE_IBUS_DAEMON']], application_command=[sys.executable,
-            str(root / 'application.py'), str(evidence / 'fixture.desktop'), str(runtime / 'application.json')],
-        application_environment=environment, application_receipt=runtime / 'application.json',
+            str(root / 'application.py'), str(evidence / 'fixture.desktop'), str(evidence / 'application.json')],
+        application_environment=environment, application_receipt=evidence / 'application.json',
         completed=loop.quit, record=record)
-    session.start()
-    loop.run()
+    original_failure = session.fail
+    def failure(code, **details):
+        # Test-only traceback observation: the isolated fixture has no user data.
+        # Production diagnostics still contain only the classified error fields.
+        if sys.exc_info()[0] is not None:
+            with (evidence / 'failure.log').open('a') as stream:
+                traceback.print_exc(file=stream)
+        original_failure(code, **details)
+    session.fail = failure
+    from unittest.mock import patch
+    create_launcher = Gio.SubprocessLauncher.new
+    def launcher(flags):
+        # Preserve real subprocess creation, retaining support stderr only in
+        # this isolated fixture. Native diagnostics never redirect application data.
+        return create_launcher(Gio.SubprocessFlags(flags & ~Gio.SubprocessFlags.STDERR_SILENCE))
+    with patch.object(Gio.SubprocessLauncher, 'new', side_effect=launcher):
+        session.start()
+        loop.run()
 
 
 def main():
@@ -64,7 +79,7 @@ def main():
         helper(root, Path(sys.argv[3]), Path(sys.argv[4]), sys.stdin.readline().strip(), sys.argv[5])
         return
     mode = sys.argv[2] if len(sys.argv) > 2 else 'normal'
-    assert mode in ('normal', 'slow-window', 'launcher-failure', 'support-failure', 'capture-loss', 'bus-loss')
+    assert mode in ('normal', 'slow-window', 'launcher-failure', 'support-failure', 'capture-loss', 'bus-loss', 'runtime-noexec')
     from control_probe import ControlClient
     evidence = Path(tempfile.mkdtemp(prefix='persistent-session-', dir=root))
     runtime = Path(tempfile.mkdtemp(prefix='floe-session-', dir=f'/run/user/{os.getuid()}'))
@@ -81,8 +96,10 @@ def main():
         f'runpy.run_path({str(root / "input_fixture.py")!r}, run_name="__main__")\n')
     desktop.write_text('[Desktop Entry]\nType=Application\nName=Floe persistent test\nExec=' +
         f'"{sys.executable}" "{executable}"\n')
-    result = {'passed': False, 'mode': mode, 'evidence': str(evidence), 'sources': record_sources(root)}
+    result = {'passed': False, 'mode': mode, 'evidence': str(evidence), 'sources': record_sources(root),
+              'runtime': str(runtime), 'runtime_noexec': bool(os.statvfs(runtime).f_flag & os.ST_NOEXEC)}
     process, client, started = None, None, None
+    mounted = None
     logs = (evidence / 'helper.log').open('w')
     def records():
         path = evidence / 'helper.jsonl'
@@ -94,6 +111,17 @@ def main():
                 raise RuntimeError(reason)
             time.sleep(.01)
     try:
+        if mode == 'runtime-noexec':
+            # A restrictive mount belongs only to this newly created fixture
+            # directory. No existing desktop mount or security policy is changed.
+            assert not os.path.ismount(runtime)
+            subprocess.run(['sudo', '-n', 'mount', '-t', 'tmpfs', '-o',
+                f'size=16m,mode=700,uid={os.getuid()},gid={os.getgid()},noexec,nodev,nosuid',
+                'tmpfs', str(runtime)], check=True, timeout=10)
+            info = runtime.stat()
+            mounted = (info.st_dev, info.st_ino)
+            result['runtime_noexec'] = bool(os.statvfs(runtime).f_flag & os.ST_NOEXEC)
+            assert result['runtime_noexec']
         process = subprocess.Popen([sys.executable, str(root / 'session_probe.py'), str(root), 'helper',
             str(runtime), str(evidence), mode], stdin=subprocess.PIPE, stdout=logs, stderr=logs, start_new_session=True)
         started = identity(process.pid)[1]
@@ -222,8 +250,27 @@ def main():
                     signal.pidfd_send_signal(descriptor, signal.SIGTERM)
                 os.close(descriptor)
                 process.wait(timeout=5)
-        if (runtime / 'application.json').exists():
-            shutil.copyfile(runtime / 'application.json', evidence / 'application.json')
+        # A test cannot pass merely because its helper was killed after cleanup
+        # stalled. Every recorded support process must have actually exited.
+        remaining = []
+        for item in result['processes']:
+            try:
+                if identity(item['pid'])[1] == item['start_ticks']:
+                    remaining.append(item)
+            except (FileNotFoundError, ProcessLookupError):
+                pass
+        if remaining:
+            result['passed'] = False
+            result['cleanup_remaining'] = remaining
+        if mounted is not None:
+            info = runtime.stat()
+            assert (info.st_dev, info.st_ino) == mounted and os.path.ismount(runtime)
+            unmounted = subprocess.run(['sudo', '-n', 'umount', str(runtime)], timeout=10)
+            result['restrictive_runtime_mount_removed'] = unmounted.returncode == 0
+            if unmounted.returncode:
+                result['passed'] = False
+            else:
+                runtime.rmdir()
         logs.close()
         (evidence / 'result.json').write_text(json.dumps(result, indent=2) + '\n')
         print(json.dumps(result, indent=2))

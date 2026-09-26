@@ -74,6 +74,7 @@ class DesktopSession:
     def __init__(self, directory, instance, token, services, graphics, *, ibus_command,
                  application_command, application_environment, application_receipt, completed, record):
         self.directory = private_directory(directory)
+        self.runtime = private_directory(graphics.application_environment['XDG_RUNTIME_DIR'])
         self.instance, self.token = instance, token
         self.services, self.graphics = services, graphics
         self.ibus_command = tuple(ibus_command)
@@ -328,7 +329,7 @@ class DesktopSession:
         # is deliberately no deadline for the application's first native window.
         self.loop.cancel(self.timeout)
         self.timeout = None
-        self.helper.listen(self.directory, self.instance, self.token, self.capture)
+        self.helper.listen(self.runtime, self.instance, self.token, self.capture)
         self.capture = None
         self.application = self.spawn('application', self.application_command, self.application_environment)
         self.ready = True
@@ -369,8 +370,14 @@ class DesktopSession:
         if self.capture:
             self.capture.close()
             self.capture = None
-        if self.connection:
-            self.connection.close_sync(None)
+        if self.connection and not self.connection.is_closed():
+            try:
+                self.connection.close_sync(None)
+            except GLib.Error:
+                # The transport can close concurrently with disposal. Continue
+                # releasing owned resources even when the close reports loss.
+                if not self.connection.is_closed():
+                    self.record({'state': 'failed', 'phase': 'cleanup', 'error_code': 'DESKTOP_BUS_CLOSE_FAILED'})
         for peer in self.peers:
             peer.close()
         self.peers.clear()

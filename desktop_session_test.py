@@ -6,7 +6,7 @@ from pathlib import Path
 import tempfile
 from types import ModuleType, SimpleNamespace
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 
 class SessionTests(unittest.TestCase):
@@ -66,6 +66,26 @@ class SessionTests(unittest.TestCase):
         session.helper.native.last_window = 1
         session.application_exited(46)
         self.assertEqual(records[-1], value)
+
+    def test_dead_bus_cannot_interrupt_support_disposal(self):
+        session = self.module.DesktopSession.__new__(self.module.DesktopSession)
+        completed, tree, process = Mock(), Mock(), Mock()
+        connection = Mock()
+        connection.is_closed.return_value = True
+        connection.close_sync.side_effect = RuntimeError('Bus already closed')
+        session.closed, session.processes = False, {'compositor': process}
+        session.timeout, session.kill_timeout, session.watches = None, None, {}
+        session.loop, session.helper, session.capture = Mock(), Mock(), None
+        session.connection, session.peers, session.tree = connection, [], tree
+        session.completed = completed
+        session.close()
+        connection.close_sync.assert_not_called()
+        tree.close.assert_called_once()
+        process.send_signal.assert_called_once_with(self.module.signal.SIGTERM)
+        completed.assert_not_called()
+        session.processes.clear()
+        session.finish()
+        completed.assert_called_once()
 
     def test_receipt_cannot_follow_links_or_read_unbounded_or_public_file(self):
         reader = self.module.read_application_result

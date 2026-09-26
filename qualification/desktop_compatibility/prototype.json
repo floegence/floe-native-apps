@@ -299,9 +299,9 @@
       "limits": "Native fixture service startup still owns process orchestration. The durable helper entrypoint, installed component activation and complete package/desktop release matrix remain unfinished."
     },
     {
-      "case": "Persistent private helper service ownership on native arm64",
-      "result": "A separate helper prepares and starts the private bus, compositor, authorized capture, one input assembly and official file/settings portals. Actual GTK4 document receipts preserve 32 Unicode/Enter pairs, detach/reconnect and modifier release. Native tests retain a window delayed 42 seconds, preserve launcher exit 46, fail support startup before application execution and retain application/document state after capture or private-bus loss.",
-      "limits": "arm64 native prototype evidence; public installed launch preparation, package-specific service realization, final amd64 qualification, component activation and complete package/desktop matrix remain unfinished."
+      "case": "Persistent private helper service ownership on native amd64 and arm64",
+      "result": "A separate helper prepares the private bus, compositor, authorized capture, one input assembly and official file/settings portals. Actual GTK4 receipts preserve 32 Unicode/Enter pairs, detach/reconnect and modifier release. Native tests retain a window delayed 42 seconds, classify launcher exit 46 without losing status, reject failed support startup before execution and preserve application/document state after capture or bus loss. A noexec runtime exposed executable-resource placement; separate instance resources now pass on an actually restricted native runtime. Bus loss exposed interrupted disposal; repeated native cases now require every recorded child to have exited, and the task noexec mount is removed normally.",
+      "limits": "Internal native assembly only. Public installed launch preparation, plan-driven package service realization, sandbox fixture migration, component activation, pure Wayland Chromium text and the complete package/desktop matrix remain unfinished."
     }
   ],
   "rejected_assumptions": [
