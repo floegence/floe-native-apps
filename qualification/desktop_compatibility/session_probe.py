@@ -25,6 +25,7 @@ def helper(root, runtime, evidence, token, mode):
     from desktop_graphics import DesktopGraphics
     from desktop_services import DesktopServices
     from desktop_session import DesktopSession
+    from launch_plan import prepare
     loop = GLib.MainLoop()
     environment = {**os.environ, 'XDG_RUNTIME_DIR': str(runtime), 'WAYLAND_DISPLAY': 'wayland-0',
         'DBUS_SESSION_BUS_ADDRESS': 'unix:path=' + str(runtime / 'bus'), 'GDK_BACKEND': 'wayland',
@@ -48,10 +49,11 @@ def helper(root, runtime, evidence, token, mode):
     def record(value):
         with (evidence / 'helper.jsonl').open('a') as stream:
             stream.write(json.dumps(value) + '\n')
+    plan = prepare(str(evidence / 'fixture.desktop'), environment,
+        [{'id': 'wayland', 'component': 'unpublished-native-session-fixture', 'protocols': ['wayland', 'x11']}])
     session = DesktopSession(evidence, runtime.name, token, services, graphics,
-        ibus_command=[os.environ['FLOE_PROBE_IBUS_DAEMON']], application_command=[sys.executable,
-            str(root / 'application.py'), str(evidence / 'fixture.desktop'), str(evidence / 'application.json')],
-        application_environment=environment, application_receipt=evidence / 'application.json',
+        ibus_command=[os.environ['FLOE_PROBE_IBUS_DAEMON']], plan=plan,
+        application_launcher=[sys.executable, str(root / 'application.py')], application_environment=environment,
         completed=loop.quit, record=record)
     original_failure = session.fail
     def failure(code, **details):
@@ -144,6 +146,10 @@ def main():
             result['application_exit'], result['passed'] = exited, True
             return
         assert not any(x.get('state') == 'failed' for x in records()), records()
+        result['required_services'] = json.loads((evidence / 'application-plan.json').read_text())['observation']['services']
+        result['fuse_device_available'] = Path('/dev/fuse').exists()
+        assert not result['required_services']
+        assert not any(x.get('service', '').startswith('xdg-') for x in records()), records()
         client = ControlClient(evidence / 'viewer', runtime / 'control.sock', runtime.name, token)
         client.reconnect()
         if mode == 'slow-window':

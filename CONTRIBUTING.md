@@ -238,8 +238,10 @@ registration releases only the name and objects acquired by that attempt. Engine
 activation remains asynchronous on the sole helper event loop.
 
 The internal `DesktopSession` owns the private bus, combined compositor, capture,
-input services and official file/settings portals before executing the application
-supervisor. Its one preparation deadline ends before application execution; a
+input services and plan-required official file/settings portals before executing
+the application supervisor. Native plans do not start document or file portals
+and therefore need no FUSE or desktop portal session. The same immutable plan is
+verified before preparation and again by the sole supervisor at execution. Its one preparation deadline ends before application execution; a
 first window may appear arbitrarily later. The private socket runtime and the
 instance resource directory are distinct: runtime mounts may prohibit execution,
 so prepared Xwayland launchers live with the instance resources. The compositor returns its reserved

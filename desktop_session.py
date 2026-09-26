@@ -1,7 +1,7 @@
 """One persistent event-loop owner for prepared native service processes.
 
 This internal launch boundary accepts already verified resources and an immutable
-supervisor command. Viewers only attach to DesktopHelper; they cannot spawn,
+application plan. Viewers only attach to DesktopHelper; they cannot spawn,
 restart or terminate these processes. The existing application supervisor remains
 the only owner of application descendants and application exit receipts.
 """
@@ -20,6 +20,7 @@ from desktop_control import GLibLoop
 from desktop_graphics import private_directory
 from desktop_helper import DesktopHelper
 from desktop_portals import DesktopPortals, bus_configuration
+from launch_plan import revalidate
 
 
 def read_application_result(path, process_code):
@@ -72,17 +73,24 @@ def read_application_result(path, process_code):
 
 class DesktopSession:
     def __init__(self, directory, instance, token, services, graphics, *, ibus_command,
-                 application_command, application_environment, application_receipt, completed, record):
+                 plan, application_launcher, application_environment, completed, record):
         self.directory = private_directory(directory)
         self.runtime = private_directory(graphics.application_environment['XDG_RUNTIME_DIR'])
         self.instance, self.token = instance, token
         self.services, self.graphics = services, graphics
         self.ibus_command = tuple(ibus_command)
-        self.application_command = tuple(application_command)
         self.application_environment = dict(application_environment)
-        self.application_receipt = Path(application_receipt)
-        if (self.application_receipt.parent != self.directory or os.path.lexists(self.application_receipt)):
+        self.plan = revalidate(plan, self.application_environment, [plan['backend']])
+        self.application_receipt = self.directory / 'application.json'
+        if os.path.lexists(self.application_receipt):
             raise ValueError('New instance-private application receipt is required')
+        plan_path = self.directory / 'application-plan.json'
+        descriptor = os.open(plan_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(descriptor, 'w') as stream:
+            json.dump(self.plan, stream, sort_keys=True)
+        # The same supervisor revalidates this exact plan immediately before GIO
+        # executes the application. Preparation never becomes a launch fallback.
+        self.application_command = (*application_launcher, '--plan', str(plan_path), str(self.application_receipt))
         self.completed, self.record = completed, record
         self.loop = GLibLoop()
         self.processes, self.watches, self.peers = {}, {}, []
@@ -308,6 +316,9 @@ class DesktopSession:
         self.helper.enable_ibus(daemon, self.guard(activated))
 
     def start_portals(self):
+        if 'file-portal' not in self.plan['observation']['services']:
+            self.launch_application()
+            return
         self.transition('portals')
         self.portals = DesktopPortals(self.services, self.bus_address,
             Path(self.application_environment['XDG_RUNTIME_DIR']) / self.application_environment['WAYLAND_DISPLAY'],

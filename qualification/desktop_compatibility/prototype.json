@@ -313,6 +313,11 @@
       "case": "Native arm64 Chromium 145 Wayland text-input-v3 state progression",
       "result": "Empty done events unblock initial state; actual ASCII commit, following Enter and three bounded 2048-byte commits reach the document and captured frame. Actual GTK4 Wayland/Xwayland input regressions pass.",
       "limits": "A repeated 4000-byte surrounding tail suppresses state updates despite actual new document input. Surrounding changes cannot be completion receipts. A single 6000-byte event exceeded the native Wayland message buffer and disconnected the client; long operations require UTF-8-safe fragments. No qualified v3 confirmed-text adapter or support claim."
+    },
+    {
+      "case": "Plan-driven persistent native session without desktop/FUSE services",
+      "result": "The session consumes and preserves the immutable plan and the sole GIO supervisor revalidates it at execution. Real GTK4 Unicode/Enter, first-frame gate, detach/reconnect and launcher exit 46 pass on native amd64/arm64. The amd64 fixture has no /dev/fuse and starts no xdg portals; private-bus loss preserves its application and every recorded support process exits on explicit fixture cleanup.",
+      "limits": "Package-specific persistent helper resource realization and installed public launch API remain incomplete."
     }
   ],
   "rejected_assumptions": [
