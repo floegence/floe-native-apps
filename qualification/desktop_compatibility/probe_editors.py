@@ -17,10 +17,12 @@ from gi.repository import Gio, GLib
 from application_processes import ProcessTree, identity
 from portal_probe import start_portals
 from bus_probe import configuration
+from source_proof import record_sources
 
 
 def main():
     root, app_id = Path(sys.argv[1]).resolve(), sys.argv[2]
+    sources = record_sources(root)
     assert app_id in ("org.gnome.TextEditor", "org.kde.kwrite")
     input_kind = os.environ.get("FLOE_PROBE_INPUT", "native")
     host_address = os.environ["DBUS_SESSION_BUS_ADDRESS"]
@@ -34,7 +36,7 @@ def main():
     document = evidence / "document.txt"
     document.write_bytes(b"")
     events, processes, logs = [], [], []
-    outcome = {"passed": False, "application": app_id, "input": input_kind,
+    outcome = {"passed": False, "application": app_id, "input": input_kind, "sources": sources,
                "evidence": str(evidence)}
     outcome["package"] = subprocess.check_output(["flatpak", "info", app_id], text=True)
     fixture_state = Path.home() / ".var/app" / app_id / ("floe-fixture-" + secrets.token_hex(8))

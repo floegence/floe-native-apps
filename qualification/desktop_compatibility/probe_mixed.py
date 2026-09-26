@@ -16,17 +16,19 @@ import time
 import traceback
 
 from application_processes import identity
+from source_proof import record_sources
 
 
 def main():
     root = Path(sys.argv[1]).resolve()
+    sources = record_sources(root)
     control_loss = sys.argv[2] if len(sys.argv) > 2 else 'disconnect'
     assert control_loss in ('disconnect', 'stall')
     evidence = Path(tempfile.mkdtemp(prefix="mixed-", dir=root))
     runtime = Path(tempfile.mkdtemp(prefix="floe-mixed-", dir=f"/run/user/{os.getuid()}"))
     left, right = socket.socketpair()
     processes, logs, events = [], [], []
-    result = {"passed": False, "evidence": str(evidence)}
+    result = {"passed": False, "evidence": str(evidence), "sources": sources}
     frame_socket, frame_process = None, None
     control = None
     from control_probe import ControlWire, ControlProbe

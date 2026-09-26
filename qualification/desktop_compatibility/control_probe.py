@@ -200,39 +200,40 @@ class ControlProbe:
             image.load()
             image = image.convert('RGB')
             (self.directory.parent / f"{stage}-{frame['sequence']}.png").write_bytes(data)
-            response = self.response(self.request('frame_ack', frame=frame['sequence']))
             record = {**frame, 'stage': stage, 'sha256': hashlib.sha256(data).hexdigest(),
-                      'encoded_bytes': len(data), 'decoded_sha256': hashlib.sha256(image.tobytes()).hexdigest(),
-                      'admitted': response.get('result') == 'painted'}
+                      'encoded_bytes': len(data), 'decoded_sha256': hashlib.sha256(image.tobytes()).hexdigest()}
+            colors = {color: count for count, color in image.getcolors(frame['width'] * frame['height'])}
+            matches = not any(colors.get(color, 0) for color in absent)
+            if marker is not None:
+                matches = matches and colors.get(marker, 0) >= 20
+                if matches:
+                    x0, y0, x1, y1 = image.width, image.height, 0, 0
+                    for index, color in enumerate(image.getdata()):
+                        if color == marker:
+                            x, y = index % image.width, index // image.width
+                            x0, y0, x1, y1 = min(x0, x), min(y0, y), max(x1, x), max(y1, y)
+                    record['marker_bounds'] = [x0, y0, x1, y1]
+                    matches = not accept_bounds or accept_bounds(record['marker_bounds'])
+            if expected is not None:
+                sample = image.getpixel((200, 240))
+                record['selected_window_pixel'] = sample
+                other = (155, 49, 19) if expected == (19, 87, 155) else (19, 87, 155)
+                record['inactive_window_pixels'] = colors.get(other, 0)
+                matches = matches and sample == expected
+            # Decoding and inspecting all pixels can overlap a native geometry
+            # change. Acknowledge only afterward, so a retired image cannot be
+            # returned as the input target merely because an earlier ack passed.
+            response = self.response(self.request('frame_ack', frame=frame['sequence']))
+            record['admitted'] = response.get('result') == 'painted'
             recorded.append(record)
             if not record['admitted']:
                 assert response['error'] == 'FRAME_TARGET_UNAVAILABLE'
                 continue
-            colors = {color: count for count, color in image.getcolors(frame['width'] * frame['height'])}
             assert len(colors) > 16
-            if any(colors.get(color, 0) for color in absent):
-                continue
-            if marker is not None:
-                if colors.get(marker, 0) < 20:
-                    continue
+            if expected is not None:
+                assert record['inactive_window_pixels'] == 0, 'Inactive native window pixels leaked into the selected frame'
+            if matches:
                 assert all(colors.get(color, 0) >= 20 for color in required), 'Transient surface omitted its parent'
-                x0, y0, x1, y1 = image.width, image.height, 0, 0
-                for index, color in enumerate(image.getdata()):
-                    if color == marker:
-                        x, y = index % image.width, index // image.width
-                        x0, y0, x1, y1 = min(x0, x), min(y0, y), max(x1, x), max(y1, y)
-                record['marker_bounds'] = [x0, y0, x1, y1]
-                if accept_bounds and not accept_bounds(record['marker_bounds']):
-                    continue
-            if expected is None:
-                return recorded
-            sample = image.getpixel((200, 240))
-            record['selected_window_pixel'] = sample
-            other = (155, 49, 19) if expected == (19, 87, 155) else (19, 87, 155)
-            count = sum(count for count, color in image.getcolors(frame['width'] * frame['height']) if color == other)
-            record['inactive_window_pixels'] = count
-            assert count == 0, 'Inactive native window pixels leaked into the selected frame'
-            if sample == expected:
                 return recorded
 
     def block_frame(self):

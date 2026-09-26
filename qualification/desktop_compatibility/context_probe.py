@@ -231,7 +231,11 @@ def qualify(root, evidence, environment, control, wire, start, wait, paint, disp
             wait(lambda: json.loads(receipt.read_text()) == ['', ''], 'Native Chromium deletion failed')
             wait(lambda: wire.invoke(registered), 'Chromium did not register a qualified confirmed-text context')
         result = exercise_fields(control, window, receipt, wait)
-        paint(toolkit + '-context-committed')
+        committed = paint(toolkit + '-context-committed',
+            **({'marker': browser.commit_marker(result['actual'])} if browser else {}))
+        if browser:
+            result['committed_frame'] = committed['sequence']
+            result['committed_frame_sha256'] = committed['sha256']
         control.send(window, b'close\n')
         app.wait(timeout=10)
         assert app.returncode == 0

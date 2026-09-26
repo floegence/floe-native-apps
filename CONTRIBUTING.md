@@ -217,6 +217,34 @@ application, or certify the unpublished combined graphical backend. Production
 component preparation and the package/desktop application matrix remain required
 before that backend can be published as a supported capability.
 
+### Unpublished combined-display qualification
+
+Copy native fixtures with
+`python3 qualification/desktop_compatibility/snapshot_sources.py /absolute/new-snapshot.tar`.
+The archive records the Git base, dirty state and every source digest. Extract it
+only into the task-owned fixture root, while its probes are stopped. Each native
+probe verifies the entire snapshot before creating resources. Do not overlay an
+individual script and continue claiming the previous source snapshot.
+
+The Chromium fixture uses actual browser input receipts. Its final captured frame
+must contain the page's marker derived from the already verified document values.
+PNG decoding and pixel checks precede frame acknowledgement, so geometry changes
+during inspection cannot authorize input using a retired frame. These are native
+application receipts, not evidence for a product viewer or a real client IME.
+
+`Dockerfile.ibus-portable` and `build_portable_ibus.sh` produce native musl IBus
+daemon, portal and library candidates from the pinned original source and reviewed
+context-origin patch. The disposable builder retains signed APKs and records its
+immutable image identity, package closure, source/build hashes, ELF dependencies,
+artifact hashes and original license hash. Applications retain their own host or
+sandbox libraries. The candidates run through the private component loader; no
+host library path or input module installation is involved. A builder image alone
+does not establish application compatibility. Native amd64/arm64 GTK and
+Chromium/Xwayland tests, strict Snap Firefox and Flatpak GTK/Qt save receipts are
+separate acceptance evidence. Pure Wayland Chromium has no qualified confirmed-text
+adapter yet. These artifacts are not an activated catalog or a published support
+claim; prepared helper resources, distribution and the full matrix remain required.
+
 ## Component compatibility qualification
 
 An SDK release must preserve supported installed recipe identities independently

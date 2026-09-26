@@ -23,10 +23,12 @@ import time
 from gi.repository import Gio, GLib
 from application_processes import identity
 from bus_probe import configuration
+from source_proof import record_sources
 
 
 def main():
     root = Path(sys.argv[1]).resolve()
+    sources = record_sources(root)
     evidence = Path(tempfile.mkdtemp(prefix="snap-wayland-", dir=root))
     host_address = os.environ["DBUS_SESSION_BUS_ADDRESS"]
     input_kind = os.environ.get("FLOE_PROBE_INPUT", "native")
@@ -43,7 +45,7 @@ def main():
     private = None
     left, right = socket.socketpair()
     mainloop = GLib.MainLoop()
-    outcome = {"passed": False, "evidence": str(evidence), "profile": str(profile),
+    outcome = {"passed": False, "evidence": str(evidence), "profile": str(profile), "sources": sources,
                "display": str(display), "input": input_kind}
     failure = []
     capture_command, authorize = None, None

@@ -263,6 +263,11 @@
       "case": "Native Go helper attachment on amd64 and arm64",
       "result": "The Go client authenticates against the actual Python control and attachment modules. Wrong credentials preserve the current owner; input before paint is rejected; a replacement survives old-owner cleanup; detach allows reconnection. Framing, cancellation and concurrent request sequencing are checked, including cancelling a queued write without corrupting the active packet.",
       "limits": "Synthetic native callbacks qualify the wire boundary only. This does not prove production compositor preparation or graphical/package support."
+    },
+    {
+      "case": "Native musl input-service candidate on amd64 and arm64",
+      "result": "Signed Alpine builder closure and original patched IBus 1.5.33 produce private daemon, portal and library without host glibc or RPATH. Actual GTK4 Wayland/Xwayland and Chromium/Xwayland Unicode receipts pass on both native architectures. Strict Snap Firefox amd64 and Flatpak GTK/Qt arm64 preserve repeated Unicode, long text and exact remote-saved bytes. Source snapshots reject stale copied fixture code; Chromium final capture verifies the actual document marker.",
+      "limits": "Unactivated artifacts; portable helper preparation, pinned release distribution and the complete package/desktop matrix remain incomplete. Pure Wayland Chromium confirmed text remains unsupported; normal key and pointer success does not qualify that adapter."
     }
   ],
   "rejected_assumptions": [

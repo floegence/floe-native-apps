@@ -22,14 +22,19 @@ class ChromiumPage:
                 body = b'''<!doctype html><meta charset="utf-8"><title>Floe native Chromium input</title>
 <style>html,body{margin:0;background:#3b759f;min-height:100vh}
 textarea{box-sizing:border-box;width:50%;height:420px;font:18px monospace;resize:none}</style>
-<textarea autofocus></textarea><textarea></textarea><script>
+<textarea autofocus></textarea><textarea></textarea><div id="checkpoint" style="position:fixed;bottom:0;left:0;right:0;height:16px"></div><script>
 const fields=[...document.querySelectorAll('textarea')];let pending=Promise.resolve();
 const report=(path,body='')=>{pending=pending.then(()=>fetch(path,{method:'POST',body}));};
 // Chromium suppresses clicks during initial window positioning. This readiness
 // delay belongs only to fixture startup; text delivery has no sleeps or retries.
 window.addEventListener('load',()=>setTimeout(()=>report('/ready'),1000));
 for(const field of fields){
- field.addEventListener('input',()=>report('/received',JSON.stringify(fields.map(e=>e.value))));
+ field.addEventListener('input',()=>{
+  const body=JSON.stringify(fields.map(e=>e.value));let hash=2166136261;
+  for(const byte of new TextEncoder().encode(body))hash=Math.imul(hash^byte,16777619)>>>0;
+  document.querySelector('#checkpoint').style.backgroundColor=`rgb(${hash>>>16&255},${hash>>>8&255},${hash&255})`;
+  report('/received',body);
+ });
  field.addEventListener('pointerup',()=>requestAnimationFrame(()=>{
   if(document.hasFocus()&&document.activeElement===field)report('/clicked');
  }));
@@ -70,6 +75,15 @@ for(const field of fields){
             '--gtk-version=3', '--no-first-run', '--no-default-browser-check',
             '--ozone-platform=' + protocol,
             '--app=http://127.0.0.1:' + str(self.server.server_port) + '/']
+
+    @staticmethod
+    def commit_marker(values):
+        # A page-generated visual receipt rejects queued captures from before
+        # the final input event. It never changes or substitutes document text.
+        value = 2166136261
+        for byte in json.dumps(values, ensure_ascii=False, separators=(',', ':')).encode():
+            value = ((value ^ byte) * 16777619) & 0xffffffff
+        return (value >> 16 & 255, value >> 8 & 255, value & 255)
 
     def close(self):
         self.server.shutdown()
