@@ -67,6 +67,19 @@ class SessionTests(unittest.TestCase):
         session.application_exited(46)
         self.assertEqual(records[-1], value)
 
+    def test_native_launch_plan_does_not_require_document_portal_or_fuse(self):
+        session = self.module.DesktopSession.__new__(self.module.DesktopSession)
+        session.plan = {'observation': {'services': []}}
+        session.transition, session.launch_application = Mock(), Mock()
+        session.services, session.bus_address = Mock(), 'unix:path=/private/bus'
+        session.application_environment = {'XDG_RUNTIME_DIR': '/private', 'WAYLAND_DISPLAY': 'wayland-0'}
+        session.spawn, session.service = Mock(), Mock()
+        with patch.object(self.module, 'DesktopPortals', side_effect=OSError('No document/FUSE support')) as portals:
+            session.start_portals()
+        portals.assert_not_called()
+        session.launch_application.assert_called_once()
+        session.spawn.assert_not_called()
+
     def test_dead_bus_cannot_interrupt_support_disposal(self):
         session = self.module.DesktopSession.__new__(self.module.DesktopSession)
         completed, tree, process = Mock(), Mock(), Mock()
