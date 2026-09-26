@@ -68,6 +68,17 @@ class IBusTests(unittest.TestCase):
         self.assertEqual(self.commits, ['同🙂'])
         self.assertEqual(self.completed, [None])
 
+    def test_registered_source_survives_pointer_focus_gap_until_native_marker(self):
+        self.adapter.focus(self.engine, None)
+        self.described = (1, ':1.9', 120, os.getuid(), False, True)
+        _, code = self.begin()
+        self.described = (1, ':1.9', 120, os.getuid(), True, True)
+        self.adapter.focus(self.engine, '/context/second')
+        self.key(code)
+        self.key(code, True)
+        self.assertEqual(self.commits, ['同🙂'])
+        self.assertEqual(self.completed, [None])
+
     def test_focus_change_after_take_does_not_complete_or_replay(self):
         _, code = self.begin()
         self.key(code)
