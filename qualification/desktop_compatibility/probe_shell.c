@@ -121,6 +121,9 @@ struct text_context {
     struct weston_surface *surface;
     uint32_t serial;
     bool enabled;
+    bool surrounding_pending;
+    size_t surrounding_size;
+    int32_t surrounding_cursor, surrounding_anchor;
 };
 
 static void release_input(struct probe *p);
@@ -336,7 +339,12 @@ static void context_disable(struct wl_client *client, struct wl_resource *resour
 }
 static void context_surrounding(struct wl_client *c, struct wl_resource *r,
                                 const char *text, int32_t cursor, int32_t anchor) {
-    (void)c; (void)r; (void)text; (void)cursor; (void)anchor;
+    (void)c;
+    struct text_context *ctx = wl_resource_get_user_data(r);
+    ctx->surrounding_pending = true;
+    ctx->surrounding_size = strlen(text);
+    ctx->surrounding_cursor = cursor;
+    ctx->surrounding_anchor = anchor;
 }
 static void context_cause(struct wl_client *c, struct wl_resource *r, uint32_t cause) {
     (void)c; (void)r; (void)cause;
@@ -353,6 +361,12 @@ static void context_commit(struct wl_client *c, struct wl_resource *r) {
     struct text_context *ctx = wl_resource_get_user_data(r);
     ctx->serial++;
     emit(ctx->probe, "context %u %d\n", ctx->serial, ctx->enabled);
+    if (ctx->surrounding_pending) {
+        /* Protocol metadata only. Document bytes never enter diagnostic output. */
+        emit(ctx->probe, "context-surrounding %u %zu %d %d\n", ctx->serial,
+             ctx->surrounding_size, ctx->surrounding_cursor, ctx->surrounding_anchor);
+        ctx->surrounding_pending = false;
+    }
 }
 static const struct zwp_text_input_v3_interface context_api = {
     .destroy = resource_destroy, .enable = context_enable, .disable = context_disable,

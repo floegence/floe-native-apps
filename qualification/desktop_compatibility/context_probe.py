@@ -98,6 +98,9 @@ class ToolkitDriver:
 
 def qualify(root, evidence, environment, control, wire, start, wait, paint, display=None):
     toolkit = os.environ.get('FLOE_PROBE_CONTEXT_TOOLKIT', 'qt6')
+    if toolkit == 'chromium-v3':
+        from text_input_v3_probe import qualify as qualify_v3
+        return qualify_v3(root, evidence, environment, control, wire, start, wait, paint)
     if toolkit == 'terminal':
         if not display:
             raise ValueError('XIM qualification requires an X11 display')
