@@ -4,6 +4,58 @@ from types import SimpleNamespace
 from display import install_display, density, scaled_settings
 
 class DisplayTest(unittest.TestCase):
+    def test_display_configuration_updates_workarea_before_native_resize(self):
+        """Xpra 6.2 calculates workarea from screen_sizes, not monitors."""
+        events = []
+        class Source:
+            screen_sizes = [('Canvas', 1440, 920, 381, 243, [], 0, 0, 1440, 920)]
+            def set_screen_sizes(self, sizes):
+                self.screen_sizes = sizes
+        source = Source()
+        class Server:
+            xdpi = ydpi = dpi = 96
+            def set_xsettings(self, value): pass
+            def parse_hello(self, *args): pass
+            def get_server_features(self, source=None): return {}
+            def get_server_source(self, protocol): return source if protocol == 'owned' else None
+            def dpi_changed(self): events.append(('dpi', self.xdpi, self.ydpi))
+            def init_packet_handlers(self):
+                self._authenticated_ui_packet_handlers = {'configure-display': self.configure}
+                self._authenticated_packet_handlers = {}
+            def add_packet_handler(self, name, handler, ui):
+                self._authenticated_ui_packet_handlers[name] = handler
+            def configure(self, protocol, packet):
+                events.append(('resize', packet[1]['desktop-size'], self.xdpi, self.ydpi))
+                events.append(('workarea', source.screen_sizes[0][6:10]))
+        server = install_display(Server())
+        server.init_packet_handlers()
+        handler = server._authenticated_ui_packet_handlers['configure-display']
+        screens = [('Canvas', 2880, 1840, 381, 243, [], 0, 0, 2880, 1840)]
+        packet = ['configure-display', {'desktop-size': [2880, 1840],
+                  'screen-sizes': screens, 'dpi': {'x': 192, 'y': 192}, 'floe-display-density': 2}]
+        handler('owned', packet)
+        self.assertEqual(events, [('resize', [2880, 1840], 192, 192),
+                                  ('workarea', (0, 0, 2880, 1840))])
+        self.assertEqual(server.get_server_features()['floe-display'], 2)
+
+    def test_invalid_complete_configuration_does_not_mutate_session(self):
+        import copy
+        original = {'desktop-size': [2880, 1840],
+                    'screen-sizes': [('Canvas', 2880, 1840, 381, 243, [], 0, 0, 2880, 1840)],
+                    'dpi': {'x': 192, 'y': 192}, 'floe-display-density': 2}
+        for key, value in [('desktop-size', [0, 1840]), ('desktop-size', [1440, 920]),
+                           ('dpi', {'x': 96, 'y': 96}), ('dpi', {'x': True, 'y': 192}),
+                           ('screen-sizes', []), ('floe-display-density', 5)]:
+            with self.subTest(key=key, value=value):
+                server, events = self.fixture()
+                server.parse_hello(None, {'floe-display': 1})
+                packet = copy.deepcopy(original)
+                packet[key] = value
+                with self.assertRaises(ValueError):
+                    server._authenticated_ui_packet_handlers['configure-display']('owned', ['configure-display', packet])
+                self.assertEqual(server.floe_display_density, 1)
+                self.assertEqual(len(events), 1)
+
     def test_toolkit_density_preserves_unrelated_settings(self):
         source=(12,[(1,b'Net/ThemeName','Adwaita',8),(0,b'Xft/DPI',196608,12)])
         serial,items=scaled_settings(source,2)
@@ -40,7 +92,7 @@ class DisplayTest(unittest.TestCase):
     def test_authenticated_display_transition_preserves_existing_dispatch(self):
         server,events=self.fixture()
         self.assertEqual(server.parse_hello(None,{'floe-display':1},True),(True,))
-        self.assertEqual(server.get_server_features(),{'existing':True,'floe-display':1})
+        self.assertEqual(server.get_server_features(),{'existing':True,'floe-display':2})
         self.assertTrue(server.assert_ui)
         self.assertNotIn('configure-display',server._authenticated_packet_handlers)
         configure=server._authenticated_ui_packet_handlers['configure-display']

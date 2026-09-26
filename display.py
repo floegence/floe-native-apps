@@ -69,11 +69,42 @@ def install_display(server):
             raise RuntimeError('Authenticated display configuration is unavailable')
 
         def configure(protocol, packet):
-            if server.get_server_source(protocol) is None:
+            source = server.get_server_source(protocol)
+            if source is None:
                 return
-            value = packet[1].get('floe-display-density')
+            attrs = packet[1]
+            value = attrs.get('floe-display-density')
             if value is not None:
-                server.floe_display_density = density(value)
+                value = density(value)
+            screens = attrs.get('screen-sizes')
+            dpi = attrs.get('dpi')
+            if screens is not None:
+                # One complete virtual monitor. Validate before changing any
+                # session setting, including the legacy workarea projection.
+                if (not isinstance(screens, (list, tuple)) or len(screens) != 1 or
+                        not isinstance(screens[0], (list, tuple)) or len(screens[0]) != 10):
+                    raise ValueError('Invalid client display configuration')
+                screen = screens[0]
+                size = attrs.get('desktop-size')
+                if (not isinstance(size, (list, tuple)) or len(size) != 2 or
+                        any(type(n) is not int or not 1 <= n <= 32768 for n in size) or
+                        any(type(screen[i]) is not int or not 0 <= screen[i] <= 32768
+                            for i in (1, 2, 3, 4, 6, 7, 8, 9)) or
+                        list(screen[1:3]) != list(size) or
+                        list(screen[6:10]) != [0, 0, *size] or
+                        not isinstance(dpi, dict) or value is None or
+                        any(type(dpi.get(k)) is not int or dpi[k] != 96 * value for k in ('x', 'y'))):
+                    raise ValueError('Invalid client display configuration')
+            if value is not None:
+                server.floe_display_density = value
+            if screens is not None:
+                source.set_screen_sizes(screens)
+                # Seed resize calculations with the new DPI. Publish toolkit settings
+                # through the original handler after display/workarea geometry;
+                # an early dpi_changed() exposes a half-applied configuration.
+                if (server.xdpi, server.ydpi) != (dpi['x'], dpi['y']):
+                    server.xdpi, server.ydpi = dpi['x'], dpi['y']
+                    server.dpi = round((server.xdpi + server.ydpi) / 2)
             original(protocol, packet)
             # Xpra can deduplicate its unchanged base settings even though our
             # negotiated toolkit density changed (notably on viewer reattach).
@@ -84,7 +115,7 @@ def install_display(server):
         server.add_packet_handler(packet_name, configure, True)
 
     def features(source=None):
-        return {**original_features(source), 'floe-display': 1}
+        return {**original_features(source), 'floe-display': 2}
 
     server.set_xsettings = settings
     server.parse_hello = hello

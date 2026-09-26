@@ -22,6 +22,7 @@ class FloeXpraInput {
   disconnect() {
     this.generation++;
     this.version = 0;
+    this.error = null;
     this.target = null;
     this.held.clear();
     this.pending.clear();
@@ -44,6 +45,7 @@ class FloeXpraInput {
   }
 
   fail(code) {
+    this.error = code;
     this.release(this.target);
     this.version = 0;
     this.target = null;

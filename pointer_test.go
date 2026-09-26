@@ -12,7 +12,7 @@ import (
 func pointerFixture(t *testing.T, version string) string {
 	t.Helper()
 	source := t.TempDir()
-	for name, fixture := range map[string]string{"index.html": "index-" + version + ".html", "js/Client.js": "Client-" + version + ".js", "js/Window.js": "Window-" + version + ".js", "js/Protocol.js": "Protocol.js"} {
+	for name, fixture := range map[string]string{"index.html": "index-" + version + ".html", "js/Client.js": "Client-" + version + ".js", "js/Window.js": "Window-" + version + ".js", "js/Protocol.js": "Protocol.js", "js/OffscreenDecodeWorker.js": "OffscreenDecodeWorker.js"} {
 		path := filepath.Join(source, name)
 		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 			t.Fatal(err)

@@ -16,6 +16,7 @@ import time
 config = json.loads(Path(sys.argv[1]).read_text())
 source = Path(__file__).resolve().parent
 state = Path(config['state'])
+layout_mode = os.environ.get('FLOE_TEST_LAYOUT_NATIVE') == '1'
 pointer_mode = os.environ.get('FLOE_TEST_POINTER_NATIVE') == '1'
 native_env = dict(item.split('=', 1) for item in config['environment'] if '=' in item)
 for key in ('DISPLAY', 'WAYLAND_DISPLAY', 'XAUTHORITY', 'DBUS_SESSION_BUS_ADDRESS',
@@ -131,7 +132,7 @@ for(const editor of editors)editor.addEventListener('input',()=>{const body=JSON
         port = listener.getsockname()[1]
         listener.close()
         args = [config['python'], config['launcher'], 'start', '--daemon=no', '--systemd-run=no',
-                '--attach=no', '--use-display=no', '--html=' + (str(state / 'www') if pointer_mode or kind == 'gnome' else 'no'), '--source=', '--source-start=',
+                '--attach=no', '--use-display=no', '--html=' + (config.get('legacy_html') or str(state / 'www') if pointer_mode or layout_mode or kind == 'gnome' else 'no'), '--source=', '--source-start=',
                 '--socket-dir=' + str(directory), '--socket-dirs=' + str(directory),
                 '--sessions-dir=' + str(directory / 'sessions'), '--bind-ws=127.0.0.1:' + str(port),
                 '--ws-auth=file:filename=' + str(password),
@@ -156,7 +157,11 @@ for(const editor of editors)editor.addEventListener('input',()=>{const body=JSON
                     raise RuntimeError('Private Xpra server did not become ready') from None
                 time.sleep(.05)
         client_environment = dict(item.split('=', 1) for item in config['client_environment'] if '=' in item)
-        if kind == 'gnome':
+        if layout_mode:
+            client = subprocess.run(['node', str(source / 'layout_native.mjs'), str(receipt),
+                                     'http://127.0.0.1:' + str(port), kind, config['viewer_url']],
+                                    capture_output=True, text=True, timeout=120)
+        elif kind == 'gnome':
             client = subprocess.run(['node', str(source / 'gnome_input.mjs'), str(receipt),
                                      'http://127.0.0.1:' + str(port)],
                                     capture_output=True, text=True, timeout=80)
@@ -187,7 +192,7 @@ for(const editor of editors)editor.addEventListener('input',()=>{const body=JSON
         if evidence:
             target = Path(evidence) / ('density-' + str(config['density'])) / kind
             target.mkdir(parents=True, exist_ok=True)
-            for name in ('process.json', 'application.json', 'received.json', 'received.txt', 'received.unicode.json', 'received.density.json', 'received.json.png', 'received.ready', 'received.hover', 'received.clicked', 'received.pointer.json', 'server.log'):
+            for name in ('process.json', 'application.json', 'received.json', 'received.txt', 'received.unicode.json', 'received.density.json', 'received.json.png', 'received.ready', 'received.hover', 'received.clicked', 'received.pointer.json', 'received.layout.json', 'received.layout-native.json', 'received.windows.json', 'server.log'):
                 if (directory / name).exists():
                     shutil.copy2(directory / name, target / name)
                 elif (target / name).exists():

@@ -47,6 +47,13 @@ resource digest and must keep session documents and control traffic authenticate
 and uncached, including after a viewer reuses cached scripts. The SDK never
 installs certificate trust or bypasses browser security to enable video decoding.
 
+`PreparedViewer` binds the prepared entry document to those exact static bytes.
+The host pins one snapshot per share; preparing a new share must not rewrite a
+running backend, loaded input modules, or application-owned instance files.
+Capability errors disable only the affected operation. Unknown input protocols
+remain denied; an incompatible module is reported only after authenticated
+process registration. Missing input focus is not evidence of a module version.
+
 Prepared tools and user applications run with host user permissions. This is
 not an application sandbox. Applications must receive their original library
 and interpreter environment, with only the private session's display and bus

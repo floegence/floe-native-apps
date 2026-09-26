@@ -61,6 +61,9 @@ class Contexts:
         if self.pending or self.contexts.get(pid, {}).get('sender') != sender:
             completed('INPUT_CONTEXT_UNAVAILABLE')
             return
+        if self.contexts[pid].get('unsupported'):
+            completed('INPUT_MODULE_VERSION_UNSUPPORTED')
+            return
         # This ID travels in X11's event timestamp. Chromium normalizes stale
         # timestamps, so use that field's native clock while keeping every ID
         # strictly distinct. No timer, text comparison, or delayed dispatch is
@@ -104,7 +107,7 @@ class Contexts:
         Gio, GLib = self.Gio, self.GLib
         if method == 'Register':
             version, toolkit = parameters.unpack()
-            if version != 1 or toolkit not in ('gtk3', 'gtk4', 'qt5', 'qt6'):
+            if toolkit not in ('gtk3', 'gtk4', 'qt5', 'qt6'):
                 invocation.return_dbus_error(_NAME + '.InvalidVersion', 'Input module is unsupported')
                 return
             pid = connection.call_sync('org.freedesktop.DBus', '/org/freedesktop/DBus',
@@ -114,7 +117,12 @@ class Contexts:
             if previous and previous['sender'] != sender:
                 invocation.return_dbus_error(_NAME + '.DuplicateOwner', 'Application already has an input owner')
                 return
-            self.contexts[pid] = {'sender': sender, 'toolkit': toolkit}
+            # An authenticated registration is evidence of a process-owned
+            # incompatible module. Missing focus/context alone is not.
+            self.contexts[pid] = {'sender': sender, 'toolkit': toolkit, 'unsupported': version != 1}
+            if version != 1:
+                invocation.return_dbus_error(_NAME + '.InvalidVersion', 'Input module is unsupported')
+                return
             invocation.return_value(None)
             return
         if method == 'Take':

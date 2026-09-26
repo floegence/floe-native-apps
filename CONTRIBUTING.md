@@ -211,14 +211,18 @@ architectures using the published v0.2.1 installer to construct the old state.
 ### Display density
 
 Prepared HTML v20/v21 clients expose `set_display_density("logical" | "native")`.
-Consumers select a policy after connection startup; `false` means the server did
-not negotiate the display contract. Every connection starts at logical density.
+Consumers select a policy after connection startup; `false` means native density
+is unavailable or the connection was disposed. Logical density remains usable on
+retained backends. Selections within one JavaScript turn apply only the final
+policy. Every connection starts at logical density.
 Native density uses integral ceil DPR, bounded to 1 through 4 and to the server's
 advertised maximum desktop dimensions. Resizing or moving between display densities
 recomputes the backing resolution without reconnecting. The private display's DPI
 and GTK scale change together; logical window geometry, dialog headers, cursor
-hotspots and pointer targets remain stable. Applications retain their own support
-or limitations for live DPI changes. No host desktop settings are modified.
+hotspots and pointer targets remain stable. The version 2 display contract updates desktop dimensions, legacy screen sizes,
+monitor/workarea, DPI and toolkit scale as one authenticated configuration before
+native resize. A retained version 1 backend supports logical density only.
+Applications retain their own support or limitations for live DPI changes. No host desktop settings are modified.
 
 `subscribe_display(listener)` immediately supplies an immutable snapshot and
 returns an unsubscribe function. Subsequent notifications occur only when the
@@ -234,8 +238,7 @@ a quality refresh. Consumers select localized presentation, not scaling rules.
 
 The SDK owns this rendering and input coordinate contract, not a picture-quality
 policy. Consumers must explain that extra pixels cost bandwidth and encoding time;
-native density is not a guarantee of low latency during continuous motion. Existing
-applications retain their prepared assets until they exit and are launched again.
+native density is not a guarantee of low latency during continuous motion. Viewer resources have an independent lifetime; see the snapshot contract below.
 
 Source tests execute both prepared clients, including DPR changes, server size
 bounds, shadow cursor geometry and disconnect disposal. Native release qualification
@@ -243,6 +246,55 @@ runs `TestNativeClientInput` at density 1 and `TestNativeDisplayInput` at densit
 with managed and system Xpra on both architectures. GTK receipts also assert its
 actual backing scale and unchanged logical text DPI. Both runs retain the complete
 Unicode, focus and clipboard assertions below.
+
+### Window layout and viewer snapshots
+
+`set_window_layout(wid, "viewport" | "dialog" | "native")` makes the SDK the
+single geometry owner for a managed window. Viewport and dialog layouts honor
+minimum, maximum, base and increment hints in remote coordinates. Only viewport,
+density, policy, decoration offsets or size hints trigger a new layout request.
+Remote geometry updates are accepted without re-entering layout negotiation.
+A native minimum larger than the viewport is retained, never fought by repeated
+resize requests. Popups and override-redirect windows retain native placement.
+Destroy and disconnect revoke layout ownership. Layout never changes actual
+maximize/minimize state. Both regular and worker canvases preserve painted pixels
+through resize and ignore unchanged sizes.
+
+`PrepareViewer(originalHTML)` produces an immutable `PreparedViewer` using the
+same reviewed v20/v21 transformation as `PrepareInputClient`. `Document` and
+`Assets` must be served together for each sharing connection. Preparation errors
+are viewer failures; do not fall back to an application's historical `www` tree.
+A new share may prepare current SDK resources while retaining the application's
+PID, input modules, backend and instance directory. The snapshot outlives its
+source directory and cannot be changed by a caller. Resource authorization and
+no-store session/document responses remain the host's responsibility.
+
+The prepared `floeXpraViewer` exposes `getClient()` and `capabilities(client)`.
+Display reports `native` only for display protocol 2, otherwise `logical`.
+Input protocol remains 1. Input reports `ready`, `unsupported`, `unavailable`, or
+`restart-required`; pointer availability follows the same ordered-input boundary.
+Only an authenticated incompatible process-module registration can produce
+`INPUT_MODULE_VERSION_UNSUPPORTED` and `restart-required`. Missing contexts,
+transport loss and other input errors never imply an application upgrade.
+Hosts disable affected input and keep usable pictures/local controls. Corrupt
+current resources fail viewer preparation rather than requiring an app restart.
+Graphical services and loaded modules are not hot-swapped.
+
+`TestNativeViewerLayout` runs prepared clients against live Xpra with GTK3,
+GTK4, Qt5 and Qt6 minimum-size constraints. It records native workarea, accepted
+geometry, command counts and application PID across density switches and viewer
+reattachment, with regular and worker canvas paths. It is part of both managed
+and system Xpra release qualification. A local Linux host that cannot sandbox
+a downloaded Chromium may use a task-owned sandboxed Playwright server through
+`FLOE_TEST_BROWSER_WS` and private loopback tunnels; never disable sandboxing.
+
+`TestNativeViewerUpgrade` starts the published v0.7.0 backend/input fixture and
+its preparation-v1 viewer, enters unsaved text, then attaches the current
+`PreparedViewer` snapshot. It asserts the same application PID and contents,
+continued Unicode input, and logical-only display capability. The fixture's
+original `www` and loaded modules remain unchanged. `qualification/legacy`
+consumes the released module with its checksum; this is an explicit native
+release fixture, not a second production implementation.
 
 ### Cursor and input
 
@@ -253,8 +305,8 @@ the image. Integral backing density (ceil DPR, bounded to 1 through 4) is declar
 through CSS image-set; it changes resolution, never logical geometry. Malformed
 metadata, images over 1024 pixels per edge or 4 MiB encoded, and failed decodes
 reset to the system cursor. Reset, disconnect and newer packets revoke unfinished
-decodes. Existing application instances retain their prepared resources; consumers
-must not rewrite a live application's assets to upgrade its cursor.
+decodes. Existing shares pin their immutable resources; preparing a new viewer does not
+rewrite live application modules or directories.
 
 The source gate runs deterministic geometry, ordering and lifecycle tests against
 both original client fixtures without installing a browser. Release qualification

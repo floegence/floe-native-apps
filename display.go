@@ -33,6 +33,7 @@ func prepareDisplayHTML(index, client, window []byte) ([]byte, []byte, []byte, e
 	// A retained application can still have the previous viewer's toolkit scale.
 	c = replace(c, "  _process_startup_complete(packet) {", "  _process_startup_complete(packet) {\n    this._screen_resized(null, true);")
 	c = replace(c, `      "desktop-size": [this.desktop_width, this.desktop_height],`, `      "desktop-size": [this.desktop_width, this.desktop_height],
+      "screen-sizes": this._get_screen_sizes(),
       "floe-display-density": this.scale,`)
 	start, end := strings.Index(c, "  _get_DPI() {"), strings.Index(c, "  _get_screen_sizes() {")
 	if start < 0 || end < start {

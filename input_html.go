@@ -12,6 +12,9 @@ import (
 //go:embed input_client.js
 var inputClientSource embed.FS
 
+//go:embed viewer.js
+var viewerSource []byte
+
 // PrepareInputClient prepares an Xpra HTML5 v20/v21 distribution with exactly
 // one external keyboard owner and one external pointer owner. It retains the
 // graphics, clipboard and pointer transport. The destination must not exist. Neither
@@ -53,7 +56,19 @@ func PrepareInputClient(source, destination string) error {
 	if err != nil {
 		return err
 	}
+	index, client, window, err = prepareLayoutHTML(index, client, window)
+	if err != nil {
+		return err
+	}
 	index, client, window, err = preparePointerHTML(index, client, window)
+	if err != nil {
+		return err
+	}
+	worker, err := os.ReadFile(filepath.Join(source, "js", "OffscreenDecodeWorker.js"))
+	if err != nil {
+		return err
+	}
+	worker, err = prepareCanvasWorker(worker)
 	if err != nil {
 		return err
 	}
@@ -111,7 +126,7 @@ func PrepareInputClient(source, destination string) error {
 		return err
 	}
 	adapter, _ := inputClientSource.ReadFile("input_client.js")
-	for name, data := range map[string][]byte{"index.html": index, "js/Client.js": client, "js/FloeInput.js": adapter, "js/Protocol.js": protocol, "js/Window.js": window, "js/FloeCursor.js": cursorSource, "js/FloeDisplay.js": displaySource, "js/FloePointer.js": pointerSource} {
+	for name, data := range map[string][]byte{"index.html": index, "js/Client.js": client, "js/FloeInput.js": adapter, "js/Protocol.js": protocol, "js/Window.js": window, "js/FloeCursor.js": cursorSource, "js/FloeDisplay.js": displaySource, "js/FloeLayout.js": layoutSource, "js/FloeCanvas.js": canvasSource, "js/OffscreenDecodeWorker.js": worker, "js/FloeViewer.js": viewerSource, "js/FloePointer.js": pointerSource} {
 		if err = os.WriteFile(filepath.Join(destination, name), data, 0600); err != nil {
 			return err
 		}
@@ -156,6 +171,8 @@ func prepareInputHTML(index, client []byte) ([]byte, []byte, error) {
 		return source[:i] + next + source[j:]
 	}
 	c, h := string(client), string(index)
+	h = replace(h, `    <script type="text/javascript" src="js/Client.js"></script>`, `    <script type="text/javascript" src="js/FloeViewer.js"></script>
+    <script type="text/javascript" src="js/Client.js"></script>`)
 	for _, retired := range []string{"const PASTEBOARD_SELECTOR = \"#pasteboard\";\n", "    this.key_packets = [];\n", "    this.clipboard_delayed_event_time = 0;\n", "    this.last_keycode_pressed = 0;\n", "    this.last_key_packet = [];\n"} {
 		c = replace(c, retired, "")
 	}

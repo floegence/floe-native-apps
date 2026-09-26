@@ -21,7 +21,7 @@ html,body{margin:0}#screen{position:relative;width:780px;height:550px}
 .spinneroverlay{display:none}#local{position:absolute;top:570px;left:20px}
 </style><div id="screen"><div id="1"></div></div><button id="local">Local control</button>
 <script src="/jquery.js"></script><script src="/jquery-ui.js"></script>
-<script src="/js/Client.js"></script><script src="/js/Window.js"></script><script src="/js/FloePointer.js"></script>
+<script src="/js/FloeCanvas.js"></script><script src="/js/Client.js"></script><script src="/js/Window.js"></script><script src="/js/FloePointer.js"></script>
 <script type="module">
 import {createRemoteInput} from '/input.js';
 import {createRemotePointer} from '/pointer.js';
@@ -49,7 +49,7 @@ const server=createServer(async(req,res)=>{
     if(req.url==='/') {res.setHeader('Content-Type','text/html');res.end(html);return;}
     res.setHeader('Content-Type','text/javascript');
     if(sources.has(req.url)){res.end(sources.get(req.url));return;}
-    if(['/js/Client.js','/js/Window.js','/js/FloePointer.js'].includes(req.url)){
+    if(['/js/Client.js','/js/Window.js','/js/FloePointer.js','/js/FloeCanvas.js'].includes(req.url)){
       res.end(await readFile(path.join(config.directory,req.url.slice(1))));return;
     }
     res.writeHead(404);res.end();

@@ -27,14 +27,22 @@ class FloeXpraDisplay {
 
   setPolicy(policy) {
     if (!["logical", "native"].includes(policy)) throw new Error("Invalid display density policy");
-    if (this.disposed || this.version !== 1) return false;
+    if (this.disposed || (policy === "native" && this.version !== 2)) return false;
     this.policy = policy;
-    this.client._screen_resized();
+    // Apply the final selection at the end of this turn. Intermediate policies
+    // must not expose transient toolkit scales to a retained application.
+    if (!this.scheduled) {
+      this.scheduled = true;
+      queueMicrotask(() => {
+        this.scheduled = false;
+        if (!this.disposed) this.client._screen_resized();
+      });
+    }
     return true;
   }
 
   accept(hello) {
-    this.version = hello["floe-display"] === 1 ? 1 : 0;
+    this.version = hello["floe-display"] === 2 ? 2 : 0;
     const maximum = hello.max_desktop_size;
     this.maximum = Array.isArray(maximum) && maximum.length === 2 &&
       maximum.every(n => Number.isInteger(n) && n > 0) ? maximum : null;
@@ -70,7 +78,7 @@ class FloeXpraDisplay {
       win.scale = density;
       if (changed) win.update_offsets();
     }
-    const state = {available:this.version === 1, policy:this.policy, density,
+    const state = {available:this.version === 2, policy:this.policy, density,
       width:client.container.clientWidth, height:client.container.clientHeight, limit};
     if (!this.state || Object.keys(state).some(key => state[key] !== this.state[key])) {
       this.state = Object.freeze(state);

@@ -6,6 +6,7 @@ import sys
 
 kind, filename = sys.argv[1:3]
 receipt = Path(filename)
+layout_mode = os.environ.get('FLOE_TEST_LAYOUT_NATIVE') == '1'
 color = os.environ.get('FLOE_TEST_WINDOW_COLOR')
 if color:
     import re
@@ -16,6 +17,22 @@ def save(value):
     pending = receipt.with_suffix('.pending')
     pending.write_text(json.dumps(value))
     pending.replace(receipt)
+
+
+if layout_mode:
+    import subprocess
+    import threading
+    import time
+    def observe_display():
+        while True:
+            result = subprocess.run(['xprop', '-root', '_NET_WORKAREA', '_NET_DESKTOP_GEOMETRY'],
+                                    capture_output=True, text=True)
+            target = receipt.with_suffix('.layout-native.json')
+            pending = target.with_suffix('.pending')
+            pending.write_text(json.dumps({'pid':os.getpid(), 'root':result.stdout}))
+            pending.replace(target)
+            time.sleep(.1)
+    threading.Thread(target=observe_display, daemon=True).start()
 
 
 if kind == 'gtk':
@@ -37,6 +54,7 @@ if kind == 'gtk':
         buffer.connect('changed', lambda *_: save([b.get_text(b.get_start_iter(), b.get_end_iter(), True) for b in buffers]))
     window.add(row)
     window.set_default_size(640, 320)
+    if layout_mode: window.set_size_request(1240, 960)
     window.connect('destroy', Gtk.main_quit)
     window.show_all()
     def save_density():
@@ -86,6 +104,7 @@ elif kind in ('gtk4', 'gtk4-entry'):
                 editor.get_buffer().connect('changed', lambda *_: save(contents()))
         window.set_child(row)
         window.set_default_size(640, 320)
+        if layout_mode: window.set_size_request(1240, 960)
         if os.environ.get('FLOE_TEST_WINDOW_ACTIONS'):
             from gi.repository import Gdk
             Gtk.Settings.get_default().set_property('gtk-cursor-blink', False)
@@ -277,6 +296,7 @@ elif kind in ('qt5', 'qt6'):
         window.setStyleSheet('QTextEdit { background-color: #' + color + '; }')
     window.setWindowTitle('Floe client input qualification')
     window.resize(640, 320)
+    if layout_mode: window.setMinimumSize(1240, 960)
     layout = module.QHBoxLayout(window)
     editors = [module.QTextEdit(), module.QTextEdit()]
     for editor in editors:

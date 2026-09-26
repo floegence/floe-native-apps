@@ -40,7 +40,13 @@ class ContextTests(unittest.TestCase):
         parameters = SimpleNamespace(unpack=lambda: (2, 'gtk4'))
         self.contexts._call(connection, ':1.5', None, None, 'Register', parameters, invocation)
         self.assertEqual(errors[-1][0], 'org.floegence.ClientInput.InvalidVersion')
-        self.assertEqual(len(looked_up), 2)
+        self.assertEqual(len(looked_up), 3)
+        self.contexts.commit((12, 42, ':1.5'), 'blocked', self.completed.append)
+        self.assertEqual(self.completed, ['INPUT_MODULE_VERSION_UNSUPPORTED'])
+        self.assertIsNone(self.contexts.pending)
+        self.contexts._owner_changed(None, None, None, None, None,
+                                    SimpleNamespace(unpack=lambda: (':1.5', ':1.5', '')))
+        self.assertIsNone(self.contexts.context_for(42, 12))
 
     def begin(self):
         self.contexts.commit(self.token, '你好🙂', self.completed.append)
