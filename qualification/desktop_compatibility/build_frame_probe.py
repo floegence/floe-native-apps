@@ -20,7 +20,7 @@ def main():
     protocol.write_bytes(data)
     subprocess.run(["wayland-scanner", "client-header", str(protocol), str(output / "weston-output-capture-client.h")], check=True)
     subprocess.run(["wayland-scanner", "private-code", str(protocol), str(output / "weston-output-capture-code.c")], check=True)
-    flags = shlex.split(subprocess.check_output(["pkg-config", "--cflags", "--libs", "wayland-client", "libdrm"], text=True))
+    flags = shlex.split(subprocess.check_output(["pkg-config", "--cflags", "--libs", "wayland-client", "libdrm", "libpng"], text=True))
     subprocess.run(["cc", "-Wall", "-Wextra", "-Werror", "-O2", str(source / "frame_probe.c"),
                     str(output / "weston-output-capture-code.c"), "-I" + str(output), *flags,
                     "-o", str(output / "frame-probe")], check=True)

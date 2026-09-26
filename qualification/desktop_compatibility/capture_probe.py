@@ -1,5 +1,6 @@
 """One actual frame from the authorized portable capture fixture."""
 import hashlib
+import io
 import socket
 import struct
 import subprocess
@@ -28,11 +29,14 @@ def capture(command, environment, start, control, wait_authorized, destination):
         parent.sendall(struct.pack('=I', 1))
         sequence, status, width, height, fmt, size = struct.unpack('=6I', receive(24))
         assert sequence == 1 and status == 1
-        assert 0 < width <= 4096 and 0 < height <= 4096 and size == width * height * 4
+        assert 0 < width <= 4096 and 0 < height <= 4096 and 45 <= size <= 4096 * 4096 * 4 and fmt == 0x20474e50
         pixels = receive(size)
-        assert len(set(pixels)) > 16, 'No painted application pixels'
         from PIL import Image
-        Image.frombytes('RGBA', (width, height), pixels, 'raw', 'BGRA').convert('RGB').save(destination / 'frame.png')
+        image = Image.open(io.BytesIO(pixels))
+        assert image.format == 'PNG' and image.size == (width, height)
+        image.load()
+        assert len(image.convert('RGB').getcolors(width * height)) > 16, 'No painted application pixels'
+        (destination / 'frame.png').write_bytes(pixels)
         result = {'stage': destination.name, 'width': width, 'height': height,
                   'format': fmt, 'sha256': hashlib.sha256(pixels).hexdigest()}
     finally:

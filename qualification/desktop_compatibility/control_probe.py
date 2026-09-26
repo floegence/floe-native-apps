@@ -5,6 +5,7 @@ run unchanged. This fixture adapts unpublished native scene/damage records; it
 does not claim production launch or complete package admission.
 """
 import json
+import io
 from collections import deque
 from pathlib import Path
 import secrets
@@ -193,11 +194,15 @@ class ControlProbe:
             while not self.frames:
                 self.record()
             frame, data = self.frames.popleft()
-            assert frame['encoding'] == 'bgrx'
-            image = Image.frombytes('RGB', (frame['width'], frame['height']), data, 'raw', 'BGRX')
-            image.save(self.directory.parent / f"{stage}-{frame['sequence']}.png")
+            assert frame['encoding'] == 'png'
+            image = Image.open(io.BytesIO(data))
+            assert image.format == 'PNG' and image.size == (frame['width'], frame['height'])
+            image.load()
+            image = image.convert('RGB')
+            (self.directory.parent / f"{stage}-{frame['sequence']}.png").write_bytes(data)
             response = self.response(self.request('frame_ack', frame=frame['sequence']))
             record = {**frame, 'stage': stage, 'sha256': hashlib.sha256(data).hexdigest(),
+                      'encoded_bytes': len(data), 'decoded_sha256': hashlib.sha256(image.tobytes()).hexdigest(),
                       'admitted': response.get('result') == 'painted'}
             recorded.append(record)
             if not record['admitted']:

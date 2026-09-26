@@ -224,6 +224,11 @@
       "case": "Native Wayland and Xwayland decoration grabs on amd64 and arm64",
       "result": "Actual GDK move/resize calls are admitted only by the current native pointer press and serial. Pixel bounds move by exactly 80x44 and application plus compositor sizes increase by 100x64. Intermediate frames retain fixed viewport authority; release invalidates old input. Reconnect and window destruction cancel native grabs and preserve other applications. X11 keeps its own initial size and receives position updates; retiring windows do not publish a destroyed Xwayland binding. Shared pointer/keyboard/frame regression, Snap Firefox and Flatpak Qt Unicode/save remain green.",
       "limits": "The unpublished helper still needs complete resource realization, clipboard/cursor transfer, Xwayland confirmed-text integration, native component distribution and the full desktop/package matrix."
+    },
+    {
+      "case": "Lossless native frame transport on amd64 and arm64",
+      "result": "The sole native capture format is bounded RGB PNG. Actual Wayland/Xwayland window frames retain exact geometry and pixels through the authenticated helper transport. Native window operations, pending-frame backpressure with live input, frame admission and reconnect pass on both architectures. Chromium, Firefox and WebKit decode 66 original captured frames per architecture and compare every RGB pixel with the independent native decoder: 396 matching browser decodes.",
+      "limits": "This proves image transport and decoded pixels, not a complete product viewer or native package/desktop support claim. Durable helper preparation, cursor/clipboard, remaining input adapters and release qualification are still required."
     }
   ],
   "rejected_assumptions": [

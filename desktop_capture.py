@@ -105,17 +105,22 @@ class NativeFrames:
                     else:
                         self.finish(ticket, error='CAPTURE_SOURCE_CHANGED' if status == 2 else 'CAPTURE_UNAVAILABLE')
                     return
-                if (not 0 < width <= 4096 or not 0 < height <= 4096 or length != width * height * 4 or
-                        fmt not in (0x34325258, 0x34325241)):
+                if (not 0 < width <= 4096 or not 0 < height <= 4096 or
+                        not 45 <= length <= 4096 * 4096 * 4 or fmt != 0x20474e50):
                     self.close('CAPTURE_PROTOCOL_INVALID')
                     return
-                ticket['description'] = {'encoding': 'bgrx' if fmt == 0x34325258 else 'bgra',
-                                         'width': width, 'height': height}
+                ticket['description'] = {'encoding': 'png', 'width': width, 'height': height}
                 ticket['length'], ticket['stage'] = length, 'pixels'
                 return
             if ticket['cancelled']:
                 self.finish(ticket, error='CAPTURE_CANCELLED')
             else:
+                pixels, description = ticket['input'], ticket['description']
+                if (pixels[:16] != b'\x89PNG\r\n\x1a\n\x00\x00\x00\x0dIHDR' or
+                        struct.unpack('!II', pixels[16:24]) != (description['width'], description['height']) or
+                        pixels[24:29] != b'\x08\x02\x00\x00\x00'):
+                    self.close('CAPTURE_PROTOCOL_INVALID')
+                    return
                 ticket['stage'] = 'end'
                 self.barrier(ticket, True)
         except BlockingIOError:

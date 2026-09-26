@@ -7,6 +7,7 @@
 #include <drm_fourcc.h>
 #include <errno.h>
 #include <stdint.h>
+#include <png.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -27,7 +28,61 @@ struct capture {
     int width, height, buffer_width, buffer_height;
     uint32_t format, buffer_format;
     int result;
+    unsigned char *encoded;
+    size_t encoded_size, encoded_capacity;
 };
+
+#define MAX_FRAME_BYTES (4096u * 4096u * 4u)
+#define FRAME_PNG 0x20474e50u
+
+static void png_failed(png_structp png, png_const_charp message) {
+    (void)message;
+    png_longjmp(png, 1);
+}
+static void png_warning_ignored(png_structp png, png_const_charp message) { (void)png; (void)message; }
+static void png_append(png_structp png, png_bytep bytes, png_size_t length) {
+    struct capture *c = png_get_io_ptr(png);
+    if (length > MAX_FRAME_BYTES - c->encoded_size) png_error(png, "Frame exceeds limit");
+    size_t needed = c->encoded_size + length;
+    if (needed > c->encoded_capacity) {
+        size_t capacity = c->encoded_capacity ? c->encoded_capacity : 65536;
+        while (capacity < needed) capacity *= 2;
+        if (capacity > MAX_FRAME_BYTES) capacity = MAX_FRAME_BYTES;
+        unsigned char *next = realloc(c->encoded, capacity);
+        if (!next) png_error(png, "Frame allocation failed");
+        c->encoded = next; c->encoded_capacity = capacity;
+    }
+    memcpy(c->encoded + c->encoded_size, bytes, length);
+    c->encoded_size += length;
+}
+static void png_flush_ignored(png_structp png) { (void)png; }
+static int encode_frame(struct capture *c) {
+    c->encoded_size = 0;
+    png_structp png = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL, png_failed, png_warning_ignored);
+    if (!png) return -1;
+    png_infop info = png_create_info_struct(png);
+    if (!info || setjmp(png_jmpbuf(png))) {
+        png_destroy_write_struct(&png, &info);
+        c->encoded_size = 0;
+        return -1;
+    }
+    png_set_write_fn(png, c, png_append, png_flush_ignored);
+    png_set_IHDR(png, info, c->buffer_width, c->buffer_height, 8, PNG_COLOR_TYPE_RGB,
+                 PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_BASE, PNG_FILTER_TYPE_BASE);
+    png_set_compression_level(png, 1);
+    png_set_filter(png, PNG_FILTER_TYPE_BASE, PNG_FILTER_NONE);
+    png_write_info(png, info);
+    /* The compositor paints an opaque session background. Drop the framebuffer
+     * padding/alpha byte; libpng owns conversion and lossless encoding. Native
+     * qualified amd64/arm64 framebuffers both use little-endian BGRX/BGRA. */
+    png_set_bgr(png);
+    png_set_filler(png, 0, PNG_FILLER_AFTER);
+    for (int row = 0; row < c->buffer_height; row++)
+        png_write_row(png, (png_bytep)c->pixels + (size_t)row * c->buffer_width * 4);
+    png_write_end(png, info);
+    png_destroy_write_struct(&png, &info);
+    return 0;
+}
 
 static void format(void *data, struct weston_capture_source_v1 *source, uint32_t value) {
     (void)source;
@@ -138,14 +193,16 @@ int main(void) {
         weston_capture_source_v1_capture(c.source, c.buffer);
         while (!c.result)
             if (wl_display_dispatch(c.display) < 0) goto done;
+        if (c.result == 1 && encode_frame(&c) < 0) c.result = 3;
         uint32_t header[] = {sequence, (uint32_t)c.result, (uint32_t)c.buffer_width,
-            (uint32_t)c.buffer_height, c.buffer_format, c.result == 1 ? (uint32_t)c.size : 0};
+            (uint32_t)c.buffer_height, FRAME_PNG, c.result == 1 ? (uint32_t)c.encoded_size : 0};
         if (send_all(fd, header, sizeof header) < 0) break;
-        if (c.result == 1 && send_all(fd, c.pixels, c.size) < 0) break;
+        if (c.result == 1 && send_all(fd, c.encoded, c.encoded_size) < 0) break;
     }
     status = 0;
 done:
     clear_buffer(&c);
+    free(c.encoded);
     if (c.source) weston_capture_source_v1_destroy(c.source);
     if (c.factory) weston_capture_v1_destroy(c.factory);
     if (c.output) wl_output_destroy(c.output);

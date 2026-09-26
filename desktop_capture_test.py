@@ -9,7 +9,7 @@ from desktop_capture import NativeFrames
 
 
 # A lossless two-pixel PNG fixture, independent of the production encoder.
-PNG = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAIAAAB7QOjdAAAADElEQVR4nGP4z8AAAAMBAQAY3Y2xAAAAAElFTkSuQmCC")
+PNG = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAIAAAB7QOjdAAAAD0lEQVR4nGP4z8DA8J8BAAf/Af8Bf4mnAAAAAElFTkSuQmCC")
 PNG_FORMAT = 0x20474e50
 
 
@@ -154,6 +154,46 @@ class CaptureTests(unittest.TestCase):
         self.remote.sendall(struct.pack('=6I', 1, 1, 2, 1, 0x34325258, 8) + b'abcdefgh')
         self.frames.read()
         self.assertEqual(self.results, [(None, None, 'CAPTURE_PROTOCOL_INVALID')])
+
+    def test_png_signature_and_pixel_format_are_validated_before_scene_admission(self):
+        for offset, value in ((0, 0), (12, 0), (24, 16), (25, 6), (28, 1)):
+            with self.subTest(offset=offset):
+                local, remote = socket.socketpair()
+                loop, barriers, results = Loop(), [], []
+                frames = NativeFrames(local, loop, barriers.append)
+                try:
+                    frames.capture(self.target, lambda *args: results.append(args))
+                    barriers.pop()(3, 9)
+                    frames.write()
+                    sequence = struct.unpack('=I', remote.recv(4))[0]
+                    malformed = bytearray(PNG)
+                    malformed[offset] = value
+                    remote.sendall(struct.pack('=6I', sequence, 1, 2, 1, PNG_FORMAT, len(malformed)) + malformed)
+                    frames.read()
+                    frames.read()
+                    self.assertEqual(results, [(None, None, 'CAPTURE_PROTOCOL_INVALID')])
+                    self.assertEqual(barriers, [])
+                    self.assertEqual(loop.timers, {})
+                finally:
+                    frames.close()
+                    remote.close()
+
+    def test_encoded_size_is_bounded_before_reading_or_allocating_the_payload(self):
+        self.request()
+        self.remote.sendall(struct.pack('=6I', 1, 1, 4096, 4096, PNG_FORMAT, 64 * 1024 * 1024 + 1))
+        self.frames.read()
+        self.assertEqual(self.results, [(None, None, 'CAPTURE_PROTOCOL_INVALID')])
+        self.assertIsNone(self.frames.pending)
+
+    def test_truncated_image_never_reaches_the_scene_or_viewer(self):
+        self.request()
+        self.remote.sendall(struct.pack('=6I', 1, 1, 2, 1, PNG_FORMAT, len(PNG)) + PNG[:-1])
+        self.frames.read()
+        self.frames.read()
+        self.remote.shutdown(socket.SHUT_WR)
+        self.frames.read()
+        self.assertEqual(self.results, [(None, None, 'CAPTURE_UNAVAILABLE')])
+        self.assertEqual(self.barriers, [])
 
 
 if __name__ == '__main__':
