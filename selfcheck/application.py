@@ -101,10 +101,11 @@ with tempfile.TemporaryDirectory(prefix="floe-application-plan-") as directory:
     root = Path(directory)
     script = root / 'arguments.sh'
     received = root / 'arguments.txt'
-    script.write_text('printf "%s\\n" "$@" > ' + str(received) + '\n')
+    script.write_text('#!/bin/sh\nprintf "%s\\n" "$@" > ' + str(received) + '\n')
+    script.chmod(0o700)
     desktop = root / 'fixture.desktop'
     source = ('[Desktop Entry]\nType=Application\nName=Floe planned fixture\n'
-              f'Exec=/bin/sh "{script}" "literal spaces" %% %c %k %F\n')
+              f'Exec="{script}" "literal spaces" %% %c %k %F\n')
     desktop.write_text(source)
     # This checks pre-execution identity, not availability of a graphics backend.
     backend = {'id': 'wayland', 'component': 'identity-selfcheck-only',
