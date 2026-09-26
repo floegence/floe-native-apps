@@ -3,7 +3,7 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
-from desktop_context import NativeContexts
+from desktop_context import NativeContexts, NativeContextService
 from desktop_native import NativeFocus, NativeTarget
 
 
@@ -177,6 +177,34 @@ class ContextTests(unittest.TestCase):
         self.assertIsNone(self.contexts.take('ibus:1.9', code, 19))
         self.assertEqual(self.completed, ['INPUT_TARGET_UNAVAILABLE'])
         self.assertTrue(peer.closed)
+
+
+class ContextServiceStartupTests(unittest.TestCase):
+    def test_partial_registration_releases_only_the_name_it_acquired(self):
+        from unittest.mock import Mock
+        gio = SimpleNamespace(dbus_is_name=lambda _name: True, DBusCallFlags=SimpleNamespace(NONE=0),
+            DBusSignalFlags=SimpleNamespace(NONE=0),
+            DBusNodeInfo=SimpleNamespace(new_for_xml=lambda _xml: SimpleNamespace(interfaces=[object()])))
+        glib = SimpleNamespace(Variant=lambda _kind, value: value,
+            VariantType=SimpleNamespace(new=lambda value: value), Error=OSError)
+        for acquired in (True, False):
+            with self.subTest(acquired=acquired):
+                contexts, connection = Mock(), Mock()
+                connection.call_sync.return_value = SimpleNamespace(unpack=lambda: (1 if acquired else 3,))
+                connection.register_object.return_value = 14
+                connection.signal_subscribe.side_effect = OSError('bus registration failure')
+                with patch.dict('sys.modules', {'gi.repository': SimpleNamespace(Gio=gio, GLib=glib)}):
+                    with self.assertRaises((OSError, ValueError)):
+                        NativeContextService(connection, contexts)
+                methods = [call.args[3] for call in connection.call_sync.call_args_list]
+                self.assertEqual(methods, ['RequestName', 'ReleaseName'] if acquired else ['RequestName'])
+                if acquired:
+                    connection.unregister_object.assert_called_once_with(14)
+                    contexts.close.assert_called_once_with()
+                else:
+                    connection.unregister_object.assert_not_called()
+                    contexts.close.assert_not_called()
+                connection.close.assert_not_called()
 
 
 if __name__ == '__main__':

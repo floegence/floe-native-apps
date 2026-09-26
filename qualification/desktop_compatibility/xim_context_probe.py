@@ -4,9 +4,7 @@ import os
 from unittest.mock import patch
 
 from application_processes import ProcessTree, identity
-from desktop_context import NativeContexts
 from desktop_x11 import X11Resources
-from desktop_xim import NativeXIMContexts
 
 
 def qualify(root, evidence, environment, control, wire, start, wait, paint, display):
@@ -18,6 +16,7 @@ def qualify(root, evidence, environment, control, wire, start, wait, paint, disp
     because XMODIFIERS is set.
     """
     from Xlib.display import Display
+    from gi.repository import Gio
 
     tree = ProcessTree(os.getpid(), identity(os.getpid())[1])
     local = {
@@ -27,16 +26,17 @@ def qualify(root, evidence, environment, control, wire, start, wait, paint, disp
         'LC_ALL': 'C.UTF-8',
     }
 
+    connection = Gio.DBusConnection.new_for_address_sync(environment['DBUS_SESSION_BUS_ADDRESS'],
+        Gio.DBusConnectionFlags.AUTHENTICATION_CLIENT | Gio.DBusConnectionFlags.MESSAGE_BUS_CONNECTION, None, None)
+    connection.set_exit_on_close(False)
+
     def serve():
         with patch.dict(os.environ, local):
             resources = X11Resources(Display(display))
-            contexts = NativeContexts(wire.native, tree, environment['XDG_RUNTIME_DIR'])
-            contexts.x11 = resources
-            bridge = NativeXIMContexts(contexts)
-        wire.native.contexts = contexts
-        return contexts, resources, bridge
+            wire.helper.configure_input(connection, tree, environment['XDG_RUNTIME_DIR'], x11=resources)
+            return wire.helper.enable_xim()
 
-    contexts, resources, bridge = wire.invoke(serve)
+    bridge = wire.invoke(serve)
     try:
         receipt = evidence / 'terminal-context.json'
         previous = wire.native.target
@@ -67,13 +67,8 @@ def qualify(root, evidence, environment, control, wire, start, wait, paint, disp
             'completion': 'native XIM marker, protocol sync, native release and exact application bytes',
         }
     finally:
-        def stop():
-            bridge.close()
-            contexts.close()
-            resources.close()
-            wire.native.contexts = None
-
-        wire.invoke(stop)
+        wire.invoke(wire.helper.close_input)
+        connection.close_sync(None)
         tree.close()
 
 

@@ -288,6 +288,11 @@
       "case": "Private combined-display resource preparation on native amd64 and arm64",
       "result": "The original preparer deterministically overwrote an existing Xwayland resource and inherited host loader overrides. A single reusable preparer now rejects live resources, isolates native tools, retains original component bytes, bounds generators and validates one-shot X11 authorization. Both native mixed-window, actual GTK4 Unicode, capture, window operations and reconnect tests pass. Strict Snap Firefox amd64 and Flatpak GTK/Qt arm64 preserve exact input and saved bytes through the remote chooser.",
       "limits": "Only prepared graphics resources and existing fixture launches are qualified here. Complete durable launch/service orchestration, component activation, pure Wayland Chromium text and the full package/desktop matrix remain incomplete."
+    },
+    {
+      "case": "One helper-owned native input assembly on amd64 and arm64",
+      "result": "The old helper deterministically left directly attached input contexts open at disposal. Toolkit service, IBus, XIM and X11 resource ownership now belong to the helper. Both architectures pass actual GTK4 Wayland/Xwayland, Qt6 Wayland, Qt5 Xwayland and XIM terminal receipts: 64 interleaved Unicode/ordinary-input operations plus a 14000-byte commit per case. Viewer detach retains services; disposal revokes contexts and closes only owned resources; failed D-Bus registration releases acquired names and objects. A retired input assembly cannot be recreated in the same native lifetime.",
+      "limits": "Authenticated mixed-window fixtures use the unified assembly. Complete persistent launch/process orchestration and sandbox fixture migration, component activation, pure Wayland Chromium text and the full package/desktop matrix remain required."
     }
   ],
   "rejected_assumptions": [

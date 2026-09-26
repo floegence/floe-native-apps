@@ -6,7 +6,7 @@ import socket
 import struct
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from desktop_control import encode_message
 from desktop_control_test import Loop
@@ -107,6 +107,64 @@ class DesktopHelperTests(unittest.TestCase):
         self.helper.native.contexts = contexts
         self.helper.close()
         self.assertTrue(contexts.closed)
+
+    def configure_input(self, x11=None):
+        bus, tree = Mock(), Mock()
+        class Service:
+            def __init__(self, connection, contexts, _destination):
+                self.connection, self.contexts, self.closed = connection, contexts, False
+            def close(self):
+                self.closed = True
+                self.contexts.close()
+        with patch('desktop_helper.NativeContextService', Service):
+            contexts = self.helper.configure_input(bus, tree, '/private/instance', x11=x11)
+        return contexts, self.helper.context_service, bus, tree
+
+    def test_viewer_detach_preserves_context_services_and_helper_disposal_releases_only_owned_resources(self):
+        resources = Mock()
+        contexts, service, bus, tree = self.configure_input(resources)
+        self.listen()
+        client, _ = self.connect()
+        client.close()
+        self.loop.step()
+        self.helper.stop_sharing()
+        self.assertFalse(contexts.closed)
+        self.assertFalse(service.closed)
+        resources.close.assert_not_called()
+        self.helper.close()
+        self.assertTrue(contexts.closed)
+        self.assertTrue(service.closed)
+        resources.close.assert_called_once_with()
+        bus.close.assert_not_called()
+        tree.close.assert_not_called()
+        self.assertIsNone(self.helper.native.contexts)
+
+    def test_failed_context_registration_closes_transferred_x11_without_publishing_an_owner(self):
+        resources, bus, tree = Mock(), Mock(), Mock()
+        observed = []
+        def failed(_connection, contexts, _destination):
+            observed.append(contexts)
+            raise ValueError('Context registration failed')
+        with patch('desktop_helper.NativeContextService', side_effect=failed):
+            with self.assertRaisesRegex(ValueError, 'registration failed'):
+                self.helper.configure_input(bus, tree, '/private/instance', x11=resources)
+        self.assertTrue(observed[0].closed)
+        resources.close.assert_called_once_with()
+        self.assertIsNone(self.helper.native.contexts)
+        self.assertIsNone(self.helper.context_service)
+        bus.close.assert_not_called()
+        tree.close.assert_not_called()
+
+    def test_context_owner_cannot_be_replaced_or_recreated_in_the_same_native_lifetime(self):
+        contexts, service, bus, tree = self.configure_input()
+        with self.assertRaisesRegex(ValueError, 'assembly is unavailable'):
+            self.helper.configure_input(bus, tree, '/another/runtime')
+        self.assertIs(self.helper.native.contexts, contexts)
+        self.assertFalse(service.closed)
+        self.helper.close_input()
+        self.helper.close_input()
+        with self.assertRaisesRegex(ValueError, 'assembly is unavailable'):
+            self.helper.configure_input(bus, tree, '/another/runtime')
 
     def test_sharing_shutdown_never_closes_the_native_channel(self):
         self.listen()

@@ -224,8 +224,18 @@ the native protocol is identified and owns cleanup if endpoint creation fails.
 Viewer detach leaves the registry and capture process intact; native channel loss
 reports unavailable state without inventing application exit. Full helper disposal
 closes its channels, while process lifetime remains with the launch supervisor.
-Native combined-display probes use this same assembly rather than a second test
+Authenticated mixed-window probes use this same assembly rather than a second test
 implementation. This boundary does not yet provide the complete prepared launcher.
+
+The helper also owns one `NativeContexts` registry and its toolkit, IBus and XIM
+services. It borrows the private bus and supervisor process authority, and takes
+ownership of the native X11 resource connection. Viewer detach preserves these
+services. Disposal revokes pending input before releasing services and native
+resources; it neither closes the borrowed process tree nor terminates applications.
+An initialized context owner cannot be recreated within the same native lifetime,
+so old registration and marker callbacks cannot enter a new owner. Partial D-Bus
+registration releases only the name and objects acquired by that attempt. Engine
+activation remains asynchronous on the sole helper event loop.
 
 ### Unpublished combined-display qualification
 

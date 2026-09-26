@@ -247,10 +247,17 @@ class NativeContextService:
             GLib.VariantType.new('(u)'), Gio.DBusCallFlags.NONE, 3000, None)
         if result.unpack()[0] != 1:
             raise ValueError('Native input service is already owned')
-        self.node = Gio.DBusNodeInfo.new_for_xml(self.XML)
-        self.registration = connection.register_object(self.PATH, self.node.interfaces[0], self.call, None, None)
-        self.subscription = connection.signal_subscribe('org.freedesktop.DBus', 'org.freedesktop.DBus',
-            'NameOwnerChanged', '/org/freedesktop/DBus', None, Gio.DBusSignalFlags.NONE, self.owner_changed)
+        self.registration, self.subscription = None, None
+        try:
+            self.node = Gio.DBusNodeInfo.new_for_xml(self.XML)
+            self.registration = connection.register_object(self.PATH, self.node.interfaces[0], self.call, None, None)
+            self.subscription = connection.signal_subscribe('org.freedesktop.DBus', 'org.freedesktop.DBus',
+                'NameOwnerChanged', '/org/freedesktop/DBus', None, Gio.DBusSignalFlags.NONE, self.owner_changed)
+            if not self.registration or not self.subscription:
+                raise ValueError('Native input service could not register')
+        except BaseException:
+            self.close()
+            raise
 
     def owner_changed(self, _connection, _sender, _path, _interface, _signal, parameters):
         sender, _old, new = parameters.unpack()
@@ -292,8 +299,10 @@ class NativeContextService:
         if self.closed:
             return
         self.closed = True
-        self.connection.signal_unsubscribe(self.subscription)
-        self.connection.unregister_object(self.registration)
+        if self.subscription:
+            self.connection.signal_unsubscribe(self.subscription)
+        if self.registration:
+            self.connection.unregister_object(self.registration)
         self.contexts.close()
         try:
             self.connection.call_sync('org.freedesktop.DBus', '/org/freedesktop/DBus',

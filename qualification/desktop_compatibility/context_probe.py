@@ -140,7 +140,13 @@ def qualify(root, evidence, environment, control, wire, start, wait, paint, disp
     activated = []
     def serve():
         nonlocal input_service, resources
-        contexts = NativeContexts(wire.native, tree, environment['XDG_RUNTIME_DIR'])
+        if protocol == 'x11':
+            from Xlib.display import Display
+            from unittest.mock import patch
+            from desktop_x11 import X11Resources
+            with patch.dict(os.environ, {'XAUTHORITY': environment.get('XAUTHORITY', '')}):
+                resources = X11Resources(Display(display))
+        contexts = wire.helper.configure_input(connection, tree, environment['XDG_RUNTIME_DIR'], x11=resources)
         original_take = contexts.take
         def observed_take(sender, code, surface):
             operation = contexts.pending
@@ -184,20 +190,9 @@ def qualify(root, evidence, environment, control, wire, start, wait, paint, disp
                     file.write(json.dumps(diagnostic) + '\n')
             return token
         contexts.context_for = observed_context
-        wire.native.contexts = contexts
-        if protocol == 'x11':
-            from Xlib.display import Display
-            from unittest.mock import patch
-            from desktop_x11 import X11Resources
-            with patch.dict(os.environ, {'XAUTHORITY': environment.get('XAUTHORITY', '')}):
-                resources = X11Resources(Display(display))
-            contexts.x11 = resources
         if gtk:
-            from desktop_ibus_service import NativeIBusService
-            input_service = NativeIBusService(contexts, connection, daemon_peer)
-            input_service.activate(activated.append)
-        return NativeContextService(connection, contexts)
-    service = wire.invoke(serve)
+            input_service = wire.helper.enable_ibus(daemon_peer, activated.append)
+    wire.invoke(serve)
     try:
         if input_service:
             wait(lambda: bool(activated), 'Native IBus engine selection did not complete')
@@ -257,14 +252,7 @@ def qualify(root, evidence, environment, control, wire, start, wait, paint, disp
     finally:
         if browser:
             browser.close()
-        def stop():
-            if input_service:
-                input_service.close()
-            service.close()
-            if resources:
-                resources.close()
-            wire.native.contexts = None
-        wire.invoke(stop)
+        wire.invoke(wire.helper.close_input)
         connection.close_sync(None)
         if daemon_peer:
             daemon_peer.close()
