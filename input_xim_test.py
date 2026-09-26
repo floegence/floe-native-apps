@@ -115,6 +115,14 @@ class XIMTest(unittest.TestCase):
                 bridge._callback(1, 8, 7, ctypes.pointer(xim.Header(major=opcode)), frame, None, None)
             self.assertEqual(bridge.focused, 7 if supported else None, locale)
 
+    def test_native_event_observer_can_consume_a_marker_without_forwarding_it(self):
+        bridge = self.bridge()
+        received = []
+        bridge._forward_event = lambda server, context, event: received.append((server, context, event))
+        bridge.forward = lambda *_: self.fail('Bypassed native event observer')
+        bridge._callback(1, 8, 7, ctypes.pointer(xim.Header(major=60)), None, 1234, None)
+        self.assertEqual(received, [(1, 7, 1234)])
+
 
 if __name__ == '__main__':
     unittest.main()
