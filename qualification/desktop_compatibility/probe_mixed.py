@@ -139,6 +139,23 @@ def main():
              'Native title update did not reach the window registry')
         assert control.native.target is target, 'Title update revoked the active input target'
         result['native_title_preserves_input'] = True
+        actions = receipts[0].with_suffix('.windows.json')
+        for key, field, expected in ((64, 'maximized', True), (65, 'maximized', False),
+                                     (66, 'fullscreen', True), (67, 'fullscreen', False)):
+            control.send(first, f'key {key} 1\nkey {key} 0\n'.encode())
+            wait(lambda: json.loads(actions.read_text()).get(field) is expected,
+                 f'Application did not receive its requested {field} state {expected}')
+            paint(f'{field}-{expected}', (19, 87, 155))
+            wait(lambda: control.native.snapshot()['windows'][0][field] is expected,
+                 'Window registry did not reflect the committed native mode')
+        control.send(first, b'key 68 1\nkey 68 0\n')
+        wait(lambda: control.native.snapshot()['state'] == 'waiting', 'Minimized window kept input authority')
+        assert control.native.snapshot()['windows'][0]['minimized']
+        assert wayland.poll() is None, 'Minimization terminated the actual application'
+        assert control.response(control.request('select_window', window=first)).get('result') == 'requested'
+        paint('unminimized', (19, 87, 155))
+        assert not control.native.snapshot()['windows'][0]['minimized']
+        result['native_window_modes'] = ['maximize', 'restore', 'fullscreen', 'restore', 'minimize', 'select']
         control.send(first, b'key 60 1\nkey 60 0\n')
         popup = paint('popup', marker=(19, 183, 73), required=((19, 87, 155),))
         click_marker(popup)

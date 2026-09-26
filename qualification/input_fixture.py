@@ -92,6 +92,13 @@ elif kind in ('gtk4', 'gtk4-entry'):
                 pending = state_path.with_suffix('.pending')
                 pending.write_text(json.dumps(state))
                 pending.replace(state_path)
+            def window_mode(*_):
+                state['maximized'] = window.is_maximized()
+                state['fullscreen'] = window.is_fullscreen()
+                state['size'] = [window.get_width(), window.get_height()]
+                write_state()
+            window.connect('notify::maximized', window_mode)
+            window.connect('notify::fullscreened', window_mode)
             css = Gtk.CssProvider()
             css.load_from_data(b'.floe-popup { background: #13b749; padding: 20px; } '
                                b'.floe-dialog { background: #bf31bd; padding: 20px; } '
@@ -167,6 +174,16 @@ elif kind in ('gtk4', 'gtk4-entry'):
                     dialog.present()
                 elif keyval == Gdk.KEY_F5:
                     window.set_title('Document 日本語 🧑🏽\u200d💻\nSave As')
+                elif keyval == Gdk.KEY_F6:
+                    window.maximize()
+                elif keyval == Gdk.KEY_F7:
+                    window.unmaximize()
+                elif keyval == Gdk.KEY_F8:
+                    window.fullscreen()
+                elif keyval == Gdk.KEY_F9:
+                    window.unfullscreen()
+                elif keyval == Gdk.KEY_F10:
+                    window.minimize()
                 else:
                     return False
                 return True

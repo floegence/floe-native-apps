@@ -51,7 +51,7 @@ class NativeTests(unittest.TestCase):
         self.native.attachment = self.attachment
         self.native.observe('native-version 1')
         self.native.observe('window-instance 1')
-        self.native.observe('window-state 1 0 wayland 120 1000 700')
+        self.native.observe('window-state 1 0 wayland 120 1000 700 0')
         self.native.observe('surface-instance 1')
         self.native.observe('focus 1 1 120 19 1')
         self.native.observe('scene 1 1')
@@ -60,7 +60,7 @@ class NativeTests(unittest.TestCase):
     def test_registry_is_native_and_ids_cannot_be_reused(self):
         previous = self.native.target
         self.native.observe('window-instance 2')
-        self.native.observe('window-state 2 1 wayland 120 350 280')
+        self.native.observe('window-state 2 1 wayland 120 350 280 0')
         self.native.observe('surface-instance 2')
         self.native.observe('focus 2 2 120 20 1')
         self.native.observe('scene 2 2')
@@ -74,15 +74,15 @@ class NativeTests(unittest.TestCase):
         self.native.observe('scene 3 1')
         self.assertEqual(self.native.target.window, 1)
         with self.assertRaises(ValueError):
-            self.native.observe('window-state 2 0 wayland 120 350 280')
+            self.native.observe('window-state 2 0 wayland 120 350 280 0')
         with self.assertRaises(ValueError):
             self.native.observe('window-instance 2')
 
     def test_surface_map_order_does_not_change_instance_creation_order(self):
         self.native.observe('window-instance 2')
         self.native.observe('window-instance 3')
-        self.native.observe('window-state 3 0 wayland 121 1000 700')
-        self.native.observe('window-state 2 0 wayland 121 1000 700')
+        self.native.observe('window-state 3 0 wayland 121 1000 700 0')
+        self.native.observe('window-state 2 0 wayland 121 1000 700 0')
         self.native.observe('surface-instance 2')
         self.native.observe('focus 2 2 121 25 1')
         self.native.observe('scene 2 2')
@@ -91,7 +91,7 @@ class NativeTests(unittest.TestCase):
             self.native.observe('window-instance 2')
 
     def test_geometry_change_revokes_old_target_before_scene_barrier(self):
-        self.native.observe('window-state 1 0 wayland 120 600 400')
+        self.native.observe('window-state 1 0 wayland 120 600 400 0')
         self.assertIsNone(self.native.target)
         self.native.observe('scene 2 1')
         self.assertEqual(self.native.target.width, 600)
@@ -111,7 +111,7 @@ class NativeTests(unittest.TestCase):
         self.assertEqual(self.attachment.metadata, 1)
         self.native.observe('window-instance 2')
         self.native.observe('window-title 2 ' + title.encode().hex())
-        self.native.observe('window-state 2 0 x11 121 400 300')
+        self.native.observe('window-state 2 0 x11 121 400 300 0')
         self.assertEqual([w['title'] for w in self.native.snapshot()['windows']], [title, title])
         self.native.observe('window-title 1 -')
         self.assertEqual(self.native.snapshot()['windows'][0]['title'], '')
@@ -125,6 +125,26 @@ class NativeTests(unittest.TestCase):
         for data in ('00' * 1025, '0', 'gg', '61 62'):
             with self.subTest(data=data[:20]), self.assertRaises(ValueError):
                 self.native.observe('window-title 1 ' + data)
+
+    def test_minimize_preserves_instance_and_selection_but_revokes_input(self):
+        self.native.observe('window-state 1 0 wayland 120 1000 700 4')
+        self.assertIsNone(self.native.target)
+        self.assertTrue(self.native.snapshot()['windows'][0]['minimized'])
+        with self.assertRaises(ValueError):
+            self.native.observe('scene 2 1')
+        self.native.observe('focus 0 0 0 0 0')
+        self.native.observe('scene 2 0')
+        self.assertEqual(self.native.snapshot()['state'], 'waiting')
+        self.native.select(1)
+        self.assertEqual(self.sent[-1], 'select 1 1\n')
+        self.native.observe('window-state 1 0 wayland 120 1000 700 3')
+        self.native.observe('focus 1 1 120 19 1')
+        self.native.observe('scene 3 1')
+        window = self.native.snapshot()['windows'][0]
+        self.assertTrue(window['maximized'])
+        self.assertTrue(window['fullscreen'])
+        self.assertFalse(window['minimized'])
+        self.assertEqual(self.native.target.window, 1)
 
     def test_popup_focus_cannot_keep_parent_input_or_reuse_a_destroyed_surface(self):
         previous = self.native.target
