@@ -24,7 +24,7 @@ class Peer:
 class ContextTests(unittest.TestCase):
     def setUp(self):
         self.sent, self.completed = [], []
-        self.native = SimpleNamespace(target=NativeTarget(1, 2, 1000, 700),
+        self.native = SimpleNamespace(target=NativeTarget(1, 2),
             focus=NativeFocus(3, 1, 120, 19, True), epoch=1, closed=False,
             windows={1: SimpleNamespace(protocol='wayland')},
             submit=lambda *args: self.sent.append(args))
@@ -100,7 +100,7 @@ class ContextTests(unittest.TestCase):
                 token, code = self.begin()
                 old = getattr(self.native, change)
                 value = 2 if change == 'epoch' else (
-                    NativeFocus(4, 1, 120, 19, True) if change == 'focus' else NativeTarget(1, 3, 1000, 700))
+                    NativeFocus(4, 1, 120, 19, True) if change == 'focus' else NativeTarget(1, 3))
                 setattr(self.native, change, value)
                 self.assertIsNone(self.contexts.take(':1.7', code, 19))
                 self.assertEqual(self.completed[-1], 'INPUT_TARGET_UNAVAILABLE')

@@ -1,7 +1,8 @@
 """Native scene registry and typed seat delivery behind the helper attachment.
 
 Only the private compositor supplies window records. IDs increase for the life
-of that compositor and every geometry/focus change replaces the input target.
+of that compositor. Native decoration grabs retain the fixed viewport's input
+coordinates until release; other geometry/focus changes replace the target.
 Launch/process admission and toolkit context registration belong to the helper;
 window metadata alone never selects an input method or proves application exit.
 """
@@ -99,8 +100,6 @@ class NativeWindow:
 class NativeTarget:
     window: int
     generation: int
-    width: int
-    height: int
 
 
 @dataclass(frozen=True)
@@ -204,7 +203,7 @@ class NativeDesktop:
             protocol = fields[3]
             pid = integer(int(fields[4]), -1, 0x7fffffff)
             width, height = (integer(int(v), 1, 65536) for v in fields[5:7])
-            mode = integer(int(fields[7]), 0, 7)
+            mode = integer(int(fields[7]), 0, 8)
             if protocol not in ('wayland', 'x11') or parent == wid:
                 raise ValueError('Invalid native window')
             previous = self.windows.get(wid)
@@ -217,8 +216,11 @@ class NativeDesktop:
             window = NativeWindow(wid, parent, protocol, pid, width, height, mode)
             self.windows[wid] = window
             if previous != window:
-                if self.target and self.target.window == wid and (mode & 4 or previous is None or
-                        (previous.parent, previous.width, previous.height) != (parent, width, height)):
+                geometry_changed = previous is None or (
+                    previous.parent, previous.width, previous.height) != (parent, width, height)
+                grab_ended = previous is not None and previous.mode == 8 and mode != 8
+                if self.target and self.target.window == wid and (
+                        mode & 4 or grab_ended or mode != 8 and geometry_changed):
                     self.target = None
                     self.changed()
                 elif self.attachment:
@@ -244,7 +246,7 @@ class NativeDesktop:
             if window and window.mode & 4:
                 raise ValueError('Minimized native window cannot receive input')
             self.generation = generation
-            self.target = NativeTarget(wid, generation, window.width, window.height) if window else None
+            self.target = NativeTarget(wid, generation) if window else None
             self.changed()
         elif kind == 'scene-at':
             if len(fields) != 4 or self.query is None or int(fields[1]) != self.query_id:
@@ -291,7 +293,7 @@ class NativeDesktop:
                 'windows': [dict(window=w.window, parent=w.parent or None, protocol=w.protocol,
                                  width=w.width, height=w.height, title=self.declared[w.window],
                                  maximized=bool(w.mode & 1), fullscreen=bool(w.mode & 2),
-                                 minimized=bool(w.mode & 4))
+                                 minimized=bool(w.mode & 4), interacting=bool(w.mode & 8))
                             for w in self.windows.values()]}
 
     def bind(self, epoch):

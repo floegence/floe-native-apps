@@ -70,6 +70,7 @@ struct probe {
     uint64_t scene;
     bool keys[2080];
     bool buttons[8];
+    struct window_grab *grab;
     double wheel_remainder[2];
     int32_t wheel_detents[2];
 };
@@ -84,8 +85,18 @@ struct probe_window {
     int32_t restore_width, restore_height;
     uint32_t mode;
     bool minimized;
+    bool retiring;
+    bool positioned;
+    struct weston_coord_global position;
     struct weston_geometry geometry;
     struct probe_window *parent;
+};
+struct window_grab {
+    struct weston_pointer_grab base;
+    struct probe_window *window;
+    struct weston_coord_global origin;
+    int32_t width, height, requested_width, requested_height;
+    uint32_t edges;
 };
 struct probe_background {
     struct wl_list link;
@@ -113,6 +124,7 @@ struct text_context {
 };
 
 static void release_input(struct probe *p);
+static void end_window_grab(struct weston_pointer_grab *base);
 static void control_lost(struct probe *p) {
     if (p->control < 0) return;
     int descriptor = p->control;
@@ -176,6 +188,7 @@ static void release_input(struct probe *p) {
         p->buttons[button] = false;
         notify_button(&p->seat, &time, BTN_LEFT + button, WL_POINTER_BUTTON_STATE_RELEASED);
     }
+    if (p->grab) end_window_grab(&p->grab->base);
     notify_pointer_frame(&p->seat);
     memset(p->wheel_remainder, 0, sizeof p->wheel_remainder);
     memset(p->wheel_detents, 0, sizeof p->wheel_detents);
@@ -234,7 +247,12 @@ static void emit_focus(struct probe *p) {
 static uint32_t window_mode(struct probe_window *window) {
     return (weston_desktop_surface_get_maximized(window->desktop) ? 1u : 0u) |
         (weston_desktop_surface_get_fullscreen(window->desktop) ? 2u : 0u) |
-        (window->minimized ? 4u : 0u);
+        (window->minimized ? 4u : 0u) |
+        (window->probe->grab && window->probe->grab->window == window ? 8u : 0u);
+}
+static bool xwayland_window(struct probe *p, struct weston_desktop_surface *desktop) {
+    const struct weston_xwayland_surface_api *api = weston_xwayland_surface_get_api(p->compositor);
+    return api && api->is_xwayland_surface(weston_desktop_surface_get_surface(desktop));
 }
 static void window_state(struct probe *p, struct probe_window *window) {
     struct weston_surface *surface = weston_desktop_surface_get_surface(window->desktop);
@@ -427,6 +445,7 @@ static void content_committed(struct wl_listener *listener, void *data) {
     bool geometry_changed = content->width != content->surface->width ||
         content->height != content->surface->height || content->x != x || content->y != y;
     if (geometry_changed && owner && owner->view->layer_link.layer == &p->layer &&
+        (!p->grab || p->grab->window != owner) &&
         content->surface != weston_desktop_surface_get_surface(owner->desktop)) {
         /* Child surfaces can change hit regions without a top-level commit.
          * The desktop callback owns top-level geometry and positioning. Sampling
@@ -501,7 +520,9 @@ static void surface_added(struct weston_desktop_surface *desktop, void *data) {
     window->view = weston_desktop_surface_create_view(desktop);
     wl_list_insert(&p->windows, &window->link);
     weston_desktop_surface_set_user_data(desktop, window);
-    weston_desktop_surface_set_size(desktop, 1000, 700);
+    /* X11 has already supplied its initial native size. Unlike an xdg-shell
+     * configure, sending 0 later cannot undo an earlier forced X11 resize. */
+    if (!xwayland_window(p, desktop)) weston_desktop_surface_set_size(desktop, 1000, 700);
     weston_desktop_surface_set_activated(desktop, true);
     emit(p, "window-added\n");
     emit(p, "window-instance %" PRIu64 "\n", window->identity);
@@ -512,6 +533,7 @@ static void surface_added(struct weston_desktop_surface *desktop, void *data) {
 static void surface_removed(struct weston_desktop_surface *desktop, void *data) {
     struct probe *p = data;
     struct probe_window *window = weston_desktop_surface_get_user_data(desktop);
+    window->retiring = true;
     struct probe_window *parent = window->parent, *child;
     wl_list_for_each(child, &p->windows, link)
         if (child->parent == window) {
@@ -546,27 +568,45 @@ static void surface_removed(struct weston_desktop_surface *desktop, void *data) 
     scene_changed(p);
 }
 static void position_window(struct probe_window *window) {
-    double x = -window->geometry.x, y = -window->geometry.y;
-    if (window->parent && weston_view_is_mapped(window->parent->view)) {
+    if (!window->positioned && window->parent && weston_view_is_mapped(window->parent->view)) {
         struct weston_coord_global parent = weston_view_get_pos_offset_global(window->parent->view);
-        x += parent.c.x + window->parent->geometry.x +
+        window->position.c.x = parent.c.x + window->parent->geometry.x +
             (window->parent->geometry.width - window->geometry.width) / 2.0;
-        y += parent.c.y + window->parent->geometry.y +
+        window->position.c.y = parent.c.y + window->parent->geometry.y +
             (window->parent->geometry.height - window->geometry.height) / 2.0;
     }
+    window->positioned = true;
+    struct window_grab *grab = window->probe->grab;
+    if (grab && grab->window == window && grab->edges) {
+        if (grab->edges & WESTON_DESKTOP_SURFACE_EDGE_LEFT)
+            window->position.c.x = grab->origin.c.x + grab->width - window->geometry.width;
+        if (grab->edges & WESTON_DESKTOP_SURFACE_EDGE_TOP)
+            window->position.c.y = grab->origin.c.y + grab->height - window->geometry.height;
+    }
+    bool fitted = weston_desktop_surface_get_fullscreen(window->desktop) ||
+        weston_desktop_surface_get_maximized(window->desktop);
+    double x = (fitted ? 0 : window->position.c.x) - window->geometry.x;
+    double y = (fitted ? 0 : window->position.c.y) - window->geometry.y;
     weston_view_set_position(window->view, (struct weston_coord_global){ .c = {x, y} });
+    if (weston_view_is_mapped(window->view) && xwayland_window(window->probe, window->desktop)) {
+        const struct weston_xwayland_surface_api *api = weston_xwayland_surface_get_api(window->probe->compositor);
+        api->send_position(weston_desktop_surface_get_surface(window->desktop), (int32_t)x, (int32_t)y);
+    }
 }
 static void surface_parent(struct weston_desktop_surface *desktop,
                            struct weston_desktop_surface *parent, void *data) {
     struct probe *p = data;
     struct probe_window *window = weston_desktop_surface_get_user_data(desktop);
     struct probe_window *new_parent = parent ? weston_desktop_surface_get_user_data(parent) : NULL;
+    if (new_parent == window->parent) return;
     if (new_parent && ancestor(window, new_parent)) return;
+    window->positioned = false;
     window->parent = new_parent;
     /* Dialogs choose their natural size; ordinary top-levels initially fit the
      * application viewport. Their relationship comes only from native shell
      * metadata, never the title, application ID or a guessed surface number. */
-    weston_desktop_surface_set_size(desktop, parent ? 0 : 1000, parent ? 0 : 700);
+    if (!xwayland_window(p, desktop))
+        weston_desktop_surface_set_size(desktop, parent ? 0 : 1000, parent ? 0 : 700);
     if (weston_view_is_mapped(window->view)) {
         position_window(window);
         window_state(p, window);
@@ -603,7 +643,7 @@ static void surface_committed(struct weston_desktop_surface *desktop,
     window_state(p, window);
     if (mapped) {
         weston_view_update_transform(view);
-        if (p->current == surface) {
+        if (p->current == surface && (!p->grab || p->grab->window != window)) {
             release_input(p);
             scene_changed(p);
         }
@@ -615,6 +655,7 @@ static void surface_committed(struct weston_desktop_surface *desktop,
     weston_view_update_transform(view);
     view->is_mapped = true;
     weston_surface_map(surface);
+    position_window(window);
     apply_selection(p, window);
     weston_surface_damage(surface);
     emit(p, "frame %d %d\n", surface->width, surface->height);
@@ -629,6 +670,7 @@ static void configure_mode(struct probe *p, struct probe_window *window, bool en
     bool previous = fullscreen ? weston_desktop_surface_get_pending_fullscreen(desktop) :
         weston_desktop_surface_get_pending_maximized(desktop);
     if (previous == enabled) return;
+    if (p->grab && p->grab->window == window) release_input(p);
     bool fitted = weston_desktop_surface_get_pending_fullscreen(desktop) ||
         weston_desktop_surface_get_pending_maximized(desktop);
     if (enabled && !fitted) {
@@ -660,6 +702,7 @@ static void surface_minimized(struct weston_desktop_surface *desktop, void *data
     struct probe *p = data;
     struct probe_window *window = weston_desktop_surface_get_user_data(desktop), *selected = NULL, *candidate;
     if (window->minimized) return;
+    if (p->grab && p->grab->window == window) release_input(p);
     window->minimized = true;
     if (weston_view_is_mapped(window->view)) window_state(p, window);
     wl_list_for_each(candidate, &p->windows, link) {
@@ -680,12 +723,124 @@ static void surface_minimized(struct weston_desktop_surface *desktop, void *data
     apply_selection(p, selected);
     scene_changed(p);
 }
+static void end_window_grab(struct weston_pointer_grab *base) {
+    struct window_grab *grab = wl_container_of(base, grab, base);
+    struct probe_window *window = grab->window;
+    struct probe *p = window->probe;
+    p->grab = NULL;
+    if (grab->edges && !window->retiring) {
+        weston_desktop_surface_set_resizing(window->desktop, false);
+        weston_desktop_surface_set_size(window->desktop, grab->requested_width, grab->requested_height);
+    }
+    weston_pointer_end_grab(base->pointer);
+    free(grab);
+    if (window->retiring) return;
+    window_state(p, window);
+    emit_focus(p);
+    scene_changed(p);
+}
+static void grab_focus(struct weston_pointer_grab *base) { (void)base; }
+static void grab_axis(struct weston_pointer_grab *base, const struct timespec *time,
+                      struct weston_pointer_axis_event *event) { (void)base; (void)time; (void)event; }
+static void grab_source(struct weston_pointer_grab *base, uint32_t source) { (void)base; (void)source; }
+static void grab_frame(struct weston_pointer_grab *base) { (void)base; }
+static void grab_button(struct weston_pointer_grab *base, const struct timespec *time,
+                        uint32_t button, uint32_t state) {
+    (void)time; (void)button;
+    if (!base->pointer->button_count && state == WL_POINTER_BUTTON_STATE_RELEASED) end_window_grab(base);
+}
+static int32_t bounded_size(double value, int32_t minimum, int32_t maximum) {
+    if (minimum < 1) minimum = 1;
+    if (maximum < 1 || maximum > 4096) maximum = 4096;
+    if (minimum > maximum) minimum = maximum;
+    return (int32_t)fmax(minimum, fmin(maximum, value));
+}
+static void grab_motion(struct weston_pointer_grab *base, const struct timespec *time,
+                        struct weston_pointer_motion_event *event) {
+    (void)time;
+    struct window_grab *grab = wl_container_of(base, grab, base);
+    struct probe_window *window = grab->window;
+    struct probe *p = window->probe;
+    weston_pointer_move(base->pointer, event);
+    double dx = base->pointer->pos.c.x - base->pointer->grab_pos.c.x;
+    double dy = base->pointer->pos.c.y - base->pointer->grab_pos.c.y;
+    if (grab->edges) {
+        struct weston_size minimum = weston_desktop_surface_get_min_size(window->desktop);
+        struct weston_size maximum = weston_desktop_surface_get_max_size(window->desktop);
+        double width = grab->width, height = grab->height;
+        if (grab->edges & WESTON_DESKTOP_SURFACE_EDGE_LEFT) width -= dx;
+        if (grab->edges & WESTON_DESKTOP_SURFACE_EDGE_RIGHT) width += dx;
+        if (grab->edges & WESTON_DESKTOP_SURFACE_EDGE_TOP) height -= dy;
+        if (grab->edges & WESTON_DESKTOP_SURFACE_EDGE_BOTTOM) height += dy;
+        grab->requested_width = bounded_size(width, minimum.width, maximum.width);
+        grab->requested_height = bounded_size(height, minimum.height, maximum.height);
+        weston_desktop_surface_set_size(window->desktop, grab->requested_width, grab->requested_height);
+    } else {
+        window->position.c.x = grab->origin.c.x + dx;
+        window->position.c.y = grab->origin.c.y + dy;
+        if (!wl_list_empty(&p->compositor->output_list)) {
+            struct weston_output *output = wl_container_of(p->compositor->output_list.next, output, link);
+            window->position.c.x = fmax(48 - window->geometry.width,
+                fmin(output->width - 48, window->position.c.x));
+            window->position.c.y = fmax(0, fmin(output->height - 48, window->position.c.y));
+        }
+        position_window(window);
+        weston_compositor_damage_all(p->compositor);
+        emit(p, "damage %" PRIu64 " %" PRIu64 "\n", ++p->damage, p->scene);
+    }
+}
+static const struct weston_pointer_grab_interface window_grab_api = {
+    .focus = grab_focus, .motion = grab_motion, .button = grab_button,
+    .axis = grab_axis, .axis_source = grab_source, .frame = grab_frame, .cancel = end_window_grab,
+};
+static void begin_window_grab(struct probe *p, struct weston_desktop_surface *desktop,
+                              struct weston_seat *seat, uint32_t serial, uint32_t edges) {
+    struct probe_window *window = weston_desktop_surface_get_user_data(desktop);
+    struct weston_pointer *pointer = weston_seat_get_pointer(seat);
+    struct weston_surface *surface = weston_desktop_surface_get_surface(desktop);
+    if (seat != &p->seat || p->grab || !window || !pointer || !pointer->button_count ||
+        pointer->grab != &pointer->default_grab ||
+        pointer->grab_serial != serial || !pointer->focus || p->current != surface ||
+        weston_surface_get_main_surface(pointer->focus->surface) != surface ||
+        weston_desktop_surface_get_pending_maximized(desktop) ||
+        weston_desktop_surface_get_pending_fullscreen(desktop) || minimized(window)) return;
+    struct window_grab *grab = calloc(1, sizeof *grab);
+    if (!grab) return;
+    grab->window = window; grab->edges = edges; grab->origin = window->position;
+    grab->width = grab->requested_width = window->geometry.width;
+    grab->height = grab->requested_height = window->geometry.height;
+    p->grab = grab;
+    if (edges) weston_desktop_surface_set_resizing(desktop, true);
+    grab->base.interface = &window_grab_api;
+    weston_pointer_start_grab(pointer, &grab->base);
+    weston_pointer_clear_focus(pointer);
+    /* The captured viewport stays fixed throughout this native seat grab.
+     * Geometry is published, but its completion alone revokes the input token. */
+    window_state(p, window);
+}
+static void surface_move(struct weston_desktop_surface *desktop, struct weston_seat *seat,
+                         uint32_t serial, void *data) {
+    begin_window_grab(data, desktop, seat, serial, 0);
+}
+static void surface_resize(struct weston_desktop_surface *desktop, struct weston_seat *seat,
+                           uint32_t serial, enum weston_desktop_surface_edge edges, void *data) {
+    if (!edges || edges > 15 || (edges & 3) == 3 || (edges & 12) == 12) return;
+    begin_window_grab(data, desktop, seat, serial, edges);
+}
+static void surface_position(struct weston_desktop_surface *desktop, int32_t *x, int32_t *y, void *data) {
+    (void)data;
+    struct probe_window *window = weston_desktop_surface_get_user_data(desktop);
+    struct weston_coord_global position = weston_view_get_pos_offset_global(window->view);
+    *x = (int32_t)position.c.x; *y = (int32_t)position.c.y;
+}
 static const struct weston_desktop_api desktop_api = {
     .struct_size = sizeof desktop_api,
     .surface_added = surface_added, .surface_removed = surface_removed,
     .committed = surface_committed, .set_parent = surface_parent,
     .fullscreen_requested = surface_fullscreen, .maximized_requested = surface_maximized,
     .minimized_requested = surface_minimized,
+    .move = surface_move, .resize = surface_resize,
+    .get_position = surface_position,
 };
 
 static void command(struct probe *p, char *line) {

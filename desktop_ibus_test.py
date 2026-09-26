@@ -27,7 +27,7 @@ class IBusTests(unittest.TestCase):
         self.sources = IBusSources(self.tree, '/private/runtime', self.daemon, self.portal,
             lambda path: self.described, lambda path: (1, ':1.40', '/portal/context'), credentials)
         self.sent, self.completed, self.commits = [], [], []
-        self.native = SimpleNamespace(target=NativeTarget(1, 2, 1000, 700),
+        self.native = SimpleNamespace(target=NativeTarget(1, 2),
             focus=NativeFocus(3, 1, 120, 19, True), epoch=1, closed=False,
             windows={1: SimpleNamespace(protocol='wayland')}, submit=lambda *args: self.sent.append(args))
         self.contexts = NativeContexts(self.native, self.tree, '/private/runtime')

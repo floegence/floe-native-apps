@@ -15,7 +15,7 @@ wayland-scanner private-code "$protocol" "$output/text-input-v3-code.c"
 cc -shared -fPIC -Wall -Wextra -Werror -g \
   "$source_dir/probe_shell.c" "$output/text-input-v3-code.c" -I"$output" \
   $(pkg-config --cflags libweston-14 wayland-server | sed 's/-I/-isystem /g') \
-  $(pkg-config --libs libweston-14 wayland-server) -o "$output/probe-shell.so"
+  $(pkg-config --libs libweston-14 wayland-server) -lm -o "$output/probe-shell.so"
 wayland-scanner client-header "$capture_protocol" "$output/weston-output-capture-client.h"
 wayland-scanner private-code "$capture_protocol" "$output/weston-output-capture-code.c"
 cc -Wall -Wextra -Werror -O2 "$source_dir/frame_probe.c" \

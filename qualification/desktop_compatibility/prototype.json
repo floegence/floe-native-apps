@@ -219,6 +219,11 @@
       "case": "Application-native window modes on amd64 and arm64",
       "result": "The original shell deterministically fails the actual GTK maximize acknowledgement. Native callbacks now pass maximize, fullscreen, restore-to-maximized, normal-size restoration, minimize without process exit, and selection to restore. Top-level geometry has one callback owner; ordinary repaint no longer revokes input a second time. Popup, dialog, wheel, mixed Xwayland, frame and reconnect checks pass on both architectures. Strict Snap Firefox and Flatpak GTK/Qt repeat Unicode/save stress with exact bytes and private document authority.",
       "limits": "This does not yet qualify interactive decoration move/resize, native clipboard/cursor transfer, production helper realization or the complete desktop/package release matrix."
+    },
+    {
+      "case": "Native Wayland and Xwayland decoration grabs on amd64 and arm64",
+      "result": "Actual GDK move/resize calls are admitted only by the current native pointer press and serial. Pixel bounds move by exactly 80x44 and application plus compositor sizes increase by 100x64. Intermediate frames retain fixed viewport authority; release invalidates old input. Reconnect and window destruction cancel native grabs and preserve other applications. X11 keeps its own initial size and receives position updates; retiring windows do not publish a destroyed Xwayland binding. Shared pointer/keyboard/frame regression, Snap Firefox and Flatpak Qt Unicode/save remain green.",
+      "limits": "The unpublished helper still needs complete resource realization, clipboard/cursor transfer, Xwayland confirmed-text integration, native component distribution and the full desktop/package matrix."
     }
   ],
   "rejected_assumptions": [
@@ -238,6 +243,9 @@
     "A minimal Xwayland fixture needs the standard X11 socket directory; the native amd64 distribution fixture supplies a private tmpfs at /tmp/.X11-unix. Production resource realization must handle this prerequisite without depending on a pre-existing desktop.",
     "Selecting an IBus engine synchronously on the helper event loop blocks the factory callback on that same loop; startup must use the official asynchronous result before application launch.",
     "IBus intentionally exits when its non-daemon parent is PID 1. Distribution fixtures use a real init process; the production parent-death behavior is retained.",
-    "An Add reply may reuse a pre-existing host document grant. A facade must not treat every returned ID as newly owned or delete host grants when a viewer/helper closes; the official persistence flags remain authoritative."
+    "An Add reply may reuse a pre-existing host document grant. A facade must not treat every returned ID as newly owned or delete host grants when a viewer/helper closes; the official persistence flags remain authoritative.",
+    "A top-level surface commit runs before the shell has positioned its new geometry. Sampling both callbacks can revoke the subsequent ordinary repaint again; the desktop callback alone owns top-level geometry.",
+    "Forcing an initial X11 size cannot be undone with a later zero-size request as with xdg-shell. X11 applications retain their supplied initial sizes, including dialogs.",
+    "Xwayland removes its binding before the desktop surface removal callback finishes. Ending a grab during that callback must not emit another window state; retirement is the sole final publication."
   ]
 }

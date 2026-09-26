@@ -185,7 +185,7 @@ class ControlProbe:
                                    generation=self.native.generation, operation=value)
         return request
 
-    def paint(self, stage, expected=None, marker=None, required=(), absent=()):
+    def paint(self, stage, expected=None, marker=None, required=(), absent=(), accept_bounds=None):
         from PIL import Image
         import hashlib
         recorded = []
@@ -217,6 +217,8 @@ class ControlProbe:
                         x, y = index % image.width, index // image.width
                         x0, y0, x1, y1 = min(x0, x), min(y0, y), max(x1, x), max(y1, y)
                 record['marker_bounds'] = [x0, y0, x1, y1]
+                if accept_bounds and not accept_bounds(record['marker_bounds']):
+                    continue
             if expected is None:
                 return recorded
             sample = image.getpixel((200, 240))

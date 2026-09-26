@@ -94,7 +94,7 @@ class NativeTests(unittest.TestCase):
         self.native.observe('window-state 1 0 wayland 120 600 400 0')
         self.assertIsNone(self.native.target)
         self.native.observe('scene 2 1')
-        self.assertEqual(self.native.target.width, 600)
+        self.assertEqual(self.native.windows[1].width, 600)
         with self.assertRaises(ValueError):
             self.native.observe('scene 2 1')
 

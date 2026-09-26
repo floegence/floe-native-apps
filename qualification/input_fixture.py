@@ -102,6 +102,8 @@ elif kind in ('gtk4', 'gtk4-entry'):
             css = Gtk.CssProvider()
             css.load_from_data(b'.floe-popup { background: #13b749; padding: 20px; } '
                                b'.floe-dialog { background: #bf31bd; padding: 20px; } '
+                               b'.floe-move, .floe-resize { border: 0; border-radius: 0; '
+                               b'box-shadow: none; outline: none; transition: none; } '
                                b'.floe-move { background: #19a6c8; padding: 20px; } '
                                b'.floe-resize { background: #d8a24b; padding: 20px; } '
                                b'.floe-scroll text { background: #b3801a; }')
