@@ -18,7 +18,7 @@ var desktopSources embed.FS
 // Runtime must not tie its lifetime to their attachment context.
 //
 // This installs source only. It does not authorize launch, resolve components,
-// qualify a platform, or activate the unpublished combined display distribution.
+// qualify a platform, or activate the combined display distribution.
 // The trusted host must supply verified native resources matching its launch plan.
 // Never rewrite a running instance's snapshot when updating installed support.
 func WriteDesktopLauncher(directory, component, architecture string) (string, error) {
