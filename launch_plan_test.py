@@ -96,6 +96,24 @@ class LaunchPlanTests(unittest.TestCase):
             self.plan([{'id': 'xpra', 'component': 'fixture-xpra', 'protocols': ['x11']}])
         self.assertEqual(raised.exception.code, 'GRAPHICAL_BACKEND_UNAVAILABLE')
 
+    def test_explicit_reviewed_x11_contract_can_select_xpra(self):
+        def inspect(path, environment):
+            result = self.inspect(path, environment)
+            result['backend_hint'] = 'xpra'
+            return result
+        xpra = {'id': 'xpra', 'component': 'fixture-xpra', 'protocols': ['x11']}
+        plan = launch_plan.prepare(str(self.desktop), {'PATH': str(self.root)}, [xpra], inspect=inspect)
+        self.assertEqual(plan['backend'], xpra)
+
+    def test_unknown_backend_hint_is_rejected_before_backend_selection(self):
+        def inspect(path, environment):
+            result = self.inspect(path, environment)
+            result['backend_hint'] = 'guess'
+            return result
+        with self.assertRaises(launch_plan.Unavailable) as raised:
+            launch_plan.prepare(str(self.desktop), {'PATH': str(self.root)}, [self.backend], inspect=inspect)
+        self.assertEqual(raised.exception.code, 'GRAPHICAL_BACKEND_UNSUPPORTED')
+
     def test_desktop_edit_invalidates_plan(self):
         plan = self.plan()
         self.desktop.write_text('[Desktop Entry]\nType=Application\nExec=other\n')

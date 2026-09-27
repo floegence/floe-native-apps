@@ -234,6 +234,13 @@ def inspect_application(path, environment):
     app = Gio.DesktopAppInfo.new_from_filename(path)
     if not app or app.get_is_hidden() or app.get_boolean('Terminal'):
         raise Unavailable('APPLICATION_TARGET_INVALID')
+    # A producer may publish an explicit, reviewed X11-only contract. Protocol
+    # choice is bound to the immutable desktop entry and is never inferred from
+    # the application name, package format, or the host desktop. Without this
+    # field the combined Wayland/Xwayland session remains the only default.
+    backend_hint = app.get_string('X-Floe-Backend')
+    if backend_hint is not None and backend_hint not in ('xpra', 'wayland'):
+        raise Unavailable('GRAPHICAL_BACKEND_UNSUPPORTED')
     executable, tokens, environment = launch_tokens(app, environment, GLib)
     target = file_identity(executable)
     package = {'kind': 'native', 'id': '', 'revision': ''}
@@ -340,13 +347,23 @@ def inspect_application(path, environment):
             package = native_package(target, environment)
     if file_identity(path, 1 << 20) != desktop:
         raise StalePlan()
-    return {'desktop': desktop, 'executable': target, 'package': package, 'services': services}
+    result = {'desktop': desktop, 'executable': target, 'package': package, 'services': services}
+    if backend_hint is not None:
+        result['backend_hint'] = backend_hint
+    return result
 
 
 def prepare(path, environment, backends, *, inspect=inspect_application):
     observed = inspect(path, environment)
-    matches = [backend for backend in backends if backend.get('id') == 'wayland' and
-               backend.get('component') and set(backend.get('protocols', [])) == {'wayland', 'x11'}]
+    hint = observed.get('backend_hint')
+    if hint is not None and hint not in ('xpra', 'wayland'):
+        raise Unavailable('GRAPHICAL_BACKEND_UNSUPPORTED')
+    if hint == 'xpra':
+        matches = [backend for backend in backends if backend.get('id') == 'xpra' and
+                   backend.get('component') and set(backend.get('protocols', [])) == {'x11'}]
+    else:
+        matches = [backend for backend in backends if backend.get('id') == 'wayland' and
+                   backend.get('component') and {'wayland', 'x11'} <= set(backend.get('protocols', []))]
     if len(matches) != 1:
         raise Unavailable('GRAPHICAL_BACKEND_UNAVAILABLE')
     backend = matches[0]
