@@ -12,7 +12,7 @@ import tempfile
 import time
 import traceback
 
-from gi.repository import GLib
+from gi.repository import Gio, GLib
 from application_processes import identity
 from control_probe import ControlClient
 from session_probe import cleanup_helper, launch_records, session_file, session_token
@@ -126,6 +126,46 @@ def main():
         client = ControlClient(evidence / 'viewer', runtime / 'control.sock', runtime.name, session_token(evidence, token))
         client.reconnect()
         target = paint('loaded')
+        if app_id == 'org.gnome.TextEditor':
+            # A painted GTK window can precede asynchronous IBus registration.
+            # Observe this fixture's real context before the click/text burst;
+            # do not retry text or claim that first-frame readiness proves an
+            # editable context. Only the saved application bytes prove input.
+            daemon = next(x for x in records() if x.get('service') == 'ibus')
+            assert identity(daemon['pid'])[1] == daemon['start_ticks']
+            arguments = Path(f"/proc/{daemon['pid']}/cmdline").read_bytes().split(b'\0')
+            addresses = [x[len(b'--address='):].decode() for x in arguments if x.startswith(b'--address=')]
+            assert len(addresses) == 1 and identity(daemon['pid'])[1] == daemon['start_ticks']
+            bus = Gio.DBusConnection.new_for_address_sync(addresses[0],
+                Gio.DBusConnectionFlags.AUTHENTICATION_CLIENT | Gio.DBusConnectionFlags.MESSAGE_BUS_CONNECTION,
+                None, None)
+            bus.set_exit_on_close(False)
+            observed = time.monotonic()
+            observations = []
+            def context_ready():
+                assert identity(daemon['pid'])[1] == daemon['start_ticks']
+                try:
+                    path = bus.call_sync('org.freedesktop.IBus', '/org/freedesktop/IBus',
+                        'org.freedesktop.DBus.Properties', 'Get',
+                        GLib.Variant('(ss)', ('org.freedesktop.IBus', 'CurrentInputContext')),
+                        GLib.VariantType.new('(v)'), Gio.DBusCallFlags.NONE, 2000, None).unpack()[0]
+                    version, owner, pid, uid, focused, synchronous = bus.call_sync(
+                        'org.freedesktop.IBus', '/org/freedesktop/IBus', 'org.floegence.IBus.ContextSource',
+                        'Describe', GLib.Variant('(o)', (path,)), GLib.VariantType.new('(usuubb)'),
+                        Gio.DBusCallFlags.NONE, 2000, None).unpack()
+                    ready = version == 1 and owner.startswith(':') and uid == os.getuid() and focused and synchronous
+                    observation = {'ready': ready, 'focused': focused, 'synchronous': synchronous, 'peer_pid': pid}
+                except GLib.Error as error:
+                    ready = False
+                    observation = {'ready': False, 'error': Gio.DBusError.get_remote_error(error)}
+                if not observations or observation != observations[-1]:
+                    observations.append(observation)
+                return ready
+            try:
+                wait(context_ready, 'Initial GTK IBus context did not register')
+            finally:
+                bus.close_sync(None)
+                result['initial_context'] = {'observations': observations, 'elapsed_seconds': time.monotonic() - observed}
         click(330, 300)
         pending, expected = [], ''
         for value in ['中文日本語한글🙂👩🏽‍💻e\u0301𠮷'] * 64 + ['界🙂' * 2000]:
@@ -149,8 +189,16 @@ def main():
             drafts = state / 'data/org.gnome.TextEditor/drafts'
             def draft_written():
                 for path in drafts.glob('*'):
-                    if path.is_file() and path.read_bytes() == expected.encode():
-                        result['completed_draft_sha256'] = hashlib.sha256(path.read_bytes()).hexdigest()
+                    # GIO writes a hidden temporary file then renames it. Only
+                    # a published draft establishes completed application work.
+                    if path.name.startswith('.') or not path.is_file():
+                        continue
+                    try:
+                        content = path.read_bytes()
+                    except FileNotFoundError:
+                        continue
+                    if content == expected.encode():
+                        result['completed_draft_sha256'] = hashlib.sha256(content).hexdigest()
                         return True
                 return False
             wait(draft_written, 'GNOME draft did not finish with the exact received text')
