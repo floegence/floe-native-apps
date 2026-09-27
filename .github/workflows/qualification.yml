@@ -191,6 +191,14 @@ jobs:
             | tee "$RUNNER_TEMP/qualification/system-input-versions.log"
           go test -count=1 -run '^TestNative(ClientInput|DisplayInput|ViewerLayout)$' -v . \
             2>&1 | tee "$RUNNER_TEMP/qualification/system-client-input.log"
+          # Keep the rapid focus-change batch intact. Each independent GTK4
+          # startup retains its own native geometry and document receipts.
+          for attempt in $(seq 1 12); do
+            FLOE_TEST_INPUT_FIXTURES=gtk4 \
+              FLOE_TEST_INPUT_EVIDENCE="$RUNNER_TEMP/qualification/system-density-$attempt" \
+              go test -count=1 -run '^TestNativeDisplayInput$' -v . \
+              2>&1 | tee "$RUNNER_TEMP/qualification/system-density-$attempt.log"
+          done
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:

@@ -69,7 +69,7 @@ if kind == 'gtk':
 elif kind in ('gtk4', 'gtk4-entry'):
     import gi
     gi.require_version('Gtk', '4.0')
-    from gi.repository import Gtk, GLib, Gio
+    from gi.repository import Gtk, GLib, Gio, Gdk
     # Every qualification process owns its controls, including mixed-protocol
     # tests sharing one private bus. Never delegate to another fixture process.
     app = Gtk.Application(application_id='org.floegence.InputQualification',
@@ -106,7 +106,6 @@ elif kind in ('gtk4', 'gtk4-entry'):
         window.set_default_size(640, 320)
         if layout_mode: window.set_size_request(1240, 960)
         if os.environ.get('FLOE_TEST_WINDOW_ACTIONS'):
-            from gi.repository import Gdk
             Gtk.Settings.get_default().set_property('gtk-cursor-blink', False)
             Gtk.Settings.get_default().set_property('gtk-enable-animations', False)
             state = {'popup_clicks': 0, 'popup_closed': 0, 'dialog_clicks': 0, 'dialog_closed': 0,
@@ -263,10 +262,17 @@ elif kind in ('gtk4', 'gtk4-entry'):
         window.present()
         editors[0].grab_focus()
         save(['', ''])
+        focus_events = []
+        def observe_focus(widget, _property, index):
+            focus_events.append({'index':index, 'focused':widget.has_focus()})
+            receipt.with_suffix('.focus.json').write_text(json.dumps(focus_events))
+        for index, editor in enumerate(editors):
+            editor.connect('notify::has-focus', observe_focus, index)
         def save_density():
             receipt.with_suffix('.density.json').write_text(json.dumps({
                 'scale':window.get_scale_factor(),
-                'dpi':Gtk.Settings.get_default().get_property('gtk-xft-dpi') / 1024}))
+                'dpi':Gtk.Settings.get_default().get_property('gtk-xft-dpi') / 1024,
+                'size':[window.get_width(),window.get_height()]}))
             return True
         GLib.timeout_add(100, save_density)
     app.connect('activate', activate)

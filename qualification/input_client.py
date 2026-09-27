@@ -40,6 +40,8 @@ class Client(GObjectXpraClient):
         self.cutting = False
         self.clipboard = None
         self.display_configured = False
+        self.geometry_events = []
+        self.focus_clicks = []
 
     def make_hello(self):
         caps = super().make_hello()
@@ -78,9 +80,11 @@ class Client(GObjectXpraClient):
     def configure_window(self, packet):
         if packet[1] == self.wid:
             self.origin = tuple(packet[2:4])
+            self.geometry_events.append(['origin', *self.origin])
 
     def window_resized(self, packet):
         if packet[1] == self.wid:
+            self.geometry_events.append(['size', *packet[2:4]])
             canvas = Image.new('RGB', tuple(packet[2:4]))
             canvas.paste(self.canvas, (0, 0))
             self.canvas = canvas
@@ -212,6 +216,8 @@ class Client(GObjectXpraClient):
                 # Window pixels are already physical after density negotiation;
                 # the fixed vertical focus point still needs the negotiated scale.
                 coords = [self.origin[0] + x, self.origin[1] + 80 * density]
+                self.focus_clicks.append({'sequence':sequence, 'position':coords,
+                                          'canvas':self.canvas.size, 'origin':self.origin})
                 self.send('pointer-position', self.wid, coords, [])
                 self.send('button-action', self.wid, 1, True, coords, [])
                 self.send('button-action', self.wid, 1, False, coords, [])
@@ -248,9 +254,17 @@ class Client(GObjectXpraClient):
         return True
 
     def expired(self):
-        print('TIMEOUT', kind, 'painted=', self.painted, 'started=', self.started,
-              'acknowledged=', self.acknowledged, 'document_ready=', receipt.with_suffix('.ready').exists(),
-              'hovered=', receipt.with_suffix('.hover').exists(), 'clicked=', receipt.with_suffix('.clicked').exists(), flush=True)
+        receipt.with_suffix('.diagnostics.json').write_text(json.dumps({
+            'geometry':self.geometry_events, 'clicks':self.focus_clicks,
+            'origin':self.origin, 'canvas':self.canvas.size,
+            'editing':self.editing, 'fields':self.fields, 'pasting':self.pasting,
+            'copying':self.copying, 'cutting':self.cutting}))
+        state = {'painted':self.painted, 'started':self.started, 'acknowledged':self.acknowledged,
+                 'editing':self.editing, 'fields':self.fields, 'pasting':self.pasting,
+                 'copying':self.copying, 'cutting':self.cutting}
+        if kind == 'chromium':
+            state.update({name:receipt.with_suffix('.' + name).exists() for name in ('ready', 'hover', 'clicked')})
+        print('TIMEOUT', kind, json.dumps(state), flush=True)
         self.quit(1)
         return False
 
