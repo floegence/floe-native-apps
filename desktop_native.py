@@ -417,10 +417,13 @@ class NativeDesktop:
 
     def bind(self, epoch):
         integer(epoch)
-        if self.closed or self.version != 1 or epoch <= self.last_epoch:
+        if self.version != 1 or epoch <= self.last_epoch:
             raise ValueError('Native connection is unavailable')
         self.epoch, self.last_epoch = epoch, epoch
-        self.send(f'connection {epoch}\n')
+        # An unavailable display remains observable and explicitly terminable.
+        # It has no target or native input authority to restore on attachment.
+        if not self.closed:
+            self.send(f'connection {epoch}\n')
 
     def release(self, epoch):
         if not self.closed and epoch == self.epoch:

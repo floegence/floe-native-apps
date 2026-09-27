@@ -54,7 +54,7 @@ def main():
         for toolkit in ('gtk', 'gtk4', 'qt5', 'qt6'):
             for mode in ('clipboard', 'clipboard-x11'):
                 cases.append((toolkit + '-' + mode, 'session_probe.py', [mode], {'FLOE_PROBE_TOOLKIT': toolkit}))
-        for mode in ('slow-window', 'launcher-failure', 'capture-loss', 'bus-loss'):
+        for mode in ('slow-window', 'launcher-failure', 'capture-loss', 'bus-loss', 'terminate', 'terminate-windowless'):
             cases.append((mode, 'session_probe.py', [mode], {'FLOE_PROBE_TOOLKIT': 'gtk4'}))
         cases.append(('chromium', 'session_probe.py', ['clipboard-chromium'], {'FLOE_PROBE_CURSOR': '1'}))
         for protocol in ('wayland', 'x11'):

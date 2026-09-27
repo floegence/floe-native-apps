@@ -260,6 +260,21 @@ I/O closes the partial stream. `Close` detaches sharing and never terminates the
 helper or application. Waiting, unavailable capture and connection loss are not
 application-exit evidence.
 
+`terminate_application` is reserved for explicit, authorized force-quit intent.
+It accepts no target, PID, signal or operation payload. The installed session
+signals only its own existing supervisor; that supervisor retains descendant
+ownership and writes the actual termination receipt. The reply `requested` is
+not proof of exit. Pending input is cancelled before lifecycle dispatch. An
+unavailable graphics backend permits observation-only reattachment and explicit
+termination, without restoring any target or input authority. Neither capture
+loss nor detach invokes termination. Native qualification checks running and
+windowless applications, plus reattachment after capture and private-bus loss.
+After its final child wait, the supervisor ignores late termination before
+publishing the exit receipt, preserving that result through interpreter shutdown.
+Applications may choose to exit themselves when their private bus fails; the
+host reports their actual exit. The bus-loss fixture explicitly retains its GTK
+connection to distinguish that toolkit policy from host-initiated termination.
+
 Confirmed text has one 30-second native completion deadline shared by Xpra and
 the combined backend. A long edit may keep a real editor's event loop busy for
 more than three seconds. Following input stays queued until the actual native

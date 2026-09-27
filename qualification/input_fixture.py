@@ -70,6 +70,11 @@ elif kind in ('gtk4', 'gtk4-entry'):
     import gi
     gi.require_version('Gtk', '4.0')
     from gi.repository import Gtk, GLib, Gio, Gdk
+    if os.environ.get('FLOE_TEST_RETAIN_AFTER_BUS_LOSS') == '1':
+        # Real applications choose their own bus-loss behavior. This explicit
+        # fixture policy lets qualification prove the host does not kill them.
+        retained_bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+        retained_bus.set_exit_on_close(False)
     # Every qualification process owns its controls, including mixed-protocol
     # tests sharing one private bus. Never delegate to another fixture process.
     app = Gtk.Application(application_id='org.floegence.InputQualification',

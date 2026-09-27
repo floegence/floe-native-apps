@@ -381,7 +381,8 @@ class DesktopSession:
         # is deliberately no deadline for the application's first native window.
         self.loop.cancel(self.timeout)
         self.timeout = None
-        self.helper.listen(self.runtime, self.instance, self.token, self.capture)
+        self.helper.listen(self.runtime, self.instance, self.token, self.capture,
+                           terminate_application=self.terminate_application)
         self.capture = None
         self.application = self.spawn('application', self.application_command,
                                       self.services.launcher_environment(self.application_environment))
@@ -400,6 +401,16 @@ class DesktopSession:
     def graphics_lost(self):
         self.helper.native.lost()
         self.fail('DESKTOP_GRAPHICS_UNAVAILABLE')
+
+    def terminate_application(self):
+        process = self.processes.get('application')
+        if self.closed or process is None or process is not self.application:
+            raise ValueError('Owned application supervisor is unavailable')
+        # GSubprocess retains this exact child generation and owns its wait.
+        # Its existing supervisor handles descendant termination with pidfds;
+        # never signal the helper, compositor, process group or an arbitrary PID.
+        self.helper.native.lost()
+        process.send_signal(signal.SIGTERM)
 
     def fail(self, code, **details):
         if self.closed or self.failed:

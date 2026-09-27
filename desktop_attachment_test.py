@@ -1,6 +1,7 @@
 """Frame acknowledgement and input authority follow one native target instance."""
 from types import SimpleNamespace
 import unittest
+from unittest.mock import Mock
 
 from desktop_attachment import DesktopAttachment
 
@@ -110,6 +111,58 @@ class AttachmentTests(unittest.TestCase):
     def ready(self):
         self.captured()
         self.acknowledge()
+
+    def test_termination_uses_only_the_authenticated_application_owner(self):
+        terminate = Mock()
+        self.attachment.terminate_application = terminate
+        self.request('terminate_application', pid=123)
+        terminate.assert_not_called()
+        self.assertEqual(self.owner.messages[-1]['error'], 'REQUEST_INVALID')
+        self.request('terminate_application')
+        terminate.assert_called_once_with()
+        self.assertEqual(self.owner.messages[-1]['result'], 'requested')
+        self.attachment.request(Owner(self.attachment), {'id': 999, 'method': 'terminate_application'})
+        self.attachment.request(self.owner, {'id': self.request_id, 'method': 'terminate_application'})
+        terminate.assert_called_once_with()
+
+    def test_detach_and_capture_failure_never_request_termination(self):
+        terminate = Mock()
+        self.attachment.terminate_application = terminate
+        self.attachment.failed = True
+        self.owner.close()
+        terminate.assert_not_called()
+
+    def test_replacement_attachment_alone_can_terminate_without_an_input_target(self):
+        terminate = Mock()
+        self.attachment.terminate_application = terminate
+        self.native.target = None
+        replacement = Owner(self.attachment)
+        self.attachment.attach(replacement)
+        self.attachment.request(self.owner, {'id': 100, 'method': 'terminate_application'})
+        terminate.assert_not_called()
+        self.attachment.request(replacement, {'id': 1, 'method': 'terminate_application'})
+        terminate.assert_called_once_with()
+        self.assertEqual(replacement.messages[-1]['result'], 'requested')
+
+    def test_termination_requires_an_available_lifecycle_owner(self):
+        self.request('terminate_application')
+        self.assertEqual(self.owner.messages[-1]['error'], 'METHOD_UNSUPPORTED')
+        self.attachment.terminate_application = Mock(side_effect=ValueError('Retired instance'))
+        self.request('terminate_application')
+        self.assertEqual(self.owner.messages[-1]['error'], 'APPLICATION_UNAVAILABLE')
+
+    def test_explicit_termination_cancels_pending_text_before_lifecycle_dispatch(self):
+        self.ready()
+        self.input('text', text='fixture')
+        self.input('key', code=28, pressed=True)
+        cancelled = []
+        self.attachment.terminate_application = lambda: cancelled.append(len(self.native.commits))
+        self.request('terminate_application')
+        self.assertEqual(cancelled, [1])
+        self.native.commits[0][2](None)
+        self.assertEqual(self.native.input, [])
+        self.assertEqual([m['error'] for m in self.owner.messages if 'error' in m],
+                         ['INPUT_TARGET_UNAVAILABLE', 'INPUT_TARGET_UNAVAILABLE'])
 
     def test_cursor_updates_coalesce_while_peer_is_backpressured(self):
         self.native.cursor.current = ({'mode': 'image', 'sequence': 1}, b'first')

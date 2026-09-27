@@ -94,6 +94,18 @@ class StatusTests(unittest.TestCase):
         self.assertEqual(code, 139)
         self.assertEqual(receipt['exit_code'], -11)
 
+    def test_completed_wait_ignores_late_termination_before_publishing_exit(self):
+        write = self.module.write_receipt
+        observed = []
+        def record(path, state, **details):
+            if state == 'exited':
+                self.module.signal.signal.assert_called_with(self.module.signal.SIGTERM, self.module.signal.SIG_IGN)
+                observed.append(details['termination_requested'])
+            write(path, state, **details)
+        with patch.object(self.module, 'write_receipt', side_effect=record):
+            code, receipt = self.run_launcher([(123, 0)])
+        self.assertEqual((code, observed, receipt['exit_code']), (0, [False], 0))
+
     def test_reused_pid_cannot_overwrite_original_launcher_status(self):
         code, receipt = self.run_launcher([(123, 46 << 8), (123, 0)])
         self.assertEqual(code, 46)

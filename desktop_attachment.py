@@ -9,8 +9,9 @@ from input_order import OrderedInput, valid_text
 
 
 class DesktopAttachment:
-    def __init__(self, native, timeout_add, timeout_remove):
+    def __init__(self, native, timeout_add, timeout_remove, *, terminate_application=None):
         self.native = native
+        self.terminate_application = terminate_application
         self.owner, self.epoch, self.last_request = None, 0, 0
         self.ready, self.capture, self.awaiting = None, None, None
         self.frame_sequence, self.dirty, self.failed = 0, False, False
@@ -53,7 +54,22 @@ class DesktopAttachment:
             self.reply(owner, request, error='REQUEST_SEQUENCE_INVALID')
             return
         self.last_request = request
-        if method == 'status':
+        if method == 'terminate_application':
+            if set(message) != {'id', 'method'}:
+                self.reply(owner, request, error='REQUEST_INVALID')
+            elif self.terminate_application is None:
+                self.reply(owner, request, error='METHOD_UNSUPPORTED')
+            else:
+                # Only the installed session owner can signal its supervisor.
+                # Force quit discards pending input; it never waits behind text
+                # completion or accepts a caller-selected PID/signal.
+                self.retire_input()
+                try:
+                    self.terminate_application()
+                    self.reply(owner, request, 'requested')
+                except (ValueError, OSError):
+                    self.reply(owner, request, error='APPLICATION_UNAVAILABLE')
+        elif method == 'status':
             self.reply(owner, request, self.native.snapshot())
         elif method == 'frame_ack':
             frame = self.awaiting

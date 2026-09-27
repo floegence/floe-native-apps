@@ -252,6 +252,11 @@ func TestDesktopClientInvalidTargetAndOversizedInputSendNothing(t *testing.T) {
 		{Method: "close_window", Window: desktopMaxID + 1},
 		{Method: "status", Window: 12},
 		{Method: "terminate"},
+		{Method: "terminate_application", Connection: 7},
+		{Method: "terminate_application", Window: 12},
+		{Method: "terminate_application", Generation: 81},
+		{Method: "terminate_application", Frame: 1},
+		{Method: "terminate_application", Operation: json.RawMessage(`{"pid":123}`)},
 	} {
 		if _, err := client.Send(t.Context(), request); !errors.Is(err, ErrInvalid) {
 			t.Fatalf("invalid request accepted: %s: %v", request.Method, err)
@@ -259,6 +264,27 @@ func TestDesktopClientInvalidTargetAndOversizedInputSendNothing(t *testing.T) {
 	}
 	if client.sequence != 0 {
 		t.Fatal("invalid requests entered the wire sequence")
+	}
+}
+
+func TestDesktopClientExplicitTerminationHasNoCallerSelectedTarget(t *testing.T) {
+	client, peer := desktopTestConnection(t)
+	received := make(chan map[string]any, 1)
+	go func() {
+		body, err := readDesktopPacket(peer, 1, desktopRequestLimit)
+		var value map[string]any
+		if err != nil || json.Unmarshal(body, &value) != nil {
+			received <- nil
+			return
+		}
+		received <- value
+	}()
+	if _, err := client.Send(t.Context(), DesktopRequest{Method: "terminate_application"}); err != nil {
+		t.Fatal(err)
+	}
+	value := <-received
+	if len(value) != 2 || value["method"] != "terminate_application" || value["id"] != float64(1) {
+		t.Fatalf("unexpected force-quit request: %v", value)
 	}
 }
 

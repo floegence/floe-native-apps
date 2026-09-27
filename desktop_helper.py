@@ -85,12 +85,13 @@ class DesktopHelper:
             contexts.x11 = None
         self.native.contexts = None
 
-    def listen(self, directory, instance, token, capture):
+    def listen(self, directory, instance, token, capture, *, terminate_application=None):
         if self.closed or self.attachment is not None or self.native.closed or self.native.version != 1:
             raise ValueError('Prepared native helper is unavailable')
         frames = NativeFrames(capture, self.loop, self.native.query_scene)
         self.native.frames = frames
-        attachment = DesktopAttachment(self.native, self.loop.later, self.loop.cancel)
+        attachment = DesktopAttachment(self.native, self.loop.later, self.loop.cancel,
+                                       terminate_application=terminate_application)
         self.native.attachment = attachment
         try:
             server = DesktopControl(directory, instance, token, attachment, self.loop)

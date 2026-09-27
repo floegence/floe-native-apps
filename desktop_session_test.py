@@ -25,6 +25,22 @@ class SessionTests(unittest.TestCase):
         self.path.write_text(json.dumps(value))
         self.path.chmod(0o600)
 
+    def test_explicit_termination_signals_only_the_owned_supervisor(self):
+        session = self.module.DesktopSession.__new__(self.module.DesktopSession)
+        session.closed, session.failed = False, True
+        session.application = Mock()
+        session.helper = Mock()
+        other = Mock()
+        session.processes = {'application': session.application, 'compositor': other}
+        session.terminate_application()
+        session.helper.native.lost.assert_called_once_with()
+        session.application.send_signal.assert_called_once_with(self.module.signal.SIGTERM)
+        other.send_signal.assert_not_called()
+        session.processes.pop('application')
+        with self.assertRaises(ValueError):
+            session.terminate_application()
+        session.application.send_signal.assert_called_once()
+
     def test_preserve_authoritative_launch_failure(self):
         for code in ('APPLICATION_HOST_SERVICE_UNAVAILABLE', 'PACKAGE_LAUNCHER_UNSUPPORTED',
                      'PACKAGE_RUNTIME_UNAVAILABLE', 'GRAPHICAL_BACKEND_UNAVAILABLE', 'HOST_SERVICE_UNAVAILABLE'):

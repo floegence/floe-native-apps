@@ -34,6 +34,10 @@ def helper(root, runtime, evidence, token, mode):
         'FLOE_TEST_WINDOW_COLOR': '13579b', 'PYTHONPATH': '/floe-qualification/host-python'}
     if mode == 'clipboard-x11':
         environment['GDK_BACKEND'] = 'x11'
+    if mode == 'bus-loss':
+        # This fixture deliberately survives bus loss so the helper's lifetime
+        # policy can be tested independently of GApplication's self-termination.
+        environment['FLOE_TEST_RETAIN_AFTER_BUS_LOSS'] = '1'
     for name in ('DISPLAY', 'XAUTHORITY', 'FLOE_NATIVE_APPLICATION_ENV', 'FLOE_NATIVE_INPUT_GTK_PATH',
                  'GTK_IM_MODULE', 'GTK_IM_MODULE_FILE', 'GTK_PATH', 'GIO_EXTRA_MODULES',
                  'QT_IM_MODULE', 'QT_PLUGIN_PATH', 'QT_QPA_PLATFORM'):
@@ -156,7 +160,7 @@ def main():
         helper(root, Path(sys.argv[3]), Path(sys.argv[4]), sys.stdin.readline().strip(), sys.argv[5])
         return
     mode = sys.argv[2] if len(sys.argv) > 2 else 'normal'
-    assert mode in ('normal', 'chromium', 'clipboard', 'clipboard-x11', 'clipboard-chromium', 'slow-window', 'launcher-failure', 'support-failure', 'capture-loss', 'bus-loss', 'runtime-noexec')
+    assert mode in ('normal', 'chromium', 'clipboard', 'clipboard-x11', 'clipboard-chromium', 'slow-window', 'launcher-failure', 'support-failure', 'capture-loss', 'bus-loss', 'runtime-noexec', 'terminate', 'terminate-windowless')
     from control_probe import ControlClient
     evidence = Path(tempfile.mkdtemp(prefix='persistent-session-', dir=root))
     runtime = Path(tempfile.mkdtemp(prefix='floe-session-', dir=f'/run/user/{os.getuid()}'))
@@ -173,6 +177,8 @@ def main():
     prefix += f'open({str(evidence / "application-environment.json")!r}, "w").write(json.dumps({{"prefix": sys.prefix, "python_path": os.environ.get("PYTHONPATH"), "support_overrides": "FLOE_NATIVE_APPLICATION_ENV" in os.environ}}))\n'
     if mode == 'slow-window':
         prefix += 'time.sleep(42)\n'
+    elif mode == 'terminate-windowless':
+        prefix += 'time.sleep(60)\n'
     elif mode == 'launcher-failure':
         prefix += 'sys.exit(46)\n'
     baseline = os.environ.get('FLOE_TEST_GTK4_BASELINE')
@@ -199,6 +205,16 @@ def main():
             if time.monotonic() >= deadline or process.poll() is not None:
                 raise RuntimeError(reason)
             time.sleep(.01)
+    def terminate(failed=False):
+        # The authenticated request is only intent. The supervisor's receipt
+        # and real process disappearance below establish actual completion.
+        assert client.response(client.request('terminate_application'))['result'] == 'requested'
+        assert process.wait(timeout=15) == (1 if failed else 0)
+        exited = next(x for x in records() if x.get('state') == 'exited')
+        assert exited['termination_requested'] and exited['exit_code'] < 0
+        result['application_exit'] = exited
+        assert not (runtime / 'control.sock').exists()
+        result['authenticated_termination'], result['passed'] = True, True
     try:
         if mode == 'runtime-noexec':
             # A restrictive mount belongs only to this newly created fixture
@@ -245,6 +261,16 @@ def main():
         assert not any(x.get('service', '').startswith('xdg-') for x in records()), records()
         client = ControlClient(evidence / 'viewer', runtime / 'control.sock', runtime.name, session_token(evidence, token))
         client.reconnect()
+        if mode == 'terminate-windowless':
+            wait(lambda: (evidence / 'application-environment.json').exists(), 'Windowless application never started')
+            assert client.response(client.request('status'))['result']['state'] == 'waiting'
+            assert not receipt.exists()
+            client.close()
+            assert process.poll() is None
+            client.reconnect()
+            assert client.state['state'] == 'waiting'
+            terminate()
+            return
         if mode == 'slow-window':
             assert client.response(client.request('status'))['result']['state'] == 'waiting'
         began = time.monotonic()
@@ -333,7 +359,16 @@ def main():
             app = next(x for x in records() if x.get('service') == 'application')
             assert identity(app['pid'])[1] == app['start_ticks'] and process.poll() is None
             assert json.loads(receipt.read_text()) == [expected, '']
-            result[service_name + '_failure_retains_application'], result['passed'] = True, True
+            result[service_name + '_failure_retains_application'] = True
+            client.close()
+            assert process.poll() is None
+            client.reconnect()
+            assert client.state['state'] == 'unavailable'
+            result['reattached_after_failure'] = True
+            terminate(failed=True)
+            return
+        if mode == 'terminate':
+            terminate()
             return
         close = client.request('close_window', window=target['window'])
         assert 'error' not in client.response(close)

@@ -328,6 +328,7 @@ class NativeTests(unittest.TestCase):
         self.assertTrue(self.sent[-1].endswith('button 273 1\n'))
 
     def test_barriers_belong_to_the_current_query_and_disconnect_invalidates_target(self):
+        old_target = self.native.target
         results = []
         self.native.query_scene(lambda *args: results.append(args))
         with self.assertRaises(ValueError):
@@ -339,6 +340,16 @@ class NativeTests(unittest.TestCase):
         self.assertIsNone(self.native.target)
         self.assertEqual(results[-1], (0, 0))
         self.assertEqual(self.native.snapshot()['state'], 'unavailable')
+        sent = list(self.sent)
+        self.native.bind(2)
+        self.assertEqual(self.native.epoch, 2)
+        self.assertEqual(self.native.snapshot()['state'], 'unavailable')
+        self.assertIsNone(self.native.target)
+        self.assertEqual(self.sent, sent)
+        with self.assertRaises(ValueError):
+            self.native.deliver(2, old_target, {'kind': 'key', 'code': 30, 'pressed': True})
+        with self.assertRaises(ValueError):
+            self.native.select(old_target.window)
         with self.assertRaises(ValueError):
             self.native.bind(2)
 

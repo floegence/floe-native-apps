@@ -402,6 +402,12 @@
         "text_editor": "90d80a1a07e9dcbd1ca813143fb492878ab49b51bb010f830172f8661dd6bcc3"
       },
       "limits": "Native amd64 KVM guest with original signed RPMs and unchanged SELinux policy. The archive is modified source at d9676dd; exact immutable release qualification and product integration remain pending. No physical GPU, system IME or mobile-device claim."
+    },
+    {
+      "case": "Authenticated explicit termination on native amd64 and arm64 Ubuntu 24.04",
+      "result": "Installed public session API passes actual running/windowless force quit and observation-only reattachment after capture/private-bus loss. Supervisor receipts confirm explicit intent, actual child exit, endpoint removal and no surviving owned support processes. Pending input is cancelled and old attachments cannot request termination. The supervisor ignores late termination after its final wait so a completed receipt survives interpreter shutdown.",
+      "source_archive_sha256": "8a75b3c07a86d9cc3abde9d0898d40dac5d9418e263874b0793f2ebe8c800086",
+      "limits": "Modified source at 36f403e; exact-tag qualification and consumer integration remain required. GTK applications can choose to terminate themselves on D-Bus loss; the fixture explicitly retains its bus connection to isolate host lifecycle behavior."
     }
   ],
   "rejected_assumptions": [
@@ -433,6 +439,7 @@
     "A clean host may lack GTK IBus modules. Native GTK adapters now use the existing context scheduler on X11 and the application toolkit standard Wayland context without a host input module dependency.",
     "An installed but dormant official host document service needs fixed-name D-Bus activation before unique-owner validation on headless systems.",
     "Official document AS_NEEDED_BY_APP checks installed Flatpak permissions, not per-instance revoked filesystem access. Passing that flag can return an inaccessible host path and lose Save As. The bounded facade requests an actual official export, preserving every other flag and requested permission.",
-    "GTK3 does not always ship im-wayland.so: Fedora compiles the same implementation into libgtk. Native discovery must handle the actual toolkit build, not infer module layout from the desktop or application name."
+    "GTK3 does not always ship im-wayland.so: Fedora compiles the same implementation into libgtk. Native discovery must handle the actual toolkit build, not infer module layout from the desktop or application name.",
+    "A surviving GSubprocess identity does not imply its application is still running: the supervisor may be finalizing after its last child and exit receipt. Late SIGTERM must not contradict a completed wait. GApplication may independently self-terminate when its bus closes; fixture and host lifecycle evidence must distinguish that behavior."
   ]
 }

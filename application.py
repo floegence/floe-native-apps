@@ -178,6 +178,10 @@ def launch(app, receipt, plan=None):
         scope.close()
         if failures:
             raise failures[0]
+    # All owned children have exited. A force-quit request arriving during
+    # receipt publication or interpreter shutdown must not turn this completed
+    # wait into a contradictory signal exit. SIG_IGN survives Python shutdown.
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
     # Preserve actual direct-launcher status. Window readiness is owned by the
     # graphical backend; a process result must not guess whether a window ever
     # existed. In particular, Snap's exit 46 must survive this supervisor.

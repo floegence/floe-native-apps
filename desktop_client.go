@@ -132,6 +132,10 @@ type DesktopEvent struct {
 // input object for input requests; the helper validates it against the current
 // acknowledged target. Other methods have no Operation. Target fields remain
 // explicit so a stale callback cannot borrow the connection's current target.
+// terminate_application is reserved for authorized explicit force-quit intent:
+// the installed session signals its own supervisor. It takes no PID, signal or
+// target and remains available after capture failure. Closing this connection
+// never invokes it; the subsequent process receipt establishes the real exit.
 type DesktopRequest struct {
 	Method     string          `json:"method"`
 	Connection uint64          `json:"connection,omitempty"`
@@ -145,7 +149,7 @@ func desktopID(value uint64) bool { return value > 0 && value <= desktopMaxID }
 
 func (r DesktopRequest) valid(connection uint64) bool {
 	switch r.Method {
-	case "status", "refresh":
+	case "status", "refresh", "terminate_application":
 		return r.Connection == 0 && r.Window == 0 && r.Generation == 0 && r.Frame == 0 && len(r.Operation) == 0
 	case "frame_ack":
 		return desktopID(r.Frame) && r.Connection == 0 && r.Window == 0 && r.Generation == 0 && len(r.Operation) == 0
