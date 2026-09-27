@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from desktop_graphics import DesktopGraphics
+from desktop_graphics import DesktopGraphics, prepare_x11_socket_directory
 
 
 class DesktopGraphicsTests(unittest.TestCase):
@@ -38,6 +38,28 @@ class DesktopGraphicsTests(unittest.TestCase):
         self.environment = {'WAYLAND_DISPLAY': 'wayland-private', 'XDG_RUNTIME_DIR': str(self.instance),
                             'LD_PRELOAD': '/host/foreign.so', 'LD_LIBRARY_PATH': '/host/libraries',
                             'DBUS_SESSION_BUS_ADDRESS': 'unix:path=/private/bus'}
+        self.socket_preparation = patch('desktop_graphics.prepare_x11_socket_directory')
+        self.socket_preparation.start()
+        self.addCleanup(self.socket_preparation.stop)
+
+    def test_headless_host_prepares_only_the_missing_standard_socket_directory(self):
+        directory = self.root / '.X11-unix'
+        prepare_x11_socket_directory(directory)
+        self.assertEqual(directory.stat().st_mode & 0o7777, 0o1777)
+        marker = directory / 'X99'
+        marker.write_text('existing session')
+        prepare_x11_socket_directory(directory)
+        self.assertEqual(marker.read_text(), 'existing session')
+
+    def test_socket_directory_rejects_links_and_unsafe_existing_permissions(self):
+        directory = self.root / '.X11-unix'
+        directory.symlink_to(self.instance, target_is_directory=True)
+        with self.assertRaises((OSError, ValueError)):
+            prepare_x11_socket_directory(directory)
+        directory.unlink()
+        directory.mkdir(mode=0o777)
+        with self.assertRaises(ValueError):
+            prepare_x11_socket_directory(directory)
 
     def prepare(self, **options):
         with patch('subprocess.check_output', return_value='weston 14.0.2\n'):

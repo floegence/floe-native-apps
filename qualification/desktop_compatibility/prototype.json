@@ -63,12 +63,12 @@
     }
   ],
   "unproven_release_requirements": [
-    "Complete production catalog-backed public preparation/launch and native amd64 qualification; installed native arm64 helper now owns private Python, native/Flatpak Qt modules and package-compatible graphics/bus resource placement",
-    "Complete native amd64 installed portable-helper and remaining sandbox/lifecycle qualification; native arm64 GTK, Chromium, Flatpak GTK/Qt, launcher/service failures and noexec runtime now pass through the component-owned runtime",
+    "Complete installed-catalog application qualification on native amd64 and the remaining desktop/package matrix. Public Manager installation and plan/session APIs, including retained Xpra installations, now pass native amd64/arm64 installation, exact GTK document/frame/reconnect/exit and stale-plan checks.",
+    "Complete installed-catalog package/lifecycle qualification on native amd64; arm64 strict Snap Firefox and Flatpak GTK/Qt passed actual Unicode, official remote Save As and exact saved bytes through the public preparation API.",
     "Complete both native architectures and published installed-helper qualification of the Wayland text-input-v3 adapter; actual arm64 Chromium document/frame receipts are available, serial or socket flush alone is not consumption evidence",
     "Complete both native architectures, toolkit coverage and installed-helper qualification of cursor, clipboard, window/popup and display/input behavior; current clipboard receipts cover GTK3/GTK4/Qt5/Qt6 Wayland/Xwayland and Chromium Wayland on arm64",
     "The remaining DEB/RPM, AppImage, classic Snap, GNOME Xorg/Wayland, KDE Wayland, Xfce X11 and no-desktop combinations with dedicated actual systems and package identities",
-    "Pinned new production component identities, original source/license obligations, native amd64/arm64 artifact builds, install/cancellation/recovery/security checks and exact-tag release qualification",
+    "Complete native cancellation/recovery/security and exact-tag release qualification; the combined recipe now pins a separate identity with original APKs, native build/source manifests, licenses and complete Weston/IBus source.",
     "Formal upstream release, Go proxy/checksum/artifact readback and only then Redeven integration, targeted acceptance, deployment, local merge and task resource cleanup"
   ],
   "observed_prototypes": [
@@ -363,6 +363,11 @@
       "case": "Unified native compositor/input builds on amd64 and arm64",
       "result": "One signed native Alpine builder produces the first-party shell/capture, source-derived Weston/XWM and IBus daemon/portal/library. All seven final ELF files have native architecture, no RPATH/RUNPATH, retained original licenses and matching source/build/artifact digests. Rebuilt arm64 artifacts pass actual strict Snap Firefox and Flatpak GTK/Qt Unicode, remote Save As byte receipts and normal cleanup through the installed helper. The same acquisition script verifies the original amd64 runtime APK closure.",
       "limits": "Candidate builds and acquired archives are not activated or published components. Production catalog/install/cancel/recovery qualification, rebuilt amd64 actual applications, remaining desktop/package matrix and formal release remain required."
+    },
+    {
+      "case": "Catalog-backed production installation and public plan/session APIs on native amd64 and arm64",
+      "result": "The single Manager installs original verified APKs plus reviewed native derivations, then decodes actual GTK frames and verifies repeated Unicode, Enter, reconnect with unchanged PID, ordinary keys and normal close before activation. Real GIO rejects a stale plan without writing a session, and a second preparation preserves the first immutable configuration. Native headless amd64 runs as nobody with networking disabled and no host desktop. arm64 strict Snap Firefox and Flatpak GTK/Qt pass Unicode stress and visible official Save As with exact saved bytes using the installed catalog/public API. Complete corresponding Weston/IBus source, generated protocol input, patches, build scripts and notices accompany the proposed derived files.",
+      "limits": "The recipe and current task remain unpublished. The full package/desktop matrix, native amd64 installed-package applications, exact-tag qualification, Redeven integration/deployment and final cleanup remain required."
     }
   ],
   "rejected_assumptions": [

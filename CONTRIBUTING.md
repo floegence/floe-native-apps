@@ -191,6 +191,54 @@ package-format support claim.
 
 ## Native helper attachment
 
+### Catalog-backed preparation
+
+`DesktopForPlatform` returns the combined Wayland/Xwayland recipe. `ForPlatform`
+retains the published Xpra recipe and its exact digest. Both use the same
+`Manager` for bounded download/upload, original archive verification, extraction,
+cancellation, restart and atomic activation. The new preparation contract binds
+the embedded native manifest into the component identity; an unknown contract
+cannot activate. The default graphical self-check requires decoded fixture
+pixels, exact repeated Unicode plus Enter, reconnect with the same application
+PID, ordinary key input and normal window closure. The original package includes
+fonts, MIME data and image loaders so a host desktop does not mask dependencies.
+
+`Manager.DesktopBackend`, `PlanDesktop` and `PrepareDesktopSession` bind an
+authorized desktop entry to the verified installation. Preparation revalidates
+the immutable plan, creates one new private source/configuration snapshot and
+returns the executable and authenticated endpoint. The consumer launches this
+helper through its persistent process owner; viewer cancellation must not own
+the process lifetime. Existing directories are not rewritten, environment values
+are transferred exactly, and the socket directory must already be owner-only.
+The helper verifies those boundaries again and the supervisor revalidates the
+application immediately before GIO execution. No input readiness follows from
+successful preparation.
+
+A current Manager can retain an older Xpra installation for a surviving
+application; it cannot advertise that installation as a combined backend.
+Updates never replace loaded modules, live instance files or user processes.
+`ResolveDesktopTools` checks contained original tool paths and the bounded
+native file manifest without executing an application. The original runtime
+environment is restored only at the existing GIO launch boundary.
+
+The explicit engineering CLI selects recipes for qualification/offline download,
+not as an application graphics-mode setting:
+
+```sh
+go run ./cmd/floe-native-apps -recipe desktop -state /absolute/new/private/state
+go run ./cmd/floe-native-apps -recipe desktop -check /absolute/installed/root
+```
+
+The combined recipe remains subject to the complete native application/package
+release matrix. `TestNativeDesktopInstallation` can consume previously verified
+original candidate APKs using `FLOE_TEST_DESKTOP_INSTALL_CANDIDATE` and a new
+`FLOE_TEST_DESKTOP_INSTALL_STATE`. It goes through the actual Manager activation
+path and retains only fixture-owned pixel/document/exit receipts. A source-only
+test or a successful GTK installation fixture is not a Snap/Flatpak or desktop
+environment support claim.
+
+### Attachment boundary
+
 `DialDesktop` attaches to an existing Linux helper through a private, versioned
 Unix socket. A trusted application instance supplies its endpoint, identity and
 token. The socket must be owned by the host user, mode 0600, in a mode 0700
@@ -212,10 +260,10 @@ application-exit evidence.
 `TestDesktopClient*` exercises fragmented packets, malformed framing, cancellation,
 concurrent writes and the real Python control/attachment boundary on native Linux,
 including takeover and late old-owner cleanup. Its synthetic native callbacks are
-wire qualification only. This API does not prepare a compositor, launch an
-application, or certify the unpublished combined graphical backend. Production
-component preparation and the package/desktop application matrix remain required
-before that backend can be published as a supported capability.
+wire qualification only. This attachment API does not prepare a compositor or
+launch an application. The catalog-backed preparation API below owns those
+resources. The complete package/desktop application matrix remains a release
+prerequisite; wire tests alone cannot certify a supported graphical backend.
 
 The internal `DesktopHelper` composes the native channel/window registry, bounded
 capture, decoded-frame gate, ordered input and authenticated endpoint on one event
@@ -772,3 +820,60 @@ pins original bytes and license/source metadata without activating a package.
 Neither a successful build nor an archive manifest establishes package support:
 native installed-helper application, cancellation/recovery and exact-release
 qualification remain required before production catalog publication.
+
+### Corresponding source and modified native builds
+
+The module includes complete original Weston and IBus source archives, their
+reviewed patches, source notices and all first-party native build sources in
+`native/dist/common`. Each architecture's `manifest.json` identifies the exact
+installed source and binary files; `provenance/native.json` and `qt5.json` /
+`qt6.json` record build inputs and signed dependency versions. The original
+Wayland protocol XML used to generate shell code is included with its license.
+Published module bytes and original APK checksums remain immutable.
+
+To rebuild or modify the native binaries, use a source checkout matching the
+module (or copy the accompanying `sources/tree` into a clean build tree). On
+each native architecture, build the disposable Alpine image from
+`qualification/desktop_compatibility/Dockerfile.desktop-native`, preserve its
+image identity and signed package list, and run:
+
+```sh
+FLOE_DESKTOP_BUILDER_IMAGE=sha256:YOUR_RECORDED_IMAGE \
+  sh scripts/build_desktop_native.sh \
+  /absolute/sources/weston-14.0.2.tar.xz \
+  /absolute/sources/ibus-1.5.33.tar.gz /absolute/new/output
+```
+
+This command runs inside the disposable native builder with the source mounted
+at its normal tree path. It applies the source modifications, generates protocol
+code, builds and normally installs the libraries, strips the resulting artifacts
+and verifies ELF architecture and loader paths. Build-system dependencies are
+provided by the recorded original signed Alpine packages. Compare the builder's
+protocol XML with `native/protocols/text-input-unstable-v3.xml`; a changed input
+requires a new provenance review. Application hosts never execute build scripts
+or install these build dependencies.
+
+The Qt adapters are rebuilt in `Dockerfile.qt-native` on the corresponding native
+architecture with `TARGET_ARCH=amd64|arm64` and `QT_MAJOR=5|6`. Supply the build
+host's existing certificate bundle as `ca-certificates.crt`; Debian snapshot
+signatures remain mandatory. Run `build_qt_native.sh` with the absolute `native`
+source path, a new output directory and that Qt major, setting
+`FLOE_DESKTOP_QT_BUILDER_IMAGE` to the recorded image identity. These adapters
+dynamically resolve the application's Qt/Wayland libraries; no additional toolkit
+runtime is copied into the distribution.
+
+After building, `scripts/stage_desktop_distribution.py` consumes per-architecture
+native outputs, Qt artifacts/build records, original source archives and verified
+candidate catalogs. Its `--native`, `--qt`, `--sources` and `--candidates`
+arguments each name an absolute directory. Review and remove only the previous
+generated `native/dist` before staging; the script refuses to overwrite it.
+Use font-inclusive candidate catalogs named `amd64.json` and `arm64.json`.
+Staging verifies source parity and produces new native manifests/component
+identities; it does not activate or publish anything. A modified build must use
+a new recipe identity, run the same source and native qualification and build
+the consumer against that module. Do not repair manifests without rebuilding
+the corresponding changed source, or replace library files in a running session.
+
+The LGPL source and modification/relinking permissions described in
+`THIRD_PARTY_NOTICES.md` apply independently of the reviewed-build integrity
+checks. Hashes identify the build; they do not replace license/source obligations.

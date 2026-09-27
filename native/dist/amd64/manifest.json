@@ -1,0 +1,216 @@
+{
+  "architecture": "amd64",
+  "files": {
+    "artifacts/desktop-capture": {
+      "common": false,
+      "executable": true,
+      "sha256": "ad1ab78969020dac6a78f502ecf42750858ca198983deacd291b9d3d3c4d86ea",
+      "size_bytes": 18472
+    },
+    "artifacts/desktop-shell.so": {
+      "common": false,
+      "executable": true,
+      "sha256": "09ceaca96f6356eb62bc66fb307b169d768df7d61fc726c6817bb31e14bc1551",
+      "size_bytes": 71512
+    },
+    "artifacts/ibus-daemon": {
+      "common": false,
+      "executable": true,
+      "sha256": "26245043b8f17067a4a4ca2377377d1b0521a9a235e5db37f00b5a1dd49a7b33",
+      "size_bytes": 174016
+    },
+    "artifacts/ibus-portal": {
+      "common": false,
+      "executable": true,
+      "sha256": "3408e3ad44548ac7a41ef1fbcd93647e800a73660726dab69caa7210e3c76742",
+      "size_bytes": 100232
+    },
+    "artifacts/libibus-1.0.so.5": {
+      "common": false,
+      "executable": true,
+      "sha256": "d7195bb9c7369ea65b2c0faa31eced8f453a69f1f277fbc955aa17271dc844b5",
+      "size_bytes": 546632
+    },
+    "artifacts/libweston-14.so.0": {
+      "common": false,
+      "executable": true,
+      "sha256": "b94274b3ad1213294e6281ef41c792676dfee49ae9745c4e2d5b0eff619d0379",
+      "size_bytes": 503896
+    },
+    "artifacts/xwayland.so": {
+      "common": false,
+      "executable": true,
+      "sha256": "b3192635bd13632d147eecf90e71120c5787d318a69248401ef844b5fa3742c0",
+      "size_bytes": 112944
+    },
+    "licenses/LICENSE": {
+      "common": true,
+      "executable": false,
+      "sha256": "56caf9efd7a2067c741f4bc8d85d6016f48ec02c7a69afcca3b0ff652269bfab",
+      "size_bytes": 1072
+    },
+    "licenses/ibus-COPYING.txt": {
+      "common": true,
+      "executable": false,
+      "sha256": "5df07007198989c622f5d41de8d703e7bef3d0e79d62e24332ee739a452af62a",
+      "size_bytes": 26436
+    },
+    "licenses/weston-14-COPYING.txt": {
+      "common": true,
+      "executable": false,
+      "sha256": "fdb65868f65d0fbdb05c2d3b779e10ce9969fa0c4b9262ba4f260e87086ab860",
+      "size_bytes": 1394
+    },
+    "provenance/native.json": {
+      "common": false,
+      "executable": false,
+      "sha256": "0222aaf21cfa239a3977da9aa65b5300b982796f6cd2ec641729417e3abc9823",
+      "size_bytes": 90615
+    },
+    "provenance/qt5.json": {
+      "common": false,
+      "executable": false,
+      "sha256": "1dbf4b8af206ddd8bcf8e9bb58d831cefa2f187bfc09ddc45430bd2c59461c85",
+      "size_bytes": 49202
+    },
+    "provenance/qt6.json": {
+      "common": false,
+      "executable": false,
+      "sha256": "4749aed1f5688ad15d47e2fab6a8af0f5b2958a785fd67bd52494d76b16a0749",
+      "size_bytes": 49022
+    },
+    "qt/platforminputcontexts/libfloe-client-native-qt5.so": {
+      "common": false,
+      "executable": false,
+      "sha256": "1010c245ebc0454287712f7993ba1e40bfc05e59dd4a8efb39b072e445e531ee",
+      "size_bytes": 30856
+    },
+    "qt/platforminputcontexts/libfloe-client-native-qt6.so": {
+      "common": false,
+      "executable": false,
+      "sha256": "4ab6c7af7e4410ba9b6fb6eb194ac676ffe7339e74a4e41b1da419cc7baae4ba",
+      "size_bytes": 35240
+    },
+    "sources/ibus-1.5.33.tar.gz": {
+      "common": true,
+      "executable": false,
+      "sha256": "58941c9b8285891c776b67fb2039eebe0d61d63a51578519febfc5481b91e831",
+      "size_bytes": 4350799
+    },
+    "sources/tree/native/patches/ibus-1.5-context-source.json": {
+      "common": true,
+      "executable": false,
+      "sha256": "484ce1099b34f75713a4124bbd36df6fb68649ef5b9fe733058a1402b00d71df",
+      "size_bytes": 1133
+    },
+    "sources/tree/native/patches/ibus-1.5-context-source.patch": {
+      "common": true,
+      "executable": false,
+      "sha256": "82d7a1e911249f1d00bc11fa9d73ad3d72992f8c4873ab7639b461c271ed1972",
+      "size_bytes": 6251
+    },
+    "sources/tree/native/patches/weston-14-input-events.json": {
+      "common": true,
+      "executable": false,
+      "sha256": "5a83644164d8e8e00d92e43fd942569437007d2d2be683a6c0e2003acdc47d4e",
+      "size_bytes": 2298
+    },
+    "sources/tree/native/patches/weston-14-input-events.patch": {
+      "common": true,
+      "executable": false,
+      "sha256": "ec299461e7f8fa00835bfa5b01049d00c37877e5fad2a7ff56307ffab73e14ff",
+      "size_bytes": 5191
+    },
+    "sources/tree/native/protocols/text-input-unstable-v3.xml": {
+      "common": true,
+      "executable": false,
+      "sha256": "2d08f2cddb463e169c23f1c34769de12ae255540e51ee8f515b54667d60b90ba",
+      "size_bytes": 21422
+    },
+    "sources/tree/native/qt_native.cpp": {
+      "common": true,
+      "executable": false,
+      "sha256": "0291bcf8b345457c29d46dbac338db10476729f9daca03166f4172e6aaff4d53",
+      "size_bytes": 4296
+    },
+    "sources/tree/native/qt_native.json": {
+      "common": true,
+      "executable": false,
+      "sha256": "312ca54e5f3d0a9ed8d39284bd2d69376df87fbd831d91b762f264098cff9d93",
+      "size_bytes": 33
+    },
+    "sources/tree/qualification/desktop_compatibility/Dockerfile.desktop-native": {
+      "common": true,
+      "executable": false,
+      "sha256": "ebc81f865679eefd8b1ca63cb886258fd6d7ff14415b7e83ce69561249e0064e",
+      "size_bytes": 692
+    },
+    "sources/tree/qualification/desktop_compatibility/Dockerfile.qt-native": {
+      "common": true,
+      "executable": false,
+      "sha256": "f49272ff5e36211141661a432ed9ed4adfa05ab58cc28b45c3e47f05cebf6aaf",
+      "size_bytes": 1995
+    },
+    "sources/tree/qualification/desktop_compatibility/build_ibus.sh": {
+      "common": true,
+      "executable": false,
+      "sha256": "e34ec3c02f6fe4c279f911066aafb962598bd249a39e945541389fa3aa1df9e1",
+      "size_bytes": 1724
+    },
+    "sources/tree/qualification/desktop_compatibility/build_portable_ibus.sh": {
+      "common": true,
+      "executable": false,
+      "sha256": "8c9ee4dbafc9214773365f33fbd739f4dc4361f75d597751a873d003abda3df7",
+      "size_bytes": 2211
+    },
+    "sources/tree/qualification/desktop_compatibility/build_portable_probe.sh": {
+      "common": true,
+      "executable": false,
+      "sha256": "3d9b29531c5546d69829265eb83aa3d0439fe9cf695785cf73ba939bba19bfe7",
+      "size_bytes": 3100
+    },
+    "sources/tree/qualification/desktop_compatibility/build_qt_native.sh": {
+      "common": true,
+      "executable": false,
+      "sha256": "abd70976ce24a6719f3055cffa6e42e5c8d732bd0e8b997c664055adb5b5ebc2",
+      "size_bytes": 3143
+    },
+    "sources/tree/qualification/desktop_compatibility/build_weston.sh": {
+      "common": true,
+      "executable": false,
+      "sha256": "a7a813c5260869fa2b5524a368120bc711dbbbcc44311e0d4d516307ad24b14d",
+      "size_bytes": 1865
+    },
+    "sources/tree/qualification/desktop_compatibility/clipboard_native.h": {
+      "common": true,
+      "executable": false,
+      "sha256": "fe6dc24331dabba59ffb586abb9346fe23ba4e55d79be0c0b0f251c402aaea55",
+      "size_bytes": 12485
+    },
+    "sources/tree/qualification/desktop_compatibility/frame_probe.c": {
+      "common": true,
+      "executable": false,
+      "sha256": "8adb44094cb331f27f0edda2c39251b877a434cbb386fe21102d2206866e0ab5",
+      "size_bytes": 9270
+    },
+    "sources/tree/qualification/desktop_compatibility/probe_shell.c": {
+      "common": true,
+      "executable": false,
+      "sha256": "efbe71149609830400209d2bf71ee947fa47de2004e3aceba5a83cfb791c0902",
+      "size_bytes": 70183
+    },
+    "sources/tree/scripts/build_desktop_native.sh": {
+      "common": true,
+      "executable": false,
+      "sha256": "a4d5c700a185e5ef45a38a68f88bfdf08371a27a569d2ae1005d941bddeec120",
+      "size_bytes": 4388
+    },
+    "sources/weston-14.0.2.tar.xz": {
+      "common": true,
+      "executable": false,
+      "sha256": "b47216b3530da76d02a3a1acbf1846a9cd41d24caa86448f9c46f78f20b6e0ac",
+      "size_bytes": 2043392
+    }
+  },
+  "version": 1
+}

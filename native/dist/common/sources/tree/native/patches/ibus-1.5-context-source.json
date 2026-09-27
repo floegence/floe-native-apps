@@ -1,0 +1,16 @@
+{
+  "project": "IBus",
+  "version": "1.5.33",
+  "original_archive": "https://github.com/ibus/ibus/releases/download/1.5.33/ibus-1.5.33.tar.gz",
+  "original_sha512": "33de8c607c4bdcbf1ef3b596151008b33216f3f37e720de0c378f2730099464da800d95dd9bcded10752d689f3480f111962eab507539e239113f0f422053c63",
+  "license": "LGPL-2.1-or-later",
+  "purpose": "Read-only live context provenance for the private confirmed-text adapter; original toolkit and portal input protocols unchanged",
+  "patch_sha256": "82d7a1e911249f1d00bc11fa9d73ad3d72992f8c4873ab7639b461c271ed1972",
+  "status": "Unpublished derivation; native amd64/arm64 builds and actual GTK/Flatpak/Snap context-source qualification pass; production component packaging remains required",
+  "original_files": {
+    "bus/inputcontext.h": "13f91c7827b15abf6a35cb122f8aca11954dd5310e55c16e6b7049d138702255",
+    "bus/inputcontext.c": "579ccff484e08c76b66e2c759eb34440a54b4f4a078e76371fa6ebaa1ecd7de2",
+    "bus/ibusimpl.c": "600212ebcddd4663c4f7c7487faf1a28d7d7659ab15aecaacde0b4832aec810d",
+    "portal/portal.c": "418c3422313812548a4117369288fe862b45907182d40d1dcaf8064ddca3c6f4"
+  }
+}

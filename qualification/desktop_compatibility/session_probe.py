@@ -50,6 +50,20 @@ def helper(root, runtime, evidence, token, mode):
         environment.update(specification['environment'])
         for key in specification['unset']:
             environment.pop(key, None)
+    if 'FLOE_PROBE_DESKTOP_STATE' in os.environ:
+        if mode == 'support-failure':
+            raise ValueError('Installed components cannot be replaced by a fixture override')
+        request = {'state': os.environ['FLOE_PROBE_DESKTOP_STATE'],
+            'desktop': str(evidence / 'fixture.desktop'), 'directory': str(evidence / 'session'),
+            'runtime': str(runtime), 'instance': runtime.name, 'environment': environment,
+            'host_bus': specification.get('host_bus', ''), 'documents': specification.get('initial_documents', [])}
+        data = subprocess.check_output([os.environ['FLOE_PROBE_DESKTOP_PREPARER']],
+            input=json.dumps(request).encode())
+        prepared = json.loads(data)
+        descriptor = os.open(evidence / 'endpoint.json', os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(descriptor, 'w') as stream:
+            json.dump(prepared, stream)
+        os.execv(prepared['Executable'], [prepared['Executable'], prepared['Configuration']])
     native = Path(os.environ['FLOE_PROBE_NATIVE'])
     library = Path(os.environ['FLOE_PROBE_WESTON_LIBRARY'])
     resources = {'component': os.environ['FLOE_PROBE_COMPONENT'],
@@ -82,8 +96,18 @@ def helper(root, runtime, evidence, token, mode):
     os.execv(sys.executable, [sys.executable, str(entry), str(configuration)])
 
 
+def session_file(evidence, name):
+    return Path(evidence) / ('session/' if 'FLOE_PROBE_DESKTOP_STATE' in os.environ else '') / name
+
+
+def session_token(evidence, fallback):
+    if 'FLOE_PROBE_DESKTOP_STATE' in os.environ:
+        return json.loads((Path(evidence) / 'endpoint.json').read_text())['Endpoint']['Token']
+    return fallback
+
+
 def launch_records(evidence):
-    path = Path(evidence) / 'desktop-status.json'
+    path = session_file(evidence, 'desktop-status.json')
     if not path.exists():
         return []
     receipt = json.loads(path.read_text())
@@ -206,11 +230,11 @@ def main():
             result['application_exit'], result['passed'] = exited, True
             return
         assert not any(x.get('state') == 'failed' for x in records()), records()
-        result['required_services'] = json.loads((evidence / 'application-plan.json').read_text())['observation']['services']
+        result['required_services'] = json.loads(session_file(evidence, 'application-plan.json').read_text())['observation']['services']
         result['fuse_device_available'] = Path('/dev/fuse').exists()
         assert not result['required_services']
         assert not any(x.get('service', '').startswith('xdg-') for x in records()), records()
-        client = ControlClient(evidence / 'viewer', runtime / 'control.sock', runtime.name, token)
+        client = ControlClient(evidence / 'viewer', runtime / 'control.sock', runtime.name, session_token(evidence, token))
         client.reconnect()
         if mode == 'slow-window':
             assert client.response(client.request('status'))['result']['state'] == 'waiting'

@@ -20,6 +20,19 @@ type Installation struct {
 // Do not change Package's digest encoding when extending this metadata.
 func compatibleInstallations(pkg Package) []Installation {
 	current := Installation{ID: pkg.ID, Digest: pkg.Digest(), Architecture: pkg.Architecture, Contract: "xpra-6-private-v1"}
+	if pkg.Preparation != nil {
+		current.Contract = pkg.Preparation.Contract
+		result := []Installation{current}
+		pinned, err := DesktopForPlatform("linux", pkg.Architecture)
+		if err != nil || pinned.Digest() != pkg.Digest() {
+			return result
+		}
+		xpra, err := ForPlatform("linux", pkg.Architecture)
+		if err != nil {
+			return result
+		}
+		return append(result, compatibleInstallations(xpra)...)
+	}
 	result := []Installation{current}
 	pinned, err := ForPlatform("linux", pkg.Architecture)
 	if err != nil || pinned.Digest() != pkg.Digest() {
@@ -48,7 +61,8 @@ func (m *Manager) installation(digest string) (Installation, bool) {
 }
 
 func (m *Manager) installedDirectory(digest string) (string, error) {
-	if _, ok := m.installation(digest); !ok {
+	item, ok := m.installation(digest)
+	if !ok {
 		return "", ErrInvalid
 	}
 	root := filepath.Join(m.root, "packages", digest)
@@ -60,8 +74,17 @@ func (m *Manager) installedDirectory(digest string) (string, error) {
 	if err != nil || string(data) != digest {
 		return "", ErrInvalid
 	}
-	if _, err := ResolveTools(root); err != nil {
-		return "", err
+	switch item.Contract {
+	case "xpra-6-private-v1":
+		if _, err := ResolveTools(root); err != nil {
+			return "", err
+		}
+	case desktopContract:
+		if _, err := ResolveDesktopTools(root, item.Architecture); err != nil {
+			return "", err
+		}
+	default:
+		return "", ErrUnsupported
 	}
 	return root, nil
 }

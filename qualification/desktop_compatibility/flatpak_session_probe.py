@@ -14,7 +14,7 @@ import traceback
 from gi.repository import GLib
 from application_processes import identity
 from control_probe import ControlClient
-from session_probe import cleanup_helper, launch_records
+from session_probe import cleanup_helper, launch_records, session_file, session_token
 from source_proof import record_sources
 
 
@@ -99,19 +99,25 @@ def main():
         assert not any(x.get('state') == 'failed' for x in records()), records()
         # The production helper now owns sandbox module placement. Qualification
         # only observes this instance's immutable bytes and eventual cleanup.
-        prefix = '.floe-native-input-' + hashlib.sha256(str(evidence).encode()).hexdigest()[:16] + '-'
+        instance_directory = session_file(evidence, 'application-plan.json').parent
+        prefix = '.floe-native-input-' + hashlib.sha256(str(instance_directory).encode()).hexdigest()[:16] + '-'
         inputs = list((Path.home() / '.var/app' / app_id).glob(prefix + '*'))
         assert len(inputs) == 1, 'No unique instance-owned Qt module directory'
         result['input_resources'] = {'directory': str(inputs[0]), 'modules': {}}
         for major in (5, 6):
             name = f'platforminputcontexts/libfloe-client-native-qt{major}.so'
             actual = (inputs[0] / name).read_bytes()
-            assert actual == (Path(os.environ['FLOE_PROBE_QT_PLUGINS']) / name).read_bytes()
+            if 'FLOE_PROBE_DESKTOP_STATE' in os.environ:
+                config = json.loads((instance_directory / 'desktop-launch.json').read_text())
+                modules = Path(config['resources']['qt_plugins'])
+            else:
+                modules = Path(os.environ['FLOE_PROBE_QT_PLUGINS'])
+            assert actual == (modules / name).read_bytes()
             result['input_resources']['modules'][name] = hashlib.sha256(actual).hexdigest()
-        plan = json.loads((evidence / 'application-plan.json').read_text())
+        plan = json.loads(session_file(evidence, 'application-plan.json').read_text())
         result['package'], result['required_services'] = plan['observation']['package'], plan['observation']['services']
         assert result['package']['kind'] == 'flatpak'
-        client = ControlClient(evidence / 'viewer', runtime / 'control.sock', runtime.name, token)
+        client = ControlClient(evidence / 'viewer', runtime / 'control.sock', runtime.name, session_token(evidence, token))
         client.reconnect()
         target = paint('loaded')
         click(330, 300)

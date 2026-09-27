@@ -25,11 +25,19 @@ type Artifact struct {
 }
 
 type Package struct {
-	ID             string     `json:"id"`
-	Architecture   string     `json:"architecture"`
-	SizeBytes      int64      `json:"size_bytes"`
-	InstalledBytes int64      `json:"installed_bytes"`
-	Artifacts      []Artifact `json:"artifacts"`
+	ID             string       `json:"id"`
+	Architecture   string       `json:"architecture"`
+	SizeBytes      int64        `json:"size_bytes"`
+	InstalledBytes int64        `json:"installed_bytes"`
+	Artifacts      []Artifact   `json:"artifacts"`
+	Preparation    *Preparation `json:"preparation,omitempty"`
+}
+
+// Preparation identifies reviewed native derivations in addition to the original
+// archives. Omission preserves the exact encoding of published Xpra recipes.
+type Preparation struct {
+	Contract     string `json:"contract"`
+	NativeSHA256 string `json:"native_sha256"`
 }
 
 //go:embed catalog.json
@@ -76,6 +84,12 @@ func (p Package) Validate() error {
 	}
 	if size != p.SizeBytes || size > 2<<30 || p.InstalledBytes > 4<<30 {
 		return errors.New("invalid native package size")
+	}
+	if p.Preparation != nil {
+		_, digest, err := desktopManifest(p.Architecture)
+		if err != nil || p.Preparation.Contract != desktopContract || p.Preparation.NativeSHA256 != digest {
+			return errors.New("unsupported native preparation contract")
+		}
 	}
 	return nil
 }

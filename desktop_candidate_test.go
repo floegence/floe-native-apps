@@ -31,7 +31,14 @@ func TestNativeDesktopCandidateExtraction(t *testing.T) {
 	if err := pkg.Validate(); err != nil || pkg.Architecture != runtime.GOARCH {
 		t.Fatalf("invalid native candidate: %v", err)
 	}
-	output, err := os.MkdirTemp(root, "unactivated-")
+	outputRoot := os.Getenv("FLOE_TEST_DESKTOP_CANDIDATE_OUTPUT")
+	if outputRoot == "" {
+		outputRoot = root
+	}
+	if !filepath.IsAbs(outputRoot) {
+		t.Fatal("absolute extraction fixture directory required")
+	}
+	output, err := os.MkdirTemp(outputRoot, "unactivated-")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +65,7 @@ func TestNativeDesktopCandidateExtraction(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(root, "extraction.json"), append(record, '\n'), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(outputRoot, "extraction.json"), append(record, '\n'), 0600); err != nil {
 		t.Fatal(err)
 	}
 	t.Logf("verified native %s candidate %s extracted to %s; not activated", runtime.GOARCH, pkg.Digest(), output)

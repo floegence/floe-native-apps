@@ -116,7 +116,7 @@ func TestIncrementalRelayUploadsOnlyMissingArchive(t *testing.T) {
 
 func TestActivationPersistenceFailureRetainsPreviousInstallation(t *testing.T) {
 	m, data := testManager(t, nil)
-	m.installations = append(m.installations, Installation{ID: "previous-fixture", Digest: legacyAMD64, Architecture: "amd64", Contract: "fixture"})
+	m.installations = append(m.installations, Installation{ID: "previous-fixture", Digest: legacyAMD64, Architecture: "amd64", Contract: "xpra-6-private-v1"})
 	previous := filepath.Join(m.root, "packages", legacyAMD64)
 	if err := m.prepare(context.Background(), previous, "amd64"); err != nil {
 		t.Fatal(err)
@@ -295,7 +295,7 @@ func TestFailedQualificationKeepsPreviousSelection(t *testing.T) {
 	for _, failure := range []error{errors.New("qualification failed"), syscall.ENOSPC} {
 		t.Run(failure.Error(), func(t *testing.T) {
 			m, data := testManager(t, func(context.Context, string) error { return failure })
-			legacy := Installation{ID: "previous-fixture", Digest: legacyAMD64, Architecture: "amd64", Contract: "fixture"}
+			legacy := Installation{ID: "previous-fixture", Digest: legacyAMD64, Architecture: "amd64", Contract: "xpra-6-private-v1"}
 			m.installations = append(m.installations, legacy)
 			root := filepath.Join(m.root, "packages", legacy.Digest)
 			if err := m.prepare(context.Background(), root, "amd64"); err != nil {

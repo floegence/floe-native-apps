@@ -9,7 +9,7 @@ test ! -e "$output"
 mkdir -p "$output/apks"
 set -- weston=14.0.2-r4 weston-backend-headless=14.0.2-r4 weston-xwayland=14.0.2-r4 \
     xwayland xauth xkeyboard-config xdg-desktop-portal=1.20.3-r4 \
-    xdg-desktop-portal-gtk=1.15.3-r1 ibus=1.5.33-r0 py3-gobject3 py3-xlib xcb-imdkit
+    xdg-desktop-portal-gtk=1.15.3-r1 ibus=1.5.33-r0 py3-gobject3 py3-xlib xcb-imdkit font-dejavu
 apk update
 apk fetch --recursive --url "$@" > "$output/urls.txt"
 apk fetch --recursive --output "$output/apks" "$@"

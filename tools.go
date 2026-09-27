@@ -47,6 +47,10 @@ func ResolveTools(root string) (Tools, error) {
 // Display and D-Bus addresses are deliberately not restored: those belong to the
 // caller's private graphical session.
 func (t Tools) Environment(base []string) []string {
+	return supportToolEnvironment(base, filepath.Join(t.Root, "floe", "bin"))
+}
+
+func supportToolEnvironment(base []string, bin string) []string {
 	keys := map[string]bool{}
 	for _, k := range []string{"PATH", "PYTHONHOME", "PYTHONPATH", "PYTHONNOUSERSITE", "GI_TYPELIB_PATH", "GIO_MODULE_DIR", "GIO_EXTRA_MODULES", "GDK_PIXBUF_MODULE_FILE", "GDK_PIXBUF_MODULEDIR", "GTK_PATH", "FONTCONFIG_PATH", "FONTCONFIG_FILE", "LD_LIBRARY_PATH", "LD_PRELOAD", "XPRA_RESOURCES_DIR", "XKB_CONFIG_ROOT", "XKB_BINDIR", "GIO_LAUNCH_DESKTOP"} {
 		keys[k] = true
@@ -72,7 +76,7 @@ func (t Tools) Environment(base []string) []string {
 		}
 	}
 	data, _ := json.Marshal(saved)
-	return append(result, "PATH="+filepath.Join(t.Root, "floe", "bin")+":"+originalPath, "FLOE_NATIVE_APPLICATION_ENV="+string(data))
+	return append(result, "PATH="+bin+":"+originalPath, "FLOE_NATIVE_APPLICATION_ENV="+string(data))
 }
 
 func prepareTools(ctx context.Context, root, architecture string) error {

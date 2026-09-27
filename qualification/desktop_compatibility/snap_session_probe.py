@@ -21,7 +21,7 @@ import traceback
 from gi.repository import GLib
 from application_processes import identity
 from control_probe import ControlClient
-from session_probe import cleanup_helper, launch_records
+from session_probe import cleanup_helper, launch_records, session_file, session_token
 from source_proof import record_sources
 
 
@@ -130,13 +130,13 @@ report('loaded');</script>'''
         wait(lambda: any(x.get('phase') == 'sharing_ready' or x.get('state') == 'failed' for x in records()),
              'Persistent Snap helper did not prepare', 45)
         assert not any(x.get('state') == 'failed' for x in records()), records()
-        plan = json.loads((evidence / 'application-plan.json').read_text())
+        plan = json.loads(session_file(evidence, 'application-plan.json').read_text())
         result['package'], result['required_services'] = plan['observation']['package'], plan['observation']['services']
         assert result['package']['kind'] == 'snap' and result['package']['confinement'] == 'strict'
-        client = ControlClient(evidence / 'viewer', runtime / 'control.sock', runtime.name, token)
+        client = ControlClient(evidence / 'viewer', runtime / 'control.sock', runtime.name, session_token(evidence, token))
         client.reconnect()
         wait(lambda: any(x['event'] == 'loaded' for x in receipts), 'Real Snap Firefox page did not load', 45)
-        launched = json.loads((evidence / 'application.json').read_text())
+        launched = json.loads(session_file(evidence, 'application.json').read_text())
         assert launched['state'] == 'running' and len(launched['launcher_pids']) == 1
         pid = launched['launcher_pids'][0]
         cgroup = Path(f'/proc/{pid}/cgroup').read_text().strip()

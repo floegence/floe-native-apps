@@ -1,0 +1,144 @@
+--- a/include/libweston/libweston.h
++++ b/include/libweston/libweston.h
+@@ -903,0 +904,5 @@
++	/* Metadata for one synchronous native high-resolution wheel dispatch. */
++	int32_t axis_value120;
++	/* Current sprite, hotspot or committed cursor buffer changed. */
++	struct wl_signal cursor_signal;
++	bool cursor_hidden;
+@@ -1094,0 +1100,4 @@
++bool
++weston_keyboard_has_input_serial(struct weston_keyboard *keyboard,
++                                 struct wl_client *client, uint32_t serial);
++
+@@ -1263,0 +1273,5 @@
++	/* Recent keyboard events for this exact focus lifetime. A release may
++	 * arrive before the client asks to open a popup from its preceding press. */
++	uint32_t input_serials[32];
++	unsigned int input_serial_count;
++	unsigned int input_serial_next;
+--- a/libweston/input.c
++++ b/libweston/input.c
+@@ -697,3 +697,6 @@
+-		if (event->has_discrete &&
+-		    wl_resource_get_version(resource) >=
+-		    WL_POINTER_AXIS_DISCRETE_SINCE_VERSION)
++		if (pointer->axis_value120 && wl_resource_get_version(resource) >=
++		    WL_POINTER_AXIS_VALUE120_SINCE_VERSION)
++			wl_pointer_send_axis_value120(resource, event->axis, pointer->axis_value120);
++		else if (event->has_discrete &&
++		         wl_resource_get_version(resource) >=
++		         WL_POINTER_AXIS_DISCRETE_SINCE_VERSION)
+@@ -1236,0 +1240,2 @@
++	pointer->cursor_hidden = false;
++	wl_signal_emit(&pointer->cursor_signal, pointer);
+@@ -1246,0 +1252,2 @@
++	pointer->cursor_hidden = false;
++	wl_signal_emit(&pointer->cursor_signal, pointer);
+@@ -1274,0 +1282 @@
++	wl_signal_init(&pointer->cursor_signal);
+@@ -2077,0 +2086,4 @@
++	if (keyboard->focus != surface) {
++		keyboard->input_serial_count = 0;
++		keyboard->input_serial_next = 0;
++	}
+@@ -2400,0 +2413,12 @@
++/* Preserve the normal grab/binding path. The metadata exists only during
++ * this synchronous axis delivery and is never reused by another operation. */
++WL_EXPORT void
++floe_notify_axis_value120(struct weston_seat *seat, const struct timespec *time,
++                          struct weston_pointer_axis_event *event, int32_t value120)
++{
++	struct weston_pointer *pointer = weston_seat_get_pointer(seat);
++	pointer->axis_value120 = value120;
++	notify_axis(seat, time, event);
++	pointer->axis_value120 = 0;
++}
++
+@@ -2714,0 +2739,6 @@
++	if (keyboard->focus && keyboard->focus->resource) {
++		keyboard->input_serials[keyboard->input_serial_next] = keyboard->grab_serial;
++		keyboard->input_serial_next = (keyboard->input_serial_next + 1) % 32;
++		if (keyboard->input_serial_count < 32)
++			keyboard->input_serial_count++;
++	}
+@@ -2718,0 +2749,13 @@
++}
++
++WL_EXPORT bool
++weston_keyboard_has_input_serial(struct weston_keyboard *keyboard,
++                                 struct wl_client *client, uint32_t serial)
++{
++	if (!keyboard || !keyboard->focus || !keyboard->focus->resource ||
++	    wl_resource_get_client(keyboard->focus->resource) != client)
++		return false;
++	for (unsigned int i = 0; i < keyboard->input_serial_count; i++)
++		if (keyboard->input_serials[i] == serial)
++			return true;
++	return false;
+@@ -3510,2 +3553,4 @@
+-	if (es->width == 0)
+-		return;
++	if (es->width == 0) {
++		wl_signal_emit(&pointer->cursor_signal, pointer);
++		return;
++	}
+@@ -3528,0 +3574 @@
++	wl_signal_emit(&pointer->cursor_signal, pointer);
+@@ -3559,0 +3606,2 @@
++		pointer->cursor_hidden = true;
++		wl_signal_emit(&pointer->cursor_signal, pointer);
+@@ -3564,2 +3612,4 @@
+-	    pointer->hotspot.c.x == x && pointer->hotspot.c.y == y)
+-		return;
++	    pointer->hotspot.c.x == x && pointer->hotspot.c.y == y) {
++		wl_signal_emit(&pointer->cursor_signal, pointer);
++		return;
++	}
+@@ -3585,0 +3636 @@
++	pointer->cursor_hidden = false;
+@@ -4325 +4376 @@
+-					MIN(wl_seat_interface.version, 7),
++					MIN(wl_seat_interface.version, 8),
+--- a/libweston/desktop/seat.c
++++ b/libweston/desktop/seat.c
+@@ -445 +445 @@
+-	if ((keyboard == NULL || keyboard->grab_serial != serial) &&
++	if (!weston_keyboard_has_input_serial(keyboard, client, serial) &&
+--- a/include/libweston/xwayland-api.h
++++ b/include/libweston/xwayland-api.h
+@@ -41,0 +42,8 @@
++
++/* Read-only native binding. The X server, not _NET_WM_PID, must separately
++ * establish the resource owner's process identity. Existing Weston APIs and
++ * their ABI remain unchanged. */
++#define FLOE_XWAYLAND_RESOURCE_API_NAME "floe_xwayland_resource_v1"
++struct floe_xwayland_resource_api {
++	uint32_t (*get_xid)(struct weston_surface *surface);
++};
+--- a/xwayland/window-manager.c
++++ b/xwayland/window-manager.c
+@@ -2983,0 +2984,11 @@
++static uint32_t
++floe_xwayland_surface_xid(struct weston_surface *surface)
++{
++	struct weston_wm_window *window = get_wm_window(surface);
++	return window ? window->id : XCB_WINDOW_NONE;
++}
++
++const struct floe_xwayland_resource_api floe_resource_api = {
++	floe_xwayland_surface_xid,
++};
++
+--- a/xwayland/launcher.c
++++ b/xwayland/launcher.c
+@@ -365,0 +366 @@
++extern const struct floe_xwayland_resource_api floe_resource_api;
+@@ -408,0 +410,7 @@
++	ret = weston_plugin_api_register(compositor, FLOE_XWAYLAND_RESOURCE_API_NAME,
++					 &floe_resource_api, sizeof(floe_resource_api));
++	if (ret < 0) {
++		weston_log("Failed to register the Xwayland resource API.\n");
++		goto out_free;
++	}
++

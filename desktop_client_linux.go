@@ -23,18 +23,16 @@ func DialDesktop(ctx context.Context, endpoint DesktopEndpoint) (*DesktopConnect
 		len(endpoint.Token) != 64 || strings.Trim(endpoint.Token, "0123456789abcdef") != "" {
 		return nil, DesktopState{}, ErrInvalid
 	}
-	for path, mode := range map[string]os.FileMode{
-		filepath.Dir(endpoint.SocketPath): os.ModeDir | 0700,
-		endpoint.SocketPath:               os.ModeSocket | 0600,
-	} {
-		info, err := os.Lstat(path)
-		if err != nil {
-			return nil, DesktopState{}, err
-		}
-		stat, ok := info.Sys().(*syscall.Stat_t)
-		if !ok || int(stat.Uid) != os.Getuid() || info.Mode() != mode {
-			return nil, DesktopState{}, ErrInvalid
-		}
+	if err := validateDesktopRuntime(filepath.Dir(endpoint.SocketPath)); err != nil {
+		return nil, DesktopState{}, err
+	}
+	info, err := os.Lstat(endpoint.SocketPath)
+	if err != nil {
+		return nil, DesktopState{}, err
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok || int(stat.Uid) != os.Getuid() || info.Mode() != os.ModeSocket|0600 {
+		return nil, DesktopState{}, ErrInvalid
 	}
 	conn, err := (&net.Dialer{}).DialContext(ctx, "unix", endpoint.SocketPath)
 	if err != nil {

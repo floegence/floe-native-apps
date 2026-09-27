@@ -102,10 +102,16 @@ func New(root string, pkg Package, validate func(context.Context, string) error)
 		lease.Close()
 		return nil, ErrBusy
 	}
-	if validate == nil {
-		validate = SelfTest
+	prepare := prepareTools
+	defaultValidation := SelfTest
+	if pkg.Preparation != nil {
+		prepare = prepareDesktopTools
+		defaultValidation = func(ctx context.Context, root string) error { return desktopSelfTest(ctx, root, pkg) }
 	}
-	m := &Manager{root: root, pkg: pkg, client: &http.Client{Timeout: 15 * time.Minute}, validate: validate, prepare: prepareTools, lease: lease, watchers: map[chan struct{}]bool{}}
+	if validate == nil {
+		validate = defaultValidation
+	}
+	m := &Manager{root: root, pkg: pkg, client: &http.Client{Timeout: 15 * time.Minute}, validate: validate, prepare: prepare, lease: lease, watchers: map[chan struct{}]bool{}}
 	m.installations = compatibleInstallations(pkg)
 	m.op = operation{Version: 2, Package: pkg.Digest(), Status: Status{State: "available", ExpectedBytes: pkg.SizeBytes}}
 	data, err := os.ReadFile(filepath.Join(root, "operation.json"))

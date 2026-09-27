@@ -56,6 +56,32 @@ def remove_owned(path, identity, *, directory=False):
         pass
 
 
+def prepare_x11_socket_directory(path=Path('/tmp/.X11-unix')):
+    """Xwayland needs the standard socket namespace even without a desktop.
+
+    Create only an absent directory, without privilege or package installation.
+    Existing directories and other sessions' sockets are never repaired/removed.
+    """
+    created = False
+    try:
+        path.mkdir(mode=0o700)
+        created = True
+    except FileExistsError:
+        pass
+    descriptor = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        info = os.fstat(descriptor)
+        if info.st_uid not in (0, os.getuid()):
+            raise ValueError('Standard X11 socket directory has an unknown owner')
+        if created:
+            os.fchmod(descriptor, 0o1777)
+            info = os.fstat(descriptor)
+        if stat.S_IMODE(info.st_mode) != 0o1777:
+            raise ValueError('Standard X11 socket directory is unsafe')
+    finally:
+        os.close(descriptor)
+
+
 class DesktopGraphics:
     def __init__(self, component, instance, environment, *, shell, capture, library, xwayland, authentication=None):
         self.component = native_path(component, directory=True).resolve(strict=True)
@@ -89,6 +115,7 @@ class DesktopGraphics:
         self.private.mkdir(mode=0o700)
         created = owned_identity(self.private)
         try:
+            prepare_x11_socket_directory()
             self.environment = {key: value for key, value in environment.items()
                 if key in ('PATH', 'LANG', 'LC_ALL', 'LC_CTYPE', 'DBUS_SESSION_BUS_ADDRESS')}
             self.environment.update(XDG_RUNTIME_DIR=str(runtime), WAYLAND_DISPLAY=socket_name)

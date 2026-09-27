@@ -1,9 +1,11 @@
 # Third-party notices
 
 The native catalog downloads original publisher archives. Their URLs, hashes,
-sizes, source locations and licenses remain in `catalog.json`; original license
-files are retained during extraction. No aggregate third-party binary stack is
-redistributed by this module.
+sizes, source locations and licenses remain in `catalog.json` and
+`desktop_catalog.json`; original license files are retained during extraction.
+Original runtime APKs are acquired from their publishers. The combined desktop
+recipe additionally distributes the explicitly identified source derivations
+below in `native/dist`, together with their corresponding source and notices.
 
 ## Xpra HTML client fixtures and preparation
 
@@ -36,14 +38,14 @@ licenses and source obligations remain with the corresponding library
 distributors. Per-architecture build records retain the pinned Debian image,
 snapshot, compiler/package versions, source hashes and binary hashes.
 
-`native/qt_native.cpp` is the first-party confirmed-text adapter candidate for
+`native/qt_native.cpp` is the first-party confirmed-text adapter for
 the combined Wayland/Xwayland backend. Its native build fixtures use the same
 Debian Qt ABI baselines, with original Wayland client headers and libraries from
 the signed snapshot. The adapter dynamically links the application's Qt and
 Wayland libraries. `prepare_qt_baseline.py` copies original runtime libraries only
 inside disposable native test resources to verify those exact baseline versions;
-neither those libraries nor these unpublished candidates are added to the released
-component catalog by the qualification scripts.
+those libraries are not redistributed with the adapter. The two dynamically
+linked adapter binaries and their build records are in `native/dist/<arch>`.
 
 The GTK4 build fixture compiles the original GTK 4.0.3 source archive from
 https://download.gnome.org/sources/gtk/4.0/gtk-4.0.3.tar.xz (SHA-256
@@ -59,18 +61,28 @@ The focus browser fixture uses npm-published jQuery 3.7.1 and jQuery UI 1.13.3
 executes the original reviewed Xpra window constructors and their real jQuery UI
 listeners, including decoration drag, together with the published controllers.
 
-## Weston native qualification
+## Combined desktop native distribution
 
 `native/patches/weston-14-input-events.patch` is a reviewed modification of
 Weston 14.0.2 source, licensed under [the original Weston notices](licenses/weston-14-COPYING.txt).
 The adjacent JSON records the original archive, original source hashes and patch
-hash. `qualification/desktop_compatibility/build_weston.sh` derives a private
-library from that verified source without modifying publisher archives or an
-activated installation. Native qualification records the compiler, packages,
-derived source and library hashes. These unpublished fixtures do not add a
-released component or redistribute the third-party library with this module.
+hash. `native/dist/<arch>/artifacts/libweston-14.so.0` and `xwayland.so` are
+derived from that source. The first-party shell and capture client link to the
+original public/private ABI of the pinned version. Original publisher archives
+and already activated installations are not modified. Build records identify the
+compiler, signed packages, patches, build scripts and final binary hashes.
 
-## IBus context provenance qualification
+The complete original Weston 14.0.2 source archive is retained in
+`native/dist/common/sources/weston-14.0.2.tar.xz`; the reviewed patch and build
+scripts are in `native/dist/common/sources/tree`. The archive preserves the
+individual source notices, including the capture protocol used for generated
+client code. The original Wayland protocols 1.46 `text-input-unstable-v3.xml`
+is also retained there under `native/protocols`, including its Intel, Jan Arne
+Petersen, Red Hat and Purism copyright and permissive license. It matches the
+original signed Alpine `wayland-protocols-1.46-r0` build dependency (SHA-256
+`2d08f2cddb463e169c23f1c34769de12ae255540e51ee8f515b54667d60b90ba`).
+
+## IBus context provenance derivation
 
 `native/patches/ibus-1.5-context-source.patch` derives a read-only context
 provenance interface from IBus 1.5.33, under its original
@@ -78,6 +90,25 @@ provenance interface from IBus 1.5.33, under its original
 the original publisher archive and source hashes. The private daemon reports
 the actual context connection; its official portal reports the original
 session-bus owner. Neither interface exposes text or performs input or process
-operations. `qualification/desktop_compatibility/build_ibus.sh` compiles only in
-a disposable native fixture. This unpublished work does not activate a component,
-change original archive hashes or redistribute a derived IBus binary.
+operations. The derived `ibus-daemon`, `ibus-portal` and `libibus-1.0.so.5`
+are distributed in `native/dist/<arch>/artifacts`, under LGPL-2.1-or-later.
+The full original release source, including all notices, is distributed as
+`native/dist/common/sources/ibus-1.5.33.tar.gz`. Its exact modification and
+complete build scripts are in the accompanying `sources/tree`; the license is
+also available in `native/dist/common/licenses/ibus-COPYING.txt`. Build records
+retain source, patch, compiler, dependency and final artifact identities.
+
+IBus executables dynamically link their accompanying IBus library and original
+GLib/D-Bus libraries. The first-party Go/Python host invokes them as separate
+processes; it does not statically link IBus. You may modify and rebuild the
+corresponding source and relink/replace the library under its license. The
+published package verifies its reviewed bytes; to distribute a modified build,
+regenerate its manifest/catalog and build the host against that modified source
+package, rather than changing a running application's immutable files. See
+the corresponding-source build instructions in `CONTRIBUTING.md`. No license
+permission is narrowed by the integrity checks, and reverse engineering for
+debugging such library modifications is not prohibited by this project.
+
+Complete corresponding source accompanies the binary files at the same module
+location; this distribution does not rely on a future source offer. The original
+runtime APKs retain their own publisher-provided source and license metadata.

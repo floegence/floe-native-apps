@@ -18,6 +18,7 @@ import (
 func main() {
 	state := flag.String("state", "", "absolute private preparation directory")
 	architecture := flag.String("arch", runtime.GOARCH, "Linux target architecture")
+	recipe := flag.String("recipe", "xpra", "qualification/acquisition recipe: xpra or desktop")
 	bundle := flag.String("bundle", "", "write a verified offline ZIP for the target architecture")
 	check := flag.String("check", "", "self-check an installed native root")
 	input := flag.String("prepare-input", "", "prepare client input support in a new private directory")
@@ -25,7 +26,26 @@ func main() {
 	flag.Parse()
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
+	pkg, err := packageForRecipe(*recipe, *architecture)
+	if err != nil {
+		fail(err)
+	}
+	validate := func(ctx context.Context, root string) error {
+		var err error
+		if *recipe == "desktop" {
+			err = nativeapps.DesktopSelfTest(ctx, root, *architecture)
+		} else {
+			err = nativeapps.SelfTest(ctx, root)
+		}
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+		}
+		return err
+	}
 	if *input != "" {
+		if *recipe != "xpra" {
+			fail(fmt.Errorf("standalone Xpra input preparation requires the xpra recipe"))
+		}
 		support, err := nativeapps.PrepareClientInput(*input, *architecture)
 		if err != nil {
 			fail(err)
@@ -43,15 +63,11 @@ func main() {
 		return
 	}
 	if *check != "" {
-		if err := nativeapps.SelfTest(ctx, *check); err != nil {
+		if err := validate(ctx, *check); err != nil {
 			fail(err)
 		}
 		fmt.Println("Native picture and input passed")
 		return
-	}
-	pkg, err := nativeapps.ForPlatform("linux", *architecture)
-	if err != nil {
-		fail(err)
 	}
 	if *bundle != "" {
 		file, err := os.Create(*bundle + ".part")
@@ -75,13 +91,7 @@ func main() {
 		fmt.Println(*bundle)
 		return
 	}
-	manager, err := nativeapps.New(*state, pkg, func(ctx context.Context, root string) error {
-		err := nativeapps.SelfTest(ctx, root)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
-		}
-		return err
-	})
+	manager, err := nativeapps.New(*state, pkg, validate)
 	if err != nil {
 		fail(err)
 	}
@@ -110,4 +120,16 @@ func main() {
 		}
 	}
 }
+
+func packageForRecipe(recipe, architecture string) (nativeapps.Package, error) {
+	switch recipe {
+	case "xpra":
+		return nativeapps.ForPlatform("linux", architecture)
+	case "desktop":
+		return nativeapps.DesktopForPlatform("linux", architecture)
+	default:
+		return nativeapps.Package{}, fmt.Errorf("unknown qualification recipe %q", recipe)
+	}
+}
+
 func fail(err error) { fmt.Fprintln(os.Stderr, err); os.Exit(1) }
