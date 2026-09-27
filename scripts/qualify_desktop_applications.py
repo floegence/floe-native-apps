@@ -71,6 +71,7 @@ def main():
         subprocess.run(['snap', 'list', 'firefox'], check=True, stdout=subprocess.DEVNULL)
         (Path.home() / 'snap/firefox/common').mkdir(parents=True, exist_ok=True)
         cases.append(('snap-firefox', 'firefox_session_probe.py', [], {}))
+        cases.append(('snap-firefox-popup-close', 'firefox_session_probe.py', ['--close-popup'], {}))
         for application in ('org.gnome.TextEditor', 'org.kde.kwrite'):
             subprocess.run(['flatpak', 'info', '--user', application], check=True, stdout=subprocess.DEVNULL)
             (Path.home() / '.var/app' / application).mkdir(parents=True, exist_ok=True)

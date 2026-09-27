@@ -35,6 +35,7 @@ def main():
     parser.add_argument('--kind', choices=('snap', 'deb', 'rpm'), default='snap')
     parser.add_argument('--inspect-failure', action='store_true', help='Keep the isolated failed fixture alive for 60 seconds for native inspection')
     parser.add_argument('--first-use', action='store_true', help='Handle the observed initial welcome dialog in the disposable profile')
+    parser.add_argument('--close-popup', action='store_true', help='Close the test window while its native application menu is open')
     args = parser.parse_args()
     root = args.source.resolve()
     evidence = Path(tempfile.mkdtemp(prefix='firefox-session-', dir=root))
@@ -200,6 +201,12 @@ report('loaded');</script>'''
         shutil.copyfile(saved, evidence / 'saved-text.txt')
         result['saved_sha256'] = hashlib.sha256(saved.read_bytes()).hexdigest()
         target = paint('saved', marker=marker)
+        if args.close_popup:
+            previous_generation = target['generation']
+            click(976, 64)
+            wait(lambda: client.response(client.request('status'))['result']['generation'] > previous_generation,
+                 'Native menu did not change the captured scene')
+            target = paint('close-popup', window=target['window'])
         delivered(client.request('close_window', window=target['window']))
         # Keep consuming native state and frames while awaiting actual exit.
         # A submitted close is not proof that an application closed; preserve
