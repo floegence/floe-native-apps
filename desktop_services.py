@@ -105,6 +105,7 @@ class DesktopServices:
             'GSETTINGS_SCHEMA_DIR': str(self.private), 'GSETTINGS_BACKEND': 'memory',
             'XDG_DATA_DIRS': str(self.private / 'share') + ':' + str(self.component / 'usr/share'),
             'FONTCONFIG_FILE': str(self.private / 'fonts.conf'),
+            'XKB_CONFIG_ROOT': str(self.component / 'usr/share/X11/xkb'),
             'PYTHONHOME': str(self.component / 'usr'), 'PYTHONNOUSERSITE': '1',
         })
         return environment

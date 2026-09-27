@@ -80,7 +80,7 @@ func runDesktopSelfTest(parent context.Context, root string, pkg Package, retain
 	for _, item := range os.Environ() {
 		key, _, _ := strings.Cut(item, "=")
 		switch key {
-		case "HOME", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_DATA_HOME", "XDG_DATA_DIRS", "GDK_PIXBUF_MODULE_FILE", "GDK_PIXBUF_MODULEDIR", "FONTCONFIG_PATH", "FONTCONFIG_FILE", "DISPLAY", "WAYLAND_DISPLAY", "WAYLAND_SOCKET", "XAUTHORITY", "DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR", "GDK_BACKEND", "GTK_IM_MODULE", "GTK_IM_MODULE_FILE", "GTK_PATH", "GIO_EXTRA_MODULES", "PYTHONPATH", "PYTHONHOME", "LD_PRELOAD", "LD_LIBRARY_PATH", "GSETTINGS_SCHEMA_DIR", "GSETTINGS_BACKEND":
+		case "HOME", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_DATA_HOME", "XDG_DATA_DIRS", "GDK_PIXBUF_MODULE_FILE", "GDK_PIXBUF_MODULEDIR", "FONTCONFIG_PATH", "FONTCONFIG_FILE", "XKB_CONFIG_ROOT", "DISPLAY", "WAYLAND_DISPLAY", "WAYLAND_SOCKET", "XAUTHORITY", "DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR", "GDK_BACKEND", "GTK_IM_MODULE", "GTK_IM_MODULE_FILE", "GTK_PATH", "GIO_EXTRA_MODULES", "PYTHONPATH", "PYTHONHOME", "LD_PRELOAD", "LD_LIBRARY_PATH", "GSETTINGS_SCHEMA_DIR", "GSETTINGS_BACKEND":
 			continue
 		}
 		environment = append(environment, item)
@@ -92,6 +92,7 @@ func runDesktopSelfTest(parent context.Context, root string, pkg Package, retain
 		"GDK_PIXBUF_MODULEDIR="+filepath.Join(root, "usr/lib/gdk-pixbuf-2.0/2.10.0/loaders"),
 		"XDG_DATA_DIRS="+filepath.Join(state, "instance", "desktop-services", "share")+":"+filepath.Join(root, "usr/share"),
 		"FONTCONFIG_FILE="+filepath.Join(state, "instance", "desktop-services", "fonts.conf"),
+		"XKB_CONFIG_ROOT="+filepath.Join(root, "usr/share/X11/xkb"),
 		"GTK_IM_MODULE_FILE="+filepath.Join(state, "instance", "desktop-services", "gtk.immodules"))
 	plan, err := PlanApplication(ctx, ApplicationPlanOptions{Python: tools.Python, Environment: tools.Environment(environment),
 		DesktopFile: desktop, Backends: []BackendCapability{desktopBackend(pkg.Digest())}})

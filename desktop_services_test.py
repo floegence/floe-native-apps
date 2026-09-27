@@ -118,19 +118,22 @@ class DesktopServicesTests(unittest.TestCase):
         self.assertEqual(private['DBUS_SESSION_BUS_ADDRESS'], original['DBUS_SESSION_BUS_ADDRESS'])
         for key in ('LD_LIBRARY_PATH', 'PYTHONPATH', 'GTK_PATH', 'FONTCONFIG_PATH'):
             self.assertNotIn(key, private)
+        self.assertEqual(private.get('XKB_CONFIG_ROOT'), str(prepared.component / 'usr/share/X11/xkb'))
 
     def test_private_supervisor_restores_exact_host_environment_before_application_exec(self):
         prepared = self.prepare()
         original = {'PATH': '/host/bin', 'HOME': '/host/home', 'DISPLAY': ':49',
             'DBUS_SESSION_BUS_ADDRESS': 'unix:path=/private/bus', 'PYTHONHOME': '/host/python',
             'PYTHONPATH': '/host/modules', 'GIO_EXTRA_MODULES': '/host/gio',
-            'GTK_IM_MODULE': 'ibus', 'IBUS_ADDRESS': 'private-input', 'CUSTOM': 'unchanged'}
+            'GTK_IM_MODULE': 'ibus', 'IBUS_ADDRESS': 'private-input', 'CUSTOM': 'unchanged',
+            'XKB_CONFIG_ROOT': '/host/keyboard'}
         before = dict(original)
         supervisor = prepared.launcher_environment(original)
         self.assertEqual(original, before)
         self.assertEqual(restored_environment(supervisor), original)
         self.assertEqual(supervisor['PYTHONHOME'], str(prepared.component / 'usr'))
         self.assertNotIn('PYTHONPATH', supervisor)
+        self.assertEqual(supervisor['XKB_CONFIG_ROOT'], str(prepared.component / 'usr/share/X11/xkb'))
         self.assertTrue(Path(supervisor['GIO_LAUNCH_DESKTOP']).is_file())
         self.assertEqual(prepared.command('usr/bin/python3')[-1], str(prepared.component / 'usr/bin/python3'))
 

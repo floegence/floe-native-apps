@@ -393,6 +393,10 @@ private graphics, bus and input addresses remain. Generated executable wrappers
 live in the instance resource directory, independently of a noexec socket runtime.
 The portable component closure must include Python Xlib and libxcb-imdkit as well
 as GI/GIO; host-installed modules must not hide a missing distribution dependency.
+Component-owned GTK services and the installation widget use the component's
+verified XKB data explicitly. A clean distribution need not install keyboard
+tables at libxkbcommon's compiled system path. The application handoff restores
+the host application's original XKB environment; no global search path changes.
 
 The entrypoint revalidates the plan before preparing resources and delegates all
 processes to `DesktopSession`. Its bounded `desktop-status.json` is an atomic

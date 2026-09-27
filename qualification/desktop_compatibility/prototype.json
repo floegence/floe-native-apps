@@ -414,6 +414,18 @@
       "result": "The actual GTK4 document accepts a plain b after releasing a held Control key without reconnect or another frame grant. Explicit termination of running/windowless applications and reattachment after capture/bus loss all pass on both architectures. The existing session stage records terminating before capture revocation, so intentional capture disposal cannot become a false lifecycle failure.",
       "source_archive_sha256": "41402908efd0d8d258d04a7573cb48b93771914548bb5d90c78050d9020faee9",
       "limits": "Auditable modified source at 6823758; immutable-tag qualification and released consumer acceptance remain required."
+    },
+    {
+      "case": "Component-owned keyboard resources in clean native distributions",
+      "regression": "v0.15.0 installation passed on complete Ubuntu runners but the GTK installation widget crashed before its first window on clean Debian: libxkbcommon tried its compiled /usr/share/xkeyboard-config-2 path. The prepared services and installation-owned widget now explicitly use verified component XKB tables; the application handoff restores its original environment.",
+      "result": "Actual decoded pixels, repeated Unicode plus Enter, ordinary keys, reconnect with the same process and normal close pass on native arm64 Debian 13 slim and Alpine 3.23, and native amd64 Debian 13 slim, Alpine 3.23, Arch Linux, Rocky Linux 9, AlmaLinux 9 and UBI 9 minimal. Fresh amd64 download and installation also pass.",
+      "source_base": "c02b96fbbd05cc4d7dfaa95e55cdfed034b25c4b",
+      "qualification_log_sha256": {
+        "keyboard-install-amd64.log": "58a435d7c036612996351dd64d70cfd2eeb37e77479334049b253eea90b608b0",
+        "keyboard-distributions-amd64.log": "8fbb8e539206d304c75534493b436866a76431d7ce97dd648bbc9ed971cc35e2",
+        "keyboard-distributions-arm64-v2.log": "ce893cb7abb5bf5fdde9c6de8bd9712939809874c2f8324873e2829c29f84718"
+      },
+      "limits": "Task-owned native distribution fixtures with unchanged component bytes. Exact immutable-tag qualification and consuming viewer acceptance remain required."
     }
   ],
   "rejected_assumptions": [
