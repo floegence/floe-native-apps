@@ -141,6 +141,19 @@ def main():
             key(code, True)
             key(code, False)
         expected += 'end\n'
+        if app_id == 'org.gnome.TextEditor':
+            # GNOME's real draft save temporarily marks the document busy and
+            # rejects Save As while it is running. Observe the exact completed
+            # draft in this fixture's private data root before opening the
+            # chooser; do not guess a sleep or retry an unsuccessful save.
+            drafts = state / 'data/org.gnome.TextEditor/drafts'
+            def draft_written():
+                for path in drafts.glob('*'):
+                    if path.is_file() and path.read_bytes() == expected.encode():
+                        result['completed_draft_sha256'] = hashlib.sha256(path.read_bytes()).hexdigest()
+                        return True
+                return False
+            wait(draft_written, 'GNOME draft did not finish with the exact received text')
         # Save bytes below, not protocol replies, establish actual text delivery.
         target = paint('input-received')
         result['unicode_transactions'] = 65
