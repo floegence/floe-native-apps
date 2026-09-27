@@ -355,7 +355,7 @@ class NativeDesktop:
         elif kind not in ('ready', 'frame', 'window-added', 'window-mapped',
                           'window-protocol', 'window-restored', 'window-removed', 'context', 'pointer',
                           'capture-authorized', 'connection-ready', 'input-rejected',
-                          'selection-unavailable', 'text-queued', 'text-unavailable'):
+                          'selection-unavailable', 'close-unavailable', 'text-queued', 'text-unavailable'):
             raise ValueError('Unsupported native record')
 
     def cursor_changed(self):
@@ -447,9 +447,13 @@ class NativeDesktop:
         self.send(f'select {self.epoch} {window}\n')
 
     def close_window(self, window):
-        if not self.target or self.target.window != window:
+        integer(window)
+        if self.closed or not self.epoch or window not in self.windows:
             raise ValueError('Native window is unavailable')
-        self.submit(self.epoch, self.target, ['close'])
+        # Closing is a window lifecycle request, not pixel-coordinate input.
+        # Save dialogs or damage can change the scene before the compositor
+        # receives this request without changing the original window instance.
+        self.send(f'close-window {self.epoch} {window}\n')
 
     @staticmethod
     def validate_input(operation):

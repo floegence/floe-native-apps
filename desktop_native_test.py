@@ -126,6 +126,23 @@ class NativeTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.native.observe('window-instance 2')
 
+    def test_close_uses_live_window_identity_while_input_scene_is_unavailable(self):
+        self.native.observe('scene 2 0')
+        self.assertIsNone(self.native.target)
+        self.native.close_window(1)
+        self.assertEqual(self.sent[-1], 'close-window 1 1\n')
+        self.native.observe('window-retired 1')
+        with self.assertRaises(ValueError):
+            self.native.close_window(1)
+
+    def test_close_rejects_a_detached_connection_without_touching_windows(self):
+        self.native.unbind(1)
+        before = list(self.sent)
+        with self.assertRaises(ValueError):
+            self.native.close_window(1)
+        self.assertEqual(self.sent, before)
+        self.assertIn(1, self.native.windows)
+
     def test_x11_resource_binding_belongs_to_one_native_window_instance(self):
         self.native.observe('window-instance 2')
         self.native.observe('window-state 2 0 x11 -1 1000 700 0')

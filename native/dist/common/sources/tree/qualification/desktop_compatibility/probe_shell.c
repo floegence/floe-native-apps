@@ -1198,6 +1198,18 @@ static void command(struct probe *p, char *line) {
         emit(p, "selection-unavailable %" PRIu64 "\n", identity);
         return;
     }
+    if (sscanf(line, "close-window %" SCNu64 " %" SCNu64, &connection, &identity) == 2) {
+        struct probe_window *window;
+        if (connection && connection == p->connection) {
+            wl_list_for_each(window, &p->windows, link) {
+                if (window->identity != identity) continue;
+                weston_desktop_surface_close(window->desktop);
+                return;
+            }
+        }
+        emit(p, "close-unavailable %" PRIu64 "\n", identity);
+        return;
+    }
     if (sscanf(line, "input %" SCNu64 " %" SCNu64 " %" SCNu64 " %n", &connection, &identity, &generation, &prefix) == 3 && prefix > 0) {
         struct probe_window *window;
         bool valid = false;
@@ -1220,7 +1232,7 @@ static void command(struct probe *p, char *line) {
             strncmp(line, "motion ", 7) && strncmp(line, "scroll ", 7) &&
             strncmp(line, "text ", 5) && strncmp(line, "text-commit ", 12) &&
             strncmp(line, "clipboard-set ", 14) && strcmp(line, "clipboard-sync") &&
-            strncmp(line, "client-barrier ", 15) && strcmp(line, "close")) return;
+            strncmp(line, "client-barrier ", 15)) return;
     }
     if (!strcmp(line, "clipboard-sync")) {
         clipboard_capture(p->clipboard);
@@ -1284,8 +1296,6 @@ static void command(struct probe *p, char *line) {
         struct weston_pointer *pointer = weston_seat_get_pointer(&p->seat);
         emit(p, "pointer %.0f %.0f %d %.0f %.0f\n", pointer->pos.c.x, pointer->pos.c.y,
             weston_pointer_has_focus_resource(pointer), wl_fixed_to_double(pointer->sx), wl_fixed_to_double(pointer->sy));
-    } else if (!strcmp(line, "close") && p->current) {
-        weston_desktop_surface_close(weston_surface_get_desktop_surface(p->current));
     } else if (sscanf(line, "text-commit %" SCNu64 " %" SCNu64 " %n",
                &text_request, &text_identity, &prefix) == 2 && prefix > 0 && text_request && text_identity) {
         bool accepted = submit_text(p, line + prefix, true, text_identity);

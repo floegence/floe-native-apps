@@ -285,7 +285,9 @@ def main():
                 save(expected)
                 capture("saved")
                 outcome["saved_sha256"] = hashlib.sha256(document.read_bytes()).hexdigest()
-            left.sendall(b"close\n")
+            window = next(e['control'].split()[2] for e in reversed(events)
+                          if e.get('control', '').startswith('scene ') and e['control'].split()[2] != '0')
+            left.sendall(f"connection 1\nclose-window 1 {window}\n".encode())
             try:
                 app.wait(timeout=3)
             except subprocess.TimeoutExpired:

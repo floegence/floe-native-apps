@@ -10,7 +10,7 @@
     "artifacts/desktop-shell.so": {
       "common": false,
       "executable": true,
-      "sha256": "09ceaca96f6356eb62bc66fb307b169d768df7d61fc726c6817bb31e14bc1551",
+      "sha256": "dd5d7885257c2eb08e8e1b0c90adc0fe90206288cf73aaaad69b789eeb5ca2af",
       "size_bytes": 71512
     },
     "artifacts/ibus-daemon": {
@@ -64,7 +64,7 @@
     "provenance/native.json": {
       "common": false,
       "executable": false,
-      "sha256": "0222aaf21cfa239a3977da9aa65b5300b982796f6cd2ec641729417e3abc9823",
+      "sha256": "7f5661271fc3fe5028d8494c865546fd2ee95491f755f9404d47a0560df34a77",
       "size_bytes": 90615
     },
     "provenance/qt5.json": {
@@ -196,8 +196,8 @@
     "sources/tree/qualification/desktop_compatibility/probe_shell.c": {
       "common": true,
       "executable": false,
-      "sha256": "efbe71149609830400209d2bf71ee947fa47de2004e3aceba5a83cfb791c0902",
-      "size_bytes": 70183
+      "sha256": "5c95be08155323eb6ada96042eecb807f22cb8b1bda9e068f09ba47d2f7fcba4",
+      "size_bytes": 70514
     },
     "sources/tree/scripts/build_desktop_native.sh": {
       "common": true,

@@ -275,6 +275,15 @@ closes its channels, while process lifetime remains with the launch supervisor.
 Authenticated mixed-window probes use this same assembly rather than a second test
 implementation. Complete package admission and installed-component activation remain separate release prerequisites.
 
+Window close remains ordered after confirmed text, but it addresses the live
+native window instance and authenticated connection, independently of the painted
+scene. A save dialog or selection may retire pixel coordinates without retiring
+the window. The compositor rejects old connections and retired window instances;
+it never substitutes the currently selected window. A `requested` reply records
+submission only: native qualification requires the actual application's normal
+exit or its visible save/cancel dialog. Pointer and keyboard input still require
+the current decoded frame and scene generation.
+
 The helper also owns one `NativeContexts` registry and its toolkit, IBus and XIM
 services. It borrows the private bus and supervisor process authority, and takes
 ownership of the native X11 resource connection. Viewer detach preserves these

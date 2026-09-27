@@ -182,9 +182,6 @@ def main():
               'runtime': str(runtime), 'runtime_noexec': bool(os.statvfs(runtime).f_flag & os.ST_NOEXEC)}
     if not browser:
         result['toolkit'] = fixture_toolkit()
-        if fixture_toolkit().startswith('qt'):
-            result['qt_modules_sha256'] = {path.name: hashlib.sha256(path.read_bytes()).hexdigest()
-                for path in Path(os.environ['FLOE_PROBE_QT_PLUGINS']).glob('platforminputcontexts/*.so')}
     process, client, started = None, None, None
     mounted = None
     logs = (evidence / 'helper.log').open('w')
@@ -230,6 +227,12 @@ def main():
             result['application_exit'], result['passed'] = exited, True
             return
         assert not any(x.get('state') == 'failed' for x in records()), records()
+        configuration = session_file(evidence, 'desktop-launch.json') if 'FLOE_PROBE_DESKTOP_STATE' in os.environ else evidence / 'launch.json'
+        resources = json.loads(configuration.read_text())['resources']
+        if not browser and fixture_toolkit().startswith('qt'):
+            result['qt_modules_sha256'] = {path.name: hashlib.sha256(path.read_bytes()).hexdigest()
+                for path in Path(resources['qt_plugins']).glob('platforminputcontexts/*.so')}
+            assert len(result['qt_modules_sha256']) == 2
         result['required_services'] = json.loads(session_file(evidence, 'application-plan.json').read_text())['observation']['services']
         result['fuse_device_available'] = Path('/dev/fuse').exists()
         assert not result['required_services']
@@ -245,7 +248,7 @@ def main():
         if not browser:
             actual = json.loads((evidence / 'application-environment.json').read_text())
             assert actual['python_path'] == '/floe-qualification/host-python' and not actual['support_overrides']
-            assert actual['prefix'] != str(Path(os.environ['FLOE_PROBE_COMPONENT']) / 'usr')
+            assert actual['prefix'] != str(Path(resources['component']) / 'usr')
             result['application_environment_restored'] = True
         if mode == 'slow-window':
             assert result['first_window_wait_seconds'] > 40

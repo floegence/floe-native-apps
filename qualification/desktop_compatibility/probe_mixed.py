@@ -284,9 +284,15 @@ def main():
         xconnection.close()
         result['x11_resource_identity'] = {'native_window': second, 'xid': xid,
             'actual_pid': xwayland.pid, 'forged_advisory_pid_rejected': True}
-        control.send(second, b"close\n")
+        # Queue selection and close in the same loop turn. Selection invalidates
+        # the painted scene before close reaches the compositor, deterministically
+        # reproducing the save-dialog race without a timing-dependent sleep.
+        closing_generation = control.native.generation
+        wire.invoke(lambda: (wire.native.select(second), wire.native.close_window(second)))
         xwayland.wait(timeout=10)
         assert xwayland.returncode == 0 and wayland.poll() is None
+        assert control.native.generation > closing_generation
+        result['close_after_scene_change'] = {'window': second, 'exit_code': xwayland.returncode}
         wait(lambda: "window-restored" in events, "Closing Xwayland did not restore Wayland")
         paint("restored", (19, 87, 155))
         identities = [int(e.split()[1]) for e in events if e.startswith("window-instance ")]
@@ -299,11 +305,15 @@ def main():
         stale = (f"input {previous_connection} {first} {generation} key 45 1\ninput {previous_connection} {first} {generation} key 45 0\n"
                  f"input {current_connection} {second} {generation} key 45 1\ninput {current_connection} {second} {generation} key 45 0\n")
         wire.send(stale)
+        wire.send(f"close-window {previous_connection} {first}\nclose-window {current_connection} {second}\n")
         control.send(first, b"key 46 1\nkey 46 0\n")
         wait(lambda: json.loads(receipts[0].read_text()) == ["ac", ""], "Restored Wayland window did not receive input")
         assert events.count(f"input-rejected {previous_connection} {identities[0]}") == 2
         assert events.count(f"input-rejected {current_connection} {second}") == 2
         result["rejected_stale_input"] = {"old_connection": 2, "retired_window": 2}
+        assert f"close-unavailable {first}" in events and f"close-unavailable {second}" in events
+        assert wayland.poll() is None
+        result['rejected_stale_close'] = {'old_connection': True, 'retired_window': True}
         if os.environ.get('FLOE_PROBE_CONTEXT'):
             from context_probe import qualify
             result['native_context'] = qualify(root, evidence, environment, control, wire, start, wait, paint, display)

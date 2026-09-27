@@ -275,7 +275,9 @@ def main():
             latest = max((r for r in receipts if "sequence" in r), key=lambda r: r["sequence"])
             assert latest["value"] == expected, "Text changed after losing input focus"
             # Send the native window-manager close request, never force termination.
-            left.sendall(b"close\n")
+            window = next(e['control'].split()[2] for e in reversed(events)
+                          if e.get('control', '').startswith('scene ') and e['control'].split()[2] != '0')
+            left.sendall(f"connection 1\nclose-window 1 {window}\n".encode())
             app.wait(timeout=15)
             outcome["application_exit"] = app.returncode
             outcome["passed"] = app.returncode == 0

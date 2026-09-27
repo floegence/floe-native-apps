@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import re
 import secrets
+import select
 import shutil
 import subprocess
 import sys
@@ -182,7 +183,29 @@ report('loaded');</script>'''
         result['saved_sha256'] = hashlib.sha256(saved.read_bytes()).hexdigest()
         target = paint('saved', marker=marker)
         delivered(client.request('close_window', window=target['window']))
-        assert process.wait(timeout=20) == 0
+        # Keep consuming native state and frames while awaiting actual exit.
+        # A submitted close is not proof that an application closed; preserve
+        # any modal UI or intervening scene change if this assertion fails.
+        deadline = time.monotonic() + 20
+        while process.poll() is None and time.monotonic() < deadline:
+            if client.frames:
+                from PIL import Image
+                import io
+                frame, data = client.frames.popleft()
+                image = Image.open(io.BytesIO(data))
+                image.load()
+                assert image.size == (frame['width'], frame['height'])
+                (evidence / f"close-observed-{frame['sequence']}.png").write_bytes(data)
+                client.request('frame_ack', frame=frame['sequence'])
+            elif select.select([client.client], [], [], .1)[0]:
+                try:
+                    client.record()
+                except RuntimeError:
+                    # Normal helper exit closes its attachment before waitpid
+                    # observes the helper's exit status.
+                    process.wait(timeout=max(.01, deadline - time.monotonic()))
+        result['close_state'] = client.state
+        assert process.poll() == 0, 'Native window close did not end the isolated Firefox instance'
         exited = next(x for x in records() if x.get('state') == 'exited')
         assert exited['exit_code'] == 0 and not exited['termination_requested']
         result['application_exit'], result['passed'] = exited, True
