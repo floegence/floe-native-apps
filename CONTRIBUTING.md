@@ -255,9 +255,34 @@ services. Session disposal rejects a still-running application supervisor. The
 supervisor's bounded private receipt supplies authoritative launcher errors and
 exit status; a missing or inconsistent receipt is a failure. Nonzero launcher
 exit before any native window is a startup failure, while a running process with
-no windows continues waiting. This internal assembly does not yet provide the
-public installed launcher, package-specific resource realization or a complete
-Wayland/browser support claim.
+no windows continues waiting. Component activation and package-specific resource
+realization remain required before declaring the combined backend supported.
+
+`WriteDesktopLauncher` installs the complete first-party Python import closure
+in a new private source directory. Existing directories are rejected: updates
+cannot rewrite the helper supporting a running application. Its returned entrypoint
+accepts one owner-only, bounded version-1 configuration file. The configuration
+binds the immutable launch plan, original application environment, private runtime,
+instance/token and caller-verified compositor, capture, input-service and Python
+resources. Unknown fields/versions, symlinks, public files and duplicate JSON keys
+are rejected. Component resolution and package adaptation belong to the upstream
+installation/launch boundary, never renderer-supplied configuration.
+
+The entrypoint revalidates the plan before preparing resources and delegates all
+processes to `DesktopSession`. Its bounded `desktop-status.json` is an atomic
+receipt of that owner's native transitions/process identities, not a second
+lifecycle manager. It records prepared graphics digests and distinct content-free
+portal observations, never launch credentials, environment values or document
+text. Explicit preparation/launcher failures return a failed helper exit while
+retaining the authoritative application exit code in the receipt. Runtime-owned
+stdout/stderr or stdin lifetime is not a sharing or application lifetime signal.
+The helper must be launched independently of a viewer/Runtime cancellation context.
+
+This source installation API does not activate third-party components or establish
+a platform support claim. `TestNativeDesktopLauncherInstallation` explicitly
+installs a retained snapshot for native qualification. The session fixture's
+`FLOE_PROBE_DESKTOP_LAUNCHER` points to that installed entrypoint; it no longer
+assembles a separate fixture-only session or patches production callbacks.
 
 `qualification/desktop_compatibility/session_probe.py` runs this owner as an
 independent process. Its viewer knows only authenticated IPC, decodes actual PNG

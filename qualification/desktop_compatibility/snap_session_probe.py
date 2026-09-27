@@ -21,7 +21,7 @@ import traceback
 from gi.repository import GLib
 from application_processes import identity
 from control_probe import ControlClient
-from session_probe import cleanup_helper
+from session_probe import cleanup_helper, launch_records
 from source_proof import record_sources
 
 
@@ -85,8 +85,7 @@ report('loaded');</script>'''
     process = client = started = None
     log = (evidence / 'helper.log').open('w')
     def records():
-        path = evidence / 'helper.jsonl'
-        return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
+        return launch_records(evidence)
     def wait(predicate, message, seconds=30):
         deadline = time.monotonic() + seconds
         while not predicate():
@@ -205,6 +204,7 @@ report('loaded');</script>'''
         server.server_close()
         thread.join(timeout=5)
         log.close()
+        (evidence / 'launch.json').unlink(missing_ok=True)
         (evidence / 'result.json').write_text(json.dumps(result, indent=2) + '\n')
         print(json.dumps(result, indent=2))
     if not result['passed']:

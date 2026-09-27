@@ -63,7 +63,7 @@
     }
   ],
   "unproven_release_requirements": [
-    "Complete durable helper entrypoint and public preparation/launch APIs: one production launch plan and supervisor, prepared graphics/input/portal resources, authoritative native readiness and Runtime-independent lifetime",
+    "Complete catalog-backed public preparation/launch resource realization around the installed first-party helper; source snapshot installation alone does not qualify portable Python, native libraries or package resources",
     "Run remaining sandbox and lifecycle qualification through the installed helper; existing persistent Snap and Flatpak prototypes are not installation evidence",
     "Complete both native architectures and published installed-helper qualification of the Wayland text-input-v3 adapter; actual arm64 Chromium document/frame receipts are available, serial or socket flush alone is not consumption evidence",
     "Complete both native architectures, toolkit coverage and installed-helper qualification of cursor, clipboard, window/popup and display/input behavior; current clipboard receipts cover GTK3/GTK4/Qt5/Qt6 Wayland/Xwayland and Chromium Wayland on arm64",
@@ -333,6 +333,11 @@
       "case": "Bounded native clipboard on arm64 GTK3/GTK4/Qt5/Qt6 Wayland/Xwayland and Chromium Wayland",
       "result": "One compositor selection owner and the existing ordered input scheduler publish before Paste. Actual 11,400-byte Unicode paste, Copy, Cut, re-paste, oversized application offer rejection, decoded final frames, detach/reconnect and normal process cleanup pass. Source tests reject stale target/connection reads, incomplete UTF-8, late publication and withdrawn offers.",
       "limits": "Selection publication does not acknowledge asynchronous application Paste consumption; an immediate following Enter can precede pasted bytes. Native amd64, product clipboard permissions, installed activation and the full desktop/package matrix remain required."
+    },
+    {
+      "case": "Go-installed persistent helper source snapshot on native arm64",
+      "result": "One exclusive WriteDesktopLauncher snapshot contains the full first-party import closure. The actual entrypoint reads a private versioned configuration, revalidates the immutable plan and delegates to DesktopSession. Actual GTK4 and Chromium input/frame/clipboard, 42-second first window, launcher exit 46, support failure, capture/private-bus loss, restrictive noexec runtime, reconnect and normal cleanup pass. Flatpak GTK/Qt use the same entrypoint and pass remote Save As with exact file bytes and official document grants.",
+      "limits": "Native amd64 bootstrap, portable helper Python/library closure, package-specific resource realization, activated components and the full desktop/package matrix remain required. These probes use the explicit task-owned native artifacts and a host Python runtime."
     }
   ],
   "rejected_assumptions": [

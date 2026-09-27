@@ -28,12 +28,7 @@ def fixture_toolkit():
 
 
 def helper(root, runtime, evidence, token, mode):
-    from gi.repository import Gio, GLib
-    from desktop_graphics import DesktopGraphics
-    from desktop_services import DesktopServices
-    from desktop_session import DesktopSession
     from launch_plan import prepare
-    loop = GLib.MainLoop()
     environment = {**os.environ, 'XDG_RUNTIME_DIR': str(runtime), 'WAYLAND_DISPLAY': 'wayland-0',
         'DBUS_SESSION_BUS_ADDRESS': 'unix:path=' + str(runtime / 'bus'), 'GDK_BACKEND': 'wayland',
         'FLOE_TEST_WINDOW_COLOR': '13579b'}
@@ -59,45 +54,42 @@ def helper(root, runtime, evidence, token, mode):
         environment.update(specification['environment'])
         for key in specification['unset']:
             environment.pop(key, None)
-    services = DesktopServices(os.environ['FLOE_PROBE_COMPONENT'], evidence)
     native = Path(os.environ['FLOE_PROBE_NATIVE'])
     library = Path(os.environ['FLOE_PROBE_WESTON_LIBRARY'])
-    graphics = DesktopGraphics(services.component, evidence, environment, shell=native / 'probe-shell.so',
-        capture=native / 'frame-probe', library=library / 'libweston-14.so.0',
-        xwayland=library.parent / 'xwayland/xwayland.so')
+    resources = {'component': os.environ['FLOE_PROBE_COMPONENT'],
+        'shell': str(native / 'probe-shell.so'), 'capture': str(native / 'frame-probe'),
+        'library': str(library / 'libweston-14.so.0'),
+        'xwayland': str(library.parent / 'xwayland/xwayland.so'),
+        'ibus_daemon': os.environ['FLOE_PROBE_IBUS_DAEMON'], 'python': sys.executable}
+    if 'FLOE_PROBE_IBUS_PORTAL' in os.environ:
+        resources['ibus_portal'] = os.environ['FLOE_PROBE_IBUS_PORTAL']
     if mode == 'support-failure':
-        graphics.command.append('--floe-deliberately-invalid-option')
-    (evidence / 'graphics.json').write_text(json.dumps(graphics.description, indent=2))
-    def record(value):
-        with (evidence / 'helper.jsonl').open('a') as stream:
-            stream.write(json.dumps(value) + '\n')
+        invalid = evidence / 'invalid-shell.so'
+        invalid.write_bytes(b'Task-owned invalid compositor module')
+        resources['shell'] = str(invalid)
     plan = prepare(str(evidence / 'fixture.desktop'), environment,
         [{'id': 'wayland', 'component': 'unpublished-native-session-fixture', 'protocols': ['wayland', 'x11'],
           'services': ['user-systemd-scope', 'file-portal', 'document-portal', 'ibus-portal']}])
-    session = DesktopSession(evidence, runtime, runtime.name, token, services, graphics,
-        ibus_command=[os.environ['FLOE_PROBE_IBUS_DAEMON']], plan=plan,
-        application_launcher=[sys.executable, str(root / 'application.py')], application_environment=environment,
-        completed=loop.quit, record=record, host_bus=specification.get('host_bus'),
-        ibus_portal_command=[os.environ['FLOE_PROBE_IBUS_PORTAL']] if 'FLOE_PROBE_IBUS_PORTAL' in os.environ else (),
-        initial_documents=specification.get('initial_documents', ()))
-    original_failure = session.fail
-    def failure(code, **details):
-        # Test-only traceback observation: the isolated fixture has no user data.
-        # Production diagnostics still contain only the classified error fields.
-        if sys.exc_info()[0] is not None:
-            with (evidence / 'failure.log').open('a') as stream:
-                traceback.print_exc(file=stream)
-        original_failure(code, **details)
-    session.fail = failure
-    from unittest.mock import patch
-    create_launcher = Gio.SubprocessLauncher.new
-    def launcher(flags):
-        # Preserve real subprocess creation, retaining support stderr only in
-        # this isolated fixture. Native diagnostics never redirect application data.
-        return create_launcher(Gio.SubprocessFlags(flags & ~Gio.SubprocessFlags.STDERR_SILENCE))
-    with patch.object(Gio.SubprocessLauncher, 'new', side_effect=launcher):
-        session.start()
-        loop.run()
+    configuration = evidence / 'launch.json'
+    descriptor = os.open(configuration, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(descriptor, 'w') as stream:
+        json.dump({'version': 1, 'instance': runtime.name, 'token': token,
+            'directory': str(evidence), 'runtime': str(runtime), 'resources': resources,
+            'environment': environment, 'plan': plan, 'host_bus': specification.get('host_bus'),
+            'initial_documents': specification.get('initial_documents', [])}, stream)
+    # Execute the installed entrypoint. The viewer has no fixture-only session
+    # assembly, diagnostic callback patch, service launcher or direct input path.
+    entry = Path(os.environ.get('FLOE_PROBE_DESKTOP_LAUNCHER', root / 'desktop_bootstrap.py'))
+    os.execv(sys.executable, [sys.executable, str(entry), str(configuration)])
+
+
+def launch_records(evidence):
+    path = Path(evidence) / 'desktop-status.json'
+    if not path.exists():
+        return []
+    receipt = json.loads(path.read_text())
+    assert receipt['version'] == 1
+    return receipt['processes'] + receipt['transitions'] + receipt['service_events']
 
 
 def cleanup_helper(process, started, processes):
@@ -173,8 +165,7 @@ def main():
     mounted = None
     logs = (evidence / 'helper.log').open('w')
     def records():
-        path = evidence / 'helper.jsonl'
-        return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
+        return launch_records(evidence)
     def wait(predicate, reason, seconds=25):
         deadline = time.monotonic() + seconds
         while not predicate():
@@ -202,14 +193,14 @@ def main():
         wait(lambda: any(x.get('phase') == 'sharing_ready' or x.get('state') == 'failed' for x in records()),
             'Persistent helper did not prepare', 45)
         if mode == 'support-failure':
-            assert process.wait(timeout=10) == 0
+            assert process.wait(timeout=10) == 1
             assert any(x.get('state') == 'failed' for x in records())
             assert not any(x.get('service') == 'application' for x in records())
             result['support_failure_before_application'] = True
             result['passed'] = True
             return
         if mode == 'launcher-failure':
-            assert process.wait(timeout=10) == 0
+            assert process.wait(timeout=10) == 1
             exited = next(x for x in records() if x.get('error_code') == 'APPLICATION_LAUNCHER_EXITED')
             assert exited['state'] == 'failed' and exited['exit_code'] == 46 and not exited['termination_requested']
             result['application_exit'], result['passed'] = exited, True
@@ -337,6 +328,7 @@ def main():
             else:
                 runtime.rmdir()
         logs.close()
+        (evidence / 'launch.json').unlink(missing_ok=True)
         (evidence / 'result.json').write_text(json.dumps(result, indent=2) + '\n')
         print(json.dumps(result, indent=2))
     if not result['passed']:
