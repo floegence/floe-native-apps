@@ -1,9 +1,57 @@
 """Display density must preserve toolkit logical geometry on a private display."""
 import unittest
 from types import SimpleNamespace
+from contextlib import nullcontext
+from unittest.mock import patch
 from display import install_display, density, scaled_settings
 
 class DisplayTest(unittest.TestCase):
+    def test_remote_resize_invalidates_the_accepted_native_surface(self):
+        events = []
+        class Window:
+            xid = 37
+            size = (2880, 1920)
+            managed = shown = True
+            def get_dimensions(self): return self.size
+            def is_managed(self): return self.managed
+            def get_property(self, name):
+                self.assert_property = name
+                return self.shown
+        window = Window()
+        def configure(win, geometry, resize_counter=0):
+            events.append(('configure', geometry, resize_counter))
+            # The application minimum, not the requested viewport, determines
+            # the accepted drawable dimensions. A rejected counter changes none.
+            if resize_counter != 9:
+                win.size = (max(1240, geometry[2]), max(960, geometry[3]))
+            return 'configured'
+        server = install_display(SimpleNamespace(
+            set_xsettings=lambda *_: None, parse_hello=lambda *_: None,
+            init_packet_handlers=lambda: None, get_server_features=lambda *_: {},
+            client_configure_window=configure))
+        bindings = SimpleNamespace(send_expose=lambda *args: events.append(('expose', *args)))
+        with patch.dict('sys.modules', {
+            'xpra.x11.bindings.window': SimpleNamespace(X11WindowBindings=lambda: bindings),
+            'xpra.gtk.error': SimpleNamespace(xlog=nullcontext()),
+        }):
+            self.assertEqual(server.client_configure_window(window, (0, 0, 800, 700), 4), 'configured')
+            self.assertEqual(events, [('configure', (0, 0, 800, 700), 4),
+                                      ('expose', 37, 0, 0, 1240, 960)])
+            # Identical requests, movement and rejected old counters do not
+            # create a redraw loop or claim a new surface.
+            for geometry, counter in [((0, 0, 800, 700), 5), ((20, 30, 800, 700), 6),
+                                      ((0, 0, 2000, 1600), 9)]:
+                events.clear()
+                server.client_configure_window(window, geometry, counter)
+                self.assertEqual(events, [('configure', geometry, counter)])
+            for state in ('shown', 'managed'):
+                setattr(window, state, False)
+                window.size = (2880, 1920)
+                events.clear()
+                server.client_configure_window(window, (0, 0, 1280, 960))
+                self.assertEqual(events, [('configure', (0, 0, 1280, 960), 0)])
+                setattr(window, state, True)
+
     def test_display_configuration_updates_workarea_before_native_resize(self):
         """Xpra 6.2 calculates workarea from screen_sizes, not monitors."""
         events = []
