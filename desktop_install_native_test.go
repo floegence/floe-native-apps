@@ -12,16 +12,16 @@ import (
 	"time"
 )
 
-// Explicit native qualification consumes original candidate bytes through the
-// production Manager and its graphical activation check. It changes no host
-// package, desktop configuration or existing application's installation.
+// Explicit native qualification acquires original publisher bytes (or a verified
+// candidate cache) through the production Manager and its graphical activation
+// check. It changes no host package, desktop configuration or live installation.
 func TestNativeDesktopInstallation(t *testing.T) {
 	candidate := os.Getenv("FLOE_TEST_DESKTOP_INSTALL_CANDIDATE")
 	state := os.Getenv("FLOE_TEST_DESKTOP_INSTALL_STATE")
-	if candidate == "" {
+	if state == "" {
 		t.Skip("explicit native desktop installation fixture")
 	}
-	if runtime.GOOS != "linux" || !filepath.IsAbs(candidate) || !filepath.IsAbs(state) {
+	if runtime.GOOS != "linux" || (candidate != "" && !filepath.IsAbs(candidate)) || !filepath.IsAbs(state) {
 		t.Fatal("native private fixture paths required")
 	}
 	if _, err := os.Lstat(state); !os.IsNotExist(err) {
@@ -51,33 +51,37 @@ func TestNativeDesktopInstallation(t *testing.T) {
 	if err := os.Mkdir(filepath.Join(state, "archives"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	for _, artifact := range pkg.Artifacts {
-		path := filepath.Join(candidate, "apks", artifact.Name)
-		if !verifyFile(path, artifact) {
-			t.Fatal("original archive differs from compiled desktop catalog", artifact.Name)
-		}
-		source, err := os.Open(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		destination, err := os.OpenFile(manager.artifactPath(artifact), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
-		if err != nil {
+	source := "download"
+	if candidate != "" {
+		source = "cache"
+		for _, artifact := range pkg.Artifacts {
+			path := filepath.Join(candidate, "apks", artifact.Name)
+			if !verifyFile(path, artifact) {
+				t.Fatal("original archive differs from compiled desktop catalog", artifact.Name)
+			}
+			source, err := os.Open(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			destination, err := os.OpenFile(manager.artifactPath(artifact), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+			if err != nil {
+				_ = source.Close()
+				t.Fatal(err)
+			}
+			_, err = io.Copy(destination, source)
 			_ = source.Close()
-			t.Fatal(err)
-		}
-		_, err = io.Copy(destination, source)
-		_ = source.Close()
-		closed := destination.Close()
-		if err != nil || closed != nil {
-			t.Fatal(err)
+			closed := destination.Close()
+			if err != nil || closed != nil {
+				t.Fatal(err)
+			}
 		}
 	}
-	if _, err := manager.Start("qualification", "native-desktop", "cache", 0); err != nil {
+	if _, err := manager.Start("qualification", "native-desktop", source, 0); err != nil {
 		t.Fatal(err)
 	}
 	changes, stop := manager.Watch()
 	defer stop()
-	timeout := time.NewTimer(2 * time.Minute)
+	timeout := time.NewTimer(15 * time.Minute)
 	defer timeout.Stop()
 	for {
 		select {

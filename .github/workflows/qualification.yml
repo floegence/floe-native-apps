@@ -206,10 +206,93 @@ jobs:
           path: ${{ runner.temp }}/qualification/
           retention-days: 30
           if-no-files-found: error
+  desktop:
+    name: Private desktop (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    env:
+      GOWORK: 'off'
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+      - name: Install and qualify the combined recipe
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/desktop-evidence"
+          FLOE_TEST_DESKTOP_INSTALL_STATE="$RUNNER_TEMP/desktop-state" \
+            go test -count=1 -timeout=20m -run '^TestNativeDesktopInstallation$' -v . \
+            2>&1 | tee "$RUNNER_TEMP/desktop-evidence/install.log"
+          cp "$RUNNER_TEMP/desktop-state/qualification.json" "$RUNNER_TEMP/desktop-evidence/component.json"
+          cp -R "$RUNNER_TEMP/desktop-state/selfcheck" "$RUNNER_TEMP/desktop-evidence/installation"
+          go build -trimpath -o "$RUNNER_TEMP/desktop-prepare" ./qualification/desktop_launch
+          CGO_ENABLED=0 go build -trimpath -o "$RUNNER_TEMP/desktop-check" ./cmd/floe-native-apps
+          root=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["root"])' "$RUNNER_TEMP/desktop-evidence/component.json")
+          chmod -R a+rX "$RUNNER_TEMP/desktop-state/packages" "$RUNNER_TEMP/desktop-check"
+          NATIVE_RECIPE=desktop NATIVE_ARCH="${{ matrix.arch }}" \
+            NATIVE_ROOT="$root" NATIVE_CHECK="$RUNNER_TEMP/desktop-check" \
+            ./scripts/qualify.sh 2>&1 | tee "$RUNNER_TEMP/desktop-evidence/distributions.log"
+      - name: Install applications in the disposable native runner
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/desktop-browsers
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "PLAYWRIGHT_BROWSERS_PATH=$PLAYWRIGHT_BROWSERS_PATH" >> "$GITHUB_ENV"
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            python3-gi python3-pil python3-xlib python3-dbus python3-pyqt5 python3-pyqt6 \
+            gir1.2-gtk-3.0 gir1.2-gtk-4.0 qtwayland5 qt6-wayland \
+            flatpak snapd libfuse2t64 dbus-x11 xauth fonts-dejavu-core
+          npm ci --prefix qualification --ignore-scripts --no-audit --no-fund
+          node qualification/node_modules/playwright/cli.js install --with-deps chromium
+          sandbox=$(python3 -c 'import os,pathlib; p=list(pathlib.Path(os.environ["PLAYWRIGHT_BROWSERS_PATH"]).rglob("chrome_sandbox")); assert len(p)==1; print(p[0])')
+          sudo install -o root -g root -m 4755 "$sandbox" "$RUNNER_TEMP/desktop-chrome-sandbox"
+          echo "CHROME_DEVEL_SANDBOX=$RUNNER_TEMP/desktop-chrome-sandbox" >> "$GITHUB_ENV"
+          binary=$(node -e 'console.log(require("./qualification/node_modules/playwright").chromium.executablePath())')
+          echo "FLOE_TEST_CHROMIUM_BIN=$binary" >> "$GITHUB_ENV"
+          sudo snap wait system seed.loaded
+          sudo snap install firefox
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user --noninteractive -y flathub org.gnome.TextEditor org.kde.kwrite
+          snap list | tee "$RUNNER_TEMP/desktop-evidence/snap-versions.log"
+          flatpak list --user --columns=application,version,branch,commit \
+            | tee "$RUNNER_TEMP/desktop-evidence/flatpak-versions.log"
+          dpkg-query -W python3-pyqt5 python3-pyqt6 libgtk-3-0t64 libgtk-4-1 \
+            | tee "$RUNNER_TEMP/desktop-evidence/toolkit-versions.log"
+      - name: Verify native documents, clipboard, reconnect and failure boundaries
+        run: |
+          python3 scripts/qualify_desktop_applications.py \
+            --state "$RUNNER_TEMP/desktop-state" --preparer "$RUNNER_TEMP/desktop-prepare" \
+            --evidence "$RUNNER_TEMP/desktop-evidence/native" --suite native
+      - name: Verify strict Snap and Flatpak input, remote save and normal exit
+        run: |
+          python3 scripts/qualify_desktop_applications.py \
+            --state "$RUNNER_TEMP/desktop-state" --preparer "$RUNNER_TEMP/desktop-prepare" \
+            --evidence "$RUNNER_TEMP/desktop-evidence/sandbox" --suite sandbox
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: private-desktop-${{ matrix.arch }}
+          path: |
+            ${{ runner.temp }}/desktop-evidence/
+            !${{ runner.temp }}/desktop-evidence/**/source/**
+          retention-days: 30
+          if-no-files-found: error
   release-gate:
     name: Release gate
     if: always()
-    needs: [source, vulnerabilities, native]
+    needs: [source, vulnerabilities, native, desktop]
     runs-on: ubuntu-latest
     timeout-minutes: 1
     steps:
@@ -217,4 +300,5 @@ jobs:
           SOURCE: ${{ needs.source.result }}
           VULNERABILITIES: ${{ needs.vulnerabilities.result }}
           NATIVE: ${{ needs.native.result }}
-        run: test "$SOURCE" = success && test "$VULNERABILITIES" = success && test "$NATIVE" = success
+          DESKTOP: ${{ needs.desktop.result }}
+        run: test "$SOURCE" = success && test "$VULNERABILITIES" = success && test "$NATIVE" = success && test "$DESKTOP" = success

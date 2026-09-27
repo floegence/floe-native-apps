@@ -265,6 +265,22 @@ launch an application. The catalog-backed preparation API below owns those
 resources. The complete package/desktop application matrix remains a release
 prerequisite; wire tests alone cannot certify a supported graphical backend.
 
+The `Private desktop` release jobs acquire the combined catalog on both native
+architectures before installing host test toolkits. The same distribution script
+accepts `NATIVE_RECIPE=desktop` and exercises the installed component in clean,
+unprivileged distribution fixtures. `TestNativeDesktopInstallation` downloads
+original publisher archives when only `FLOE_TEST_DESKTOP_INSTALL_STATE` is set;
+the optional candidate path supplies already verified archives for offline tests.
+
+`scripts/qualify_desktop_applications.py` runs the installed public preparation
+API with GTK3/GTK4/Qt5/Qt6, Chromium and lifecycle failures, followed by strict
+Snap Firefox and Flatpak GTK/Qt input/save/exit cases. Missing prerequisites and
+failed application receipts fail the job. Artifacts retain fixture pixels and
+documents, excluding source working directories with helper credentials and
+application profiles. These jobs are necessary release gates; desktop environment,
+AppImage, RPM and classic Snap claims still require their corresponding actual
+application evidence. They are never inferred from these suites.
+
 The internal `DesktopHelper` composes the native channel/window registry, bounded
 capture, decoded-frame gate, ordered input and authenticated endpoint on one event
 loop. The persistent launch owner supplies its prepared sockets. It starts sharing only after
