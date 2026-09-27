@@ -277,7 +277,7 @@ jobs:
           install -d -m 700 "$HOME/.var" "$HOME/.var/app" \
             "$HOME/.var/app/org.gnome.TextEditor" "$HOME/.var/app/org.kde.kwrite"
           snap list | tee "$RUNNER_TEMP/desktop-evidence/snap-versions.log"
-          flatpak list --user --columns=application,version,branch,commit \
+          flatpak list --user --columns=application,version,branch,active:full \
             | tee "$RUNNER_TEMP/desktop-evidence/flatpak-versions.log"
           dpkg-query -W python3-pyqt5 python3-pyqt6 libgtk-3-0t64 libgtk-4-1 \
             | tee "$RUNNER_TEMP/desktop-evidence/toolkit-versions.log"
