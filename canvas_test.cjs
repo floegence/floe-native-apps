@@ -9,8 +9,9 @@ test('canvas resize preserves pixels and equal geometry never resets either dime
  for(const worker of [false,true]){
   const ctx=vm.createContext(worker?{OffscreenCanvas:Canvas}:{document:{createElement:()=>new Canvas}});
   vm.runInContext(readFileSync('canvas.js','utf8'),ctx);
-  const canvas=new Canvas(640,480);ctx.canvas=canvas;
+  const canvas=new Canvas(640,480);const draw_canvas=new Canvas(640,480);ctx.canvas=canvas;ctx.draw_canvas=draw_canvas;
   vm.runInContext('floeResizeCanvas(canvas, 1280, 960)',ctx);assert.equal(canvas.pixels,'painted');assert.equal(canvas.resets,2);
+  vm.runInContext('floeResizeCanvas(draw_canvas, 1280, 960)',ctx);assert.equal(draw_canvas.pixels,'painted');assert.equal(draw_canvas.resets,2);
   vm.runInContext('floeResizeCanvas(canvas, 1280, 960)',ctx);assert.equal(canvas.pixels,'painted');assert.equal(canvas.resets,2);
   vm.runInContext('floeResizeCanvas(canvas, 320, 240)',ctx);assert.equal(canvas.pixels,'painted');assert.equal(canvas.resets,4);
  }

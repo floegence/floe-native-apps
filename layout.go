@@ -49,8 +49,9 @@ func prepareLayoutHTML(index, client, window []byte) ([]byte, []byte, []byte, er
     if (this.offscreen_canvas.height !== this.h) {
       this.offscreen_canvas.height = this.h;
     }`
-	w = replace(w, old, `    floeResizeCanvas(this.canvas, this.w, this.h);
-    floeResizeCanvas(this.offscreen_canvas, this.w, this.h);`)
+	w = replace(w, old, `    for (const canvas of new Set([this.canvas, this.offscreen_canvas, this.draw_canvas])) {
+      floeResizeCanvas(canvas, this.w, this.h);
+    }`)
 	if failure != nil {
 		return nil, nil, nil, failure
 	}
