@@ -47,6 +47,13 @@ inside disposable native test resources to verify those exact baseline versions;
 those libraries are not redistributed with the adapter. The two dynamically
 linked adapter binaries and their build records are in `native/dist/<arch>`.
 
+`native/gtk_native.c` is the corresponding first-party MIT-licensed GTK3/GTK4
+adapter for the combined backend. It dynamically resolves the application's
+GTK/GLib libraries. `native/dist/<arch>/gtk` contains only these two adapters;
+`provenance/gtk.json` records the native Debian 11 build, signed package archives,
+original toolkit source hashes and ELF dependencies. The GTK/Pango sources below
+are unmodified build inputs, not bundled application runtimes.
+
 The GTK4 build fixture compiles the original GTK 4.0.3 source archive from
 https://download.gnome.org/sources/gtk/4.0/gtk-4.0.3.tar.xz (SHA-256
 `d7c9893725790b50bd9a3bb278856d9d543b44b6b9b951d7b60e7bdecc131890`), under

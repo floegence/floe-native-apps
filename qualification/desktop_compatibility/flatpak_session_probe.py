@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import secrets
+import shlex
 import shutil
 import subprocess
 import sys
@@ -26,6 +27,7 @@ def main():
     state = Path.home() / '.var/app' / app_id / ('floe-session-test-' + secrets.token_hex(8))
     state.mkdir(mode=0o700)
     document, destination = evidence / 'document.txt', evidence / 'portal-copy.txt'
+    application_log = state / 'application.log'
     document.write_bytes(b'')
     result = {'passed': False, 'application': app_id, 'evidence': str(evidence), 'runtime': str(runtime),
               'fixture_state': str(state), 'sources': record_sources(root), 'frames': []}
@@ -71,9 +73,13 @@ def main():
             path.mkdir(mode=0o700)
             overrides.append(env_key + '=' + str(path))
         executable = 'gnome-text-editor' if app_id == 'org.gnome.TextEditor' else 'kwrite'
+        launcher = state / 'application'
+        launcher.write_text('#!/bin/sh\nexec ' + shlex.quote(executable) + ' "$@" 2>' +
+                            shlex.quote(str(application_log)) + '\n')
+        launcher.chmod(0o700)
         assert '--command=' + executable in command
         command = command.replace('--command=' + executable, '--command=env', 1)
-        command = command.replace(' ' + app_id + ' ', ' ' + app_id + ' ' + ' '.join(overrides) + ' ' + executable + ' ', 1)
+        command = command.replace(' ' + app_id + ' ', ' ' + app_id + ' ' + ' '.join(overrides) + ' ' + str(launcher) + ' ', 1)
         if app_id == 'org.gnome.TextEditor':
             command = command.replace('@@u %U', '--standalone @@u %U')
             assert '--standalone' in command
@@ -154,14 +160,14 @@ def main():
         wait(dialog, 'Official remote Save As dialog did not appear')
         target = paint('save-dialog')
         assert target['window'] != previous
-        # Activate the visible filename field through the same native pointer
-        # and selection keys a user employs; no fixture-forced toolkit focus.
+        # A forwarded document may start in a virtual portal directory. The
+        # real GTK chooser accepts an absolute filename, avoiding assumptions
+        # about its initial folder or asynchronous directory navigation.
         click(500, 22)
         for code, pressed in ((29, True), (30, True), (30, False), (29, False)):
             key(code, pressed)
-        delivered(send({'kind': 'text', 'text': 'portal-copy.txt'}))
-        key(28, True)
-        key(28, False)
+        delivered(send({'kind': 'text', 'text': str(destination)}))
+        click(950, 22)
         wait(lambda: destination.exists() and destination.read_bytes() == expected.encode(),
              'Flatpak remote Save As did not produce exact Unicode bytes')
         result['saved_sha256'] = hashlib.sha256(destination.read_bytes()).hexdigest()
@@ -187,6 +193,11 @@ def main():
         result['application_exit'], result['passed'] = exited, True
     except BaseException:
         result['error'] = traceback.format_exc()
+        if client and client.client:
+            try:
+                paint('failure')
+            except BaseException:
+                result['failure_frame_error'] = traceback.format_exc()
     finally:
         if client:
             client.close()
@@ -203,6 +214,8 @@ def main():
                     os.environ['DBUS_SESSION_BUS_ADDRESS'], evidence, app_id)
             except BaseException:
                 result['passed'], result['document_cleanup_error'] = False, traceback.format_exc()
+        if application_log.is_file():
+            shutil.copyfile(application_log, evidence / 'application.log')
         log.close()
         (evidence / 'launch.json').unlink(missing_ok=True)
         (evidence / 'result.json').write_text(json.dumps(result, indent=2) + '\n')

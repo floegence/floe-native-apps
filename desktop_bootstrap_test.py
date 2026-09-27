@@ -19,7 +19,7 @@ class BootstrapTests(unittest.TestCase):
             'directory': str(self.directory), 'runtime': str(self.directory),
             'environment': {'PATH': '/usr/bin:/bin'}, 'plan': {'version': 1},
             'resources': {key: '/verified/' + key for key in
-                ('component', 'shell', 'capture', 'library', 'xwayland', 'ibus_daemon', 'qt_plugins')},
+                ('component', 'shell', 'capture', 'library', 'xwayland', 'ibus_daemon', 'qt_plugins', 'gtk_modules')},
             'host_bus': None, 'initial_documents': []}
 
     def write(self, value):

@@ -338,7 +338,7 @@ executes the verified component's private Python through its musl loader, with
 private GI/GIO resources and no inherited Python/plugin/library injection paths.
 It accepts one owner-only, bounded version-1 configuration file. The configuration
 binds the immutable launch plan, original application environment, private runtime,
-instance/token and caller-verified compositor, capture, input-service and Qt adapter
+instance/token and caller-verified compositor, capture, input-service and toolkit adapter
 resources. Unknown fields/versions, symlinks, public files and duplicate JSON keys
 are rejected. Component resolution and package adaptation belong to the upstream
 installation/launch boundary, never renderer-supplied configuration.
@@ -396,10 +396,22 @@ Flatpak plans prepare the verified IBus portal before activating the input owner
 The session binds the official file portal's launched process before it queries
 its document dependency, then independently validates bus-name readiness. The
 restricted document facade binds the actual application supervisor and only its
-explicit initial files; it never exposes the host desktop bus. Qt registration
+explicit initial files; it never exposes the host desktop bus. Before binding
+its unique host peer, it requests official D-Bus activation of the fixed document
+service. An installed but dormant service therefore works without a prior desktop
+login; unavailable activation remains a failure and never starts a replacement
+document authority. Full exports remove only the official `AS_NEEDED_BY_APP`
+optimization: installed package permissions cannot prove access for an instance
+started with stricter filesystem restrictions. The actual service issues the
+selected-file grant, preserving reuse, persistence, directory semantics and
+requested permissions. No path is retried, fabricated or granted broader access.
+Qt registration
 uses the package's existing allowed bus namespace. The helper copies the verified
 Qt5/Qt6 modules into one unique, owner-only directory inside the package's normal
 `~/.var/app/<id>` root. It does not alter application profiles or sandbox permissions.
+That resource root must be owned by the current user and not writable by another
+account. Unsafe existing roots are rejected without changing their permissions;
+disposable qualification users must provision private package resource roots.
 After original-plan revalidation, the sole GIO supervisor adds the official Flatpak
 `--env=QT_PLUGIN_PATH` option while retaining every original Exec argument and
 field code verbatim; runtime metadata otherwise overrides an inherited plugin path.
@@ -887,9 +899,38 @@ source path, a new output directory and that Qt major, setting
 dynamically resolve the application's Qt/Wayland libraries; no additional toolkit
 runtime is copied into the distribution.
 
+Native GTK3/GTK4 applications use `native/gtk_native.c`, loaded from a private
+GTK3 cache and GTK4 ABI directory. It selects its route from the actual display:
+Wayland delegates to the toolkit's negotiated `wayland` context; X11 registers
+with the same native confirmed-text scheduler as Qt and consumes its native seat
+marker. An idle completion follows the actual toolkit commit, and the scheduler
+also requires the marker release. Host IBus GTK packages, global module installs
+and host input caches are not prerequisites. Strict Snap and Flatpak retain their
+runtime's IBus route without loading these host GTK adapters. Each context has
+one route before text admission; no failed text is retried on another adapter.
+
+Build these two adapters with `Dockerfile.gtk-native`, `TARGET_ARCH=amd64|arm64`
+and the same fixture certificate input. It reuses the signed Debian 11 snapshot
+and verified GTK 4.0.3/Pango source preparation used by Xpra's input adapters.
+Run `build_gtk_native.sh /absolute/source/tree /absolute/new/output` inside that
+native builder, setting `FLOE_DESKTOP_GTK_BUILDER_IMAGE` to the actual image hash.
+`provenance/gtk.json` records signed archives, toolkit versions, source hashes and
+ELF dependencies; GTK/glibc libraries remain in the disposable builder. Installed
+native qualification must include GTK3 and GTK4 on both Wayland and X11 without
+host IBus modules. The installation self-check's component-owned musl GTK fixture
+uses its separate verified support IBus cache; it does not validate host ABI
+adapters in place of native application qualification.
+The release job also exports a disposable GTK 4.0.3/glibc 2.31 runtime using
+`prepare_gtk_baseline.py` and runs its real text widget through the installed
+public session API. Only the test executable is relinked to the original copied
+loader, preserving kernel auxiliary security metadata. No runtime library or
+GLib security check is patched, and these libraries never enter the catalog.
+The receipt records the actual runtime closure and module identities; text,
+clipboard and Enter assertions use widget document bytes.
+
 After building, `scripts/stage_desktop_distribution.py` consumes per-architecture
-native outputs, Qt artifacts/build records, original source archives and verified
-candidate catalogs. Its `--native`, `--qt`, `--sources` and `--candidates`
+native outputs, Qt/GTK artifacts/build records, original source archives and verified
+candidate catalogs. Its `--native`, `--qt`, `--gtk`, `--sources` and `--candidates`
 arguments each name an absolute directory. Review and remove only the previous
 generated `native/dist` before staging; the script refuses to overwrite it.
 Use font-inclusive candidate catalogs named `amd64.json` and `arm64.json`.

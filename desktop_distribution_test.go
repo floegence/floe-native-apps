@@ -49,7 +49,8 @@ func TestDesktopDistributionProvenance(t *testing.T) {
 		for _, name := range []string{"sources/weston-14.0.2.tar.xz", "sources/ibus-1.5.33.tar.gz",
 			"sources/tree/native/protocols/text-input-unstable-v3.xml", "sources/tree/scripts/build_desktop_native.sh",
 			"licenses/weston-14-COPYING.txt", "licenses/ibus-COPYING.txt", "licenses/LICENSE",
-			"provenance/native.json", "provenance/qt5.json", "provenance/qt6.json",
+			"provenance/native.json", "provenance/qt5.json", "provenance/qt6.json", "provenance/gtk.json",
+			"gtk/libfloe-gtk3-native.so", "gtk/libfloe-gtk4-native.so",
 			"artifacts/desktop-shell.so", "artifacts/desktop-capture", "artifacts/libweston-14.so.0", "artifacts/xwayland.so",
 			"artifacts/ibus-daemon", "artifacts/ibus-portal", "artifacts/libibus-1.0.so.5",
 			"qt/platforminputcontexts/libfloe-client-native-qt5.so", "qt/platforminputcontexts/libfloe-client-native-qt6.so"} {
@@ -72,7 +73,7 @@ func TestDesktopDistributionProvenance(t *testing.T) {
 					t.Fatal("native build requires regeneration", name, err)
 				}
 			}
-			if !strings.HasPrefix(name, "artifacts/") && !strings.HasPrefix(name, "qt/") {
+			if !strings.HasPrefix(name, "artifacts/") && !strings.HasPrefix(name, "qt/") && !strings.HasPrefix(name, "gtk/") {
 				continue
 			}
 			binary, err := elf.NewFile(bytes.NewReader(data))

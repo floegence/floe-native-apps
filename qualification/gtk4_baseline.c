@@ -42,6 +42,17 @@ static gboolean density(gpointer window) {
 static void activate(GtkApplication *app, gpointer unused) {
     (void)unused;
     GtkWidget *window = gtk_application_window_new(app);
+    const char *color = g_getenv("FLOE_TEST_WINDOW_COLOR");
+    if (color) {
+        g_assert_true(g_regex_match_simple("^[0-9a-f]{6}$", color, 0, 0));
+        char *style = g_strdup_printf("textview text { background-color: #%s; }", color);
+        GtkCssProvider *css = gtk_css_provider_new();
+        gtk_css_provider_load_from_data(css, style, -1);
+        gtk_style_context_add_provider_for_display(gtk_widget_get_display(window),
+            GTK_STYLE_PROVIDER(css), GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+        g_object_unref(css);
+        g_free(style);
+    }
     gtk_window_set_title(GTK_WINDOW(window), "Floe GTK 4.0 baseline qualification");
     gtk_window_set_default_size(GTK_WINDOW(window), 640, 320);
     GtkWidget *row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0), *first = NULL;

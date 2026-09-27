@@ -18,6 +18,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--native', type=Path, required=True)
     parser.add_argument('--qt', type=Path, required=True)
+    parser.add_argument('--gtk', type=Path, required=True)
     parser.add_argument('--sources', type=Path, required=True)
     parser.add_argument('--candidates', type=Path, required=True)
     args = parser.parse_args()
@@ -72,6 +73,20 @@ def main():
             assert sha256(path) == proof['artifact']['sha256']
             copy(path, target / f'qt/platforminputcontexts/libfloe-client-native-qt{major}.so')
             copy(qt / 'build.json', target / f'provenance/qt{major}.json')
+        gtk = args.gtk / architecture
+        proof = json.loads((gtk / 'build.json').read_text())
+        assert proof['architecture'] == {'amd64': 'x86_64', 'arm64': 'aarch64'}[architecture]
+        assert proof['toolkits']['4'] == '4.0.3' and proof['signed_builder_archives']
+        assert set(proof['artifacts']) == {'libfloe-gtk3-native.so', 'libfloe-gtk4-native.so'}
+        for relative, digest in proof['source_sha256'].items():
+            assert sha256(root / relative) == digest, relative
+            copy(root / relative, common / 'sources/tree' / relative)
+        for name, expected in proof['artifacts'].items():
+            path = gtk / name
+            assert sha256(path) == expected['sha256'], name
+            assert '(RPATH)' not in expected['elf'] and '(RUNPATH)' not in expected['elf']
+            copy(path, target / 'gtk' / name)
+        copy(gtk / 'build.json', target / 'provenance/gtk.json')
         # Patch provenance contains the original publisher URL and source hashes.
         for name in ('ibus-1.5-context-source.json', 'weston-14-input-events.json'):
             copy(root / 'native/patches' / name, common / 'sources/tree/native/patches' / name)

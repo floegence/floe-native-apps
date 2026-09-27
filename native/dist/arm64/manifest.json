@@ -43,6 +43,18 @@
       "sha256": "8a070e389d63313386fb9c4e51c98796a694edc0dbb035df410715c983e38481",
       "size_bytes": 133256
     },
+    "gtk/libfloe-gtk3-native.so": {
+      "common": false,
+      "executable": false,
+      "sha256": "061c54cd780b40a34d95d05d52a0f70b9145a8cf50ddfac272778c9ce7734607",
+      "size_bytes": 18264
+    },
+    "gtk/libfloe-gtk4-native.so": {
+      "common": false,
+      "executable": false,
+      "sha256": "bccf1cb33e1b1d2776438d6f9a7c2f52de7039cf8bdab9252fc6407786693c91",
+      "size_bytes": 18024
+    },
     "licenses/LICENSE": {
       "common": true,
       "executable": false,
@@ -60,6 +72,12 @@
       "executable": false,
       "sha256": "fdb65868f65d0fbdb05c2d3b779e10ce9969fa0c4b9262ba4f260e87086ab860",
       "size_bytes": 1394
+    },
+    "provenance/gtk.json": {
+      "common": false,
+      "executable": false,
+      "sha256": "b071d06fa987cf95dfb4eeb70a419c73da80ef4e09e0ddbbcb1b9fe9f2946c9a",
+      "size_bytes": 75078
     },
     "provenance/native.json": {
       "common": false,
@@ -96,6 +114,12 @@
       "executable": false,
       "sha256": "58941c9b8285891c776b67fb2039eebe0d61d63a51578519febfc5481b91e831",
       "size_bytes": 4350799
+    },
+    "sources/tree/native/gtk_native.c": {
+      "common": true,
+      "executable": false,
+      "sha256": "8ac6ac231045f64933f443dfe56b68cd489bba1297cca45fba588bfaac08354d",
+      "size_bytes": 15859
     },
     "sources/tree/native/patches/ibus-1.5-context-source.json": {
       "common": true,
@@ -145,11 +169,23 @@
       "sha256": "ebc81f865679eefd8b1ca63cb886258fd6d7ff14415b7e83ce69561249e0064e",
       "size_bytes": 692
     },
+    "sources/tree/qualification/desktop_compatibility/Dockerfile.gtk-native": {
+      "common": true,
+      "executable": false,
+      "sha256": "b5ea36215151cb1ff691bdd655238457b4a1d22c8180f43065297dbc38cce7db",
+      "size_bytes": 939
+    },
     "sources/tree/qualification/desktop_compatibility/Dockerfile.qt-native": {
       "common": true,
       "executable": false,
       "sha256": "f49272ff5e36211141661a432ed9ed4adfa05ab58cc28b45c3e47f05cebf6aaf",
       "size_bytes": 1995
+    },
+    "sources/tree/qualification/desktop_compatibility/build_gtk_native.sh": {
+      "common": true,
+      "executable": false,
+      "sha256": "6c3efc2bc253ec3fb9527d8eb6fb062df7abbf14700ced065819430c883f5469",
+      "size_bytes": 2912
     },
     "sources/tree/qualification/desktop_compatibility/build_ibus.sh": {
       "common": true,
@@ -204,6 +240,24 @@
       "executable": false,
       "sha256": "a4d5c700a185e5ef45a38a68f88bfdf08371a27a569d2ae1005d941bddeec120",
       "size_bytes": 4388
+    },
+    "sources/tree/scripts/input_builder.sh": {
+      "common": true,
+      "executable": false,
+      "sha256": "dd1adc5df50b6febbbac20df83b2fd32359aa3f4706f6e6e066f909a5a09cd22",
+      "size_bytes": 792
+    },
+    "sources/tree/scripts/input_gtk_builder.sh": {
+      "common": true,
+      "executable": false,
+      "sha256": "b552109421b02bd8c8dfbdd09c6d4f0ae5983ef0835f0b638c7c316ae405f567",
+      "size_bytes": 1432
+    },
+    "sources/tree/scripts/input_toolkits.json": {
+      "common": true,
+      "executable": false,
+      "sha256": "890272378222632a1e94121943696918f7f5c108430dd9ea6090df288275a9ee",
+      "size_bytes": 404
     },
     "sources/weston-14.0.2.tar.xz": {
       "common": true,

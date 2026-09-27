@@ -61,7 +61,7 @@ func runDesktopSelfTest(parent context.Context, root string, pkg Package, retain
 	quote := func(value string) string { return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'" }
 	receipt := filepath.Join(state, "document.json")
 	entry := filepath.Join(state, "application")
-	launcher := "#!/bin/sh\nexec " + quote(tools.Python) + " " + quote(application) + " " + quote(receipt) + " 2>" + quote(filepath.Join(state, "application.log")) + "\n"
+	launcher := "#!/bin/sh\nexec " + quote(tools.Python) + " " + quote(application) + " " + quote(receipt) + " " + quote(filepath.Join(state, "instance", "desktop-services", "gtk.immodules")) + " 2>" + quote(filepath.Join(state, "application.log")) + "\n"
 	if err := os.WriteFile(entry, []byte(launcher), 0700); err != nil {
 		return err
 	}

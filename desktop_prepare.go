@@ -91,7 +91,7 @@ type desktopLaunchConfiguration struct {
 
 func (t DesktopTools) resources() map[string]string {
 	return map[string]string{"component": t.Root, "shell": t.Shell, "capture": t.Capture, "library": t.Library,
-		"xwayland": t.Xwayland, "ibus_daemon": t.IBusDaemon, "ibus_portal": t.IBusPortal, "qt_plugins": t.QtPlugins}
+		"xwayland": t.Xwayland, "ibus_daemon": t.IBusDaemon, "ibus_portal": t.IBusPortal, "qt_plugins": t.QtPlugins, "gtk_modules": t.GTKModules}
 }
 
 // PrepareDesktopSession binds a plan to a known installed component, generates

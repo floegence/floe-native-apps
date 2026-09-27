@@ -71,7 +71,8 @@ def helper(root, runtime, evidence, token, mode):
         'library': str(library / 'libweston-14.so.0'),
         'xwayland': str(library.parent / 'xwayland/xwayland.so'),
         'ibus_daemon': os.environ['FLOE_PROBE_IBUS_DAEMON'],
-        'qt_plugins': os.environ['FLOE_PROBE_QT_PLUGINS']}
+        'qt_plugins': os.environ['FLOE_PROBE_QT_PLUGINS'],
+        'gtk_modules': os.environ['FLOE_PROBE_GTK_MODULES']}
     if 'FLOE_PROBE_IBUS_PORTAL' in os.environ:
         resources['ibus_portal'] = os.environ['FLOE_PROBE_IBUS_PORTAL']
     if mode == 'support-failure':
@@ -168,12 +169,17 @@ def main():
         from chromium_context_probe import ChromiumPage
         browser = ChromiumPage(evidence, receipt, 'wayland')
     prefix = 'import sys, time, runpy, os, json\n'
+    prefix += f'os.dup2(os.open({str(evidence / "application.log")!r}, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), 2)\n'
     prefix += f'open({str(evidence / "application-environment.json")!r}, "w").write(json.dumps({{"prefix": sys.prefix, "python_path": os.environ.get("PYTHONPATH"), "support_overrides": "FLOE_NATIVE_APPLICATION_ENV" in os.environ}}))\n'
     if mode == 'slow-window':
         prefix += 'time.sleep(42)\n'
     elif mode == 'launcher-failure':
         prefix += 'sys.exit(46)\n'
+    baseline = os.environ.get('FLOE_TEST_GTK4_BASELINE')
+    if baseline and (fixture_toolkit() != 'gtk4' or not Path(baseline).is_absolute() or browser):
+        raise ValueError('GTK baseline requires its absolute native GTK4 application')
     executable.write_text(('import os\n' + f'command = {browser.command!r}\nos.execv(command[0], command)\n') if browser else
+        (prefix + f'os.execv({baseline!r}, {[baseline, str(receipt)]!r})\n') if baseline else
         prefix + f'sys.argv = {[str(root / "input_fixture.py"), fixture_toolkit(), str(receipt)]!r}\n' +
         f'runpy.run_path({str(root / "input_fixture.py")!r}, run_name="__main__")\n')
     desktop.write_text('[Desktop Entry]\nType=Application\nName=Floe persistent test\nExec=' +

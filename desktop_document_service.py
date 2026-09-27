@@ -37,6 +37,14 @@ class DocumentService:
             self.host_closed = self.host.connect('closed', lambda *_args: self.lost())
             if self.host.get_guid() == private.get_guid():
                 raise ValueError('Document host and private buses must differ')
+            # An SSH/headless user session may have the official service
+            # installed but dormant. Activate only this fixed dependency via
+            # the real bus, then pin and validate its actual unique owner.
+            activation = self.host.call_sync('org.freedesktop.DBus', '/org/freedesktop/DBus',
+                'org.freedesktop.DBus', 'StartServiceByName', GLib.Variant('(su)', (NAME, 0)),
+                GLib.VariantType.new('(u)'), Gio.DBusCallFlags.NONE, 5000, None).unpack()[0]
+            if activation not in (1, 2):
+                raise ValueError('Official host document activation is unavailable')
             self.host_owner = self.host.call_sync('org.freedesktop.DBus', '/org/freedesktop/DBus',
                 'org.freedesktop.DBus', 'GetNameOwner', GLib.Variant('(s)', (NAME,)),
                 GLib.VariantType.new('(s)'), Gio.DBusCallFlags.NONE, 3000, None).unpack()[0]
@@ -123,7 +131,16 @@ class DocumentService:
                     self.record({'event': 'document-result', 'method': method, 'result': 'failed'})
             finally:
                 caller.close()
-        # Pin the real host peer, preserve original flags and pass actual FDs.
+        # Installed Flatpak permissions do not describe this instance's launch
+        # restrictions. Never let AS_NEEDED_BY_APP bypass the real document
+        # grant and return a host path that the current sandbox cannot access.
+        # Keep reuse, persistence, directory and requested permissions intact.
+        flags_index = {'AddFull': 1, 'AddNamedFull': 2}.get(method)
+        if flags_index is not None:
+            values = list(parameters.unpack())
+            values[flags_index] &= ~4
+            parameters = GLib.Variant(parameters.get_type_string(), tuple(values))
+        # Pin the real host peer and pass actual FDs.
         # A timeout does not revoke a completed host grant or replay an export.
         try:
             self.host.call_with_unix_fd_list(self.host_owner, PATH, NAME, method, parameters,

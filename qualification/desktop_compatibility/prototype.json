@@ -63,13 +63,9 @@
     }
   ],
   "unproven_release_requirements": [
-    "Complete installed-catalog application qualification on native amd64 and the remaining desktop/package matrix. Public Manager installation and plan/session APIs, including retained Xpra installations, now pass native amd64/arm64 installation, exact GTK document/frame/reconnect/exit and stale-plan checks.",
-    "Complete installed-catalog package/lifecycle qualification on native amd64; arm64 strict Snap Firefox and Flatpak GTK/Qt passed actual Unicode, official remote Save As and exact saved bytes through the public preparation API.",
-    "Complete both native architectures and published installed-helper qualification of the Wayland text-input-v3 adapter; actual arm64 Chromium document/frame receipts are available, serial or socket flush alone is not consumption evidence",
-    "Complete both native architectures, toolkit coverage and installed-helper qualification of cursor, clipboard, window/popup and display/input behavior; current clipboard receipts cover GTK3/GTK4/Qt5/Qt6 Wayland/Xwayland and Chromium Wayland on arm64",
-    "The remaining DEB/RPM, AppImage, classic Snap, GNOME Xorg/Wayland, KDE Wayland, Xfce X11 and no-desktop combinations with dedicated actual systems and package identities",
-    "Complete native cancellation/recovery/security and exact-tag release qualification; the combined recipe now pins a separate identity with original APKs, native build/source manifests, licenses and complete Weston/IBus source.",
-    "Formal upstream release, Go proxy/checksum/artifact readback and only then Redeven integration, targeted acceptance, deployment, local merge and task resource cleanup"
+    "Complete the remaining DEB/RPM, AppImage, classic Snap, GNOME Xorg/Wayland, KDE Wayland and Xfce X11 actual system/package matrix; headless native GTK/Qt/Chromium and strict Snap/Flatpak are independently qualified on amd64/arm64.",
+    "Complete native cancellation/recovery/security and exact-tag release qualification; the combined recipe pins separate identities with original APKs, native build/source manifests and licenses.",
+    "Formal upstream release and Go proxy/checksum/artifact readback before consuming product integration; source and fixture success are not publication."
   ],
   "observed_prototypes": [
     {
@@ -368,6 +364,14 @@
       "case": "Catalog-backed production installation and public plan/session APIs on native amd64 and arm64",
       "result": "The single Manager installs original verified APKs plus reviewed native derivations, then decodes actual GTK frames and verifies repeated Unicode, Enter, reconnect with unchanged PID, ordinary keys and normal close before activation. Real GIO rejects a stale plan without writing a session, and a second preparation preserves the first immutable configuration. Native headless amd64 runs as nobody with networking disabled and no host desktop. arm64 strict Snap Firefox and Flatpak GTK/Qt pass Unicode stress and visible official Save As with exact saved bytes using the installed catalog/public API. Complete corresponding Weston/IBus source, generated protocol input, patches, build scripts and notices accompany the proposed derived files.",
       "limits": "The recipe and current task remain unpublished. The full package/desktop matrix, native amd64 installed-package applications, exact-tag qualification, Redeven integration/deployment and final cleanup remain required."
+    },
+    {
+      "case": "Installed native GTK and sandbox documents on native amd64 and arm64 Ubuntu 24.04",
+      "result": "Catalog-installed helper and public PrepareDesktopSession pass GTK3/GTK4/Qt5/Qt6 Wayland/X11 Unicode, Enter, clipboard and reconnect; Chromium Wayland, 42-second first window, launcher exit 46 and support-loss boundaries also pass. Actual GTK4.0.3/glibc2.31 library closures pass widget document assertions. Strict Snap Firefox passes in a headless KVM guest without physical unlock. Flatpak TextEditor51.0 and KWrite26.04.3 pass exact Unicode Save As bytes and normal exit, including installed host-access metadata with stricter per-instance filesystem permissions.",
+      "source_base": "bdbfb738c715cfba0402ea6a379ab07ec13bc88a",
+      "source_archive_sha256": "67ad09ef69f270b0a2b77840773e4392e9675ed7744c5313ab8767f1a6a37f80",
+      "saved_document_sha256": "f3c143fec9fe6784fe0653fd383cf15ccb8f4116f0aa7218e84c37174d007185",
+      "limits": "Task-owned native fixtures and auditable modified source snapshot; exact released tag, remaining desktop/package matrix and consuming viewer acceptance remain required."
     }
   ],
   "rejected_assumptions": [
@@ -395,6 +399,9 @@
     "Setting only weston_seat_set_keyboard_focus does not activate XWM. It leaves X11 PointerRoot focus even when a key happens to reach the window under the pointer; use the compositor view activation API and retain actual X11 focus checks.",
     "An IBus engine can focus its internal placeholder before any application registers. Native qualification requires real application provenance, not merely a non-empty engine focus path. Registered routing and the editable widget at native marker consumption are distinct boundaries.",
     "The original Weston candidate lacks Python Xlib and libxcb-imdkit. A native private-Python import failure exposed the missing closure; host Python was hiding it. The installed helper and GIO supervisor now both run from the component and restore application environment before exec.",
-    "Flatpak runtime Environment metadata overrides inherited QT_PLUGIN_PATH. Passing that variable to the host launcher does not expose a private adapter inside the sandbox. The revalidated supervisor adds its official --env option; original GIO Exec and field-code expansion remain authoritative."
+    "Flatpak runtime Environment metadata overrides inherited QT_PLUGIN_PATH. Passing that variable to the host launcher does not expose a private adapter inside the sandbox. The revalidated supervisor adds its official --env option; original GIO Exec and field-code expansion remain authoritative.",
+    "A clean host may lack GTK IBus modules. Native GTK adapters now use the existing context scheduler on X11 and the application toolkit standard Wayland context without a host input module dependency.",
+    "An installed but dormant official host document service needs fixed-name D-Bus activation before unique-owner validation on headless systems.",
+    "Official document AS_NEEDED_BY_APP checks installed Flatpak permissions, not per-instance revoked filesystem access. Passing that flag can return an inaccessible host path and lose Save As. The bounded facade requests an actual official export, preserving every other flag and requested permission."
   ]
 }

@@ -4,6 +4,7 @@ The session owns one unique resource directory. This never changes package
 permissions, user configuration, profiles, or installed toolkit libraries.
 """
 import hashlib
+import json
 import os
 from pathlib import Path
 import re
@@ -30,12 +31,17 @@ def snap_runtime(app_id):
 
 
 class DesktopPackageResources:
-    def __init__(self, instance, runtime, package, environment, modules):
+    def __init__(self, instance, runtime, package, environment, modules, gtk_modules):
         instance = private_directory(instance)
         runtime = private_directory(runtime)
         self.environment = dict(environment)
         self.environment.pop('FLOE_NATIVE_FLATPAK_QT', None)
         self.environment.pop('FLOE_NATIVE_DESKTOP_INPUT', None)
+        # Toolkit caches belong to this instance or the package runtime. A host
+        # cache may be absent, use another ABI, or select the desktop's engine.
+        for key in ('GTK_IM_MODULE_FILE', 'GTK_PATH', 'GIO_EXTRA_MODULES'):
+            self.environment.pop(key, None)
+        self.environment['GTK_IM_MODULE'] = 'ibus'
         self.directory = self.identity = None
         strict_snap = package['kind'] == 'snap' and package['confinement'] == 'strict'
         if strict_snap:
@@ -102,9 +108,33 @@ class DesktopPackageResources:
                 # supervisor turns this one private path into an official
                 # --env argument after revalidating the original desktop entry.
                 self.environment['FLOE_NATIVE_FLATPAK_QT'] = str(self.directory)
+            else:
+                self._prepare_gtk(gtk_modules)
         except BaseException:
             self.close()
             raise
+
+    def _prepare_gtk(self, modules):
+        source = Path(modules).resolve(strict=True)
+        root = self.directory / 'gtk'
+        for major in (3, 4):
+            name = f'libfloe-gtk{major}-native.so'
+            original = (source / name).resolve(strict=True)
+            if not original.is_relative_to(source) or not original.is_file():
+                raise ValueError('Verified native GTK module is unavailable')
+            directory = root / f'{major}.0.0/immodules'
+            directory.mkdir(parents=True, mode=0o700)
+            shutil.copyfile(original, directory / name)
+            (directory / name).chmod(0o600)
+        # GTK3 uses the documented module cache. GTK4 discovers only its own ABI
+        # directory through GTK_PATH; GIO_EXTRA_MODULES would mix the two ABIs.
+        cache = self.directory / 'gtk.immodules'
+        module = root / '3.0.0/immodules/libfloe-gtk3-native.so'
+        cache.write_text(json.dumps(str(module), ensure_ascii=False) + '\n' +
+            '"floe-client-native" "Client confirmed text" "" "" ""\n')
+        cache.chmod(0o600)
+        self.environment.update(GTK_IM_MODULE='floe-client-native',
+            GTK_IM_MODULE_FILE=str(cache), GTK_PATH=str(root))
 
     def close(self):
         if self.identity is not None:

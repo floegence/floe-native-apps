@@ -43,7 +43,7 @@ class NativeContexts:
         self.bound, self.pending, self.sequence, self.closed = None, None, 0, False
 
     def register(self, sender, pid, version, toolkit):
-        if (self.closed or version != 1 or toolkit not in ('qt5-native', 'qt6-native') or
+        if (self.closed or version != 1 or toolkit not in ('gtk3-native', 'gtk4-native', 'qt5-native', 'qt6-native') or
                 sender in self.clients or len(self.clients) >= 64):
             raise ValueError('Native context registration is unavailable')
         self.clients[sender] = ApplicationPeer(self.tree, pid, self.runtime)

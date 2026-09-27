@@ -20,7 +20,7 @@ def main():
     parser.add_argument('--state', type=Path, required=True)
     parser.add_argument('--preparer', type=Path, required=True)
     parser.add_argument('--evidence', type=Path, required=True)
-    parser.add_argument('--suite', choices=('native', 'sandbox'), required=True)
+    parser.add_argument('--suite', choices=('native', 'sandbox', 'gtk-baseline'), required=True)
     parser.add_argument('--source-archive', type=Path,
         help='Auditable snapshot_sources.py archive when qualification runs on another native host')
     args = parser.parse_args()
@@ -57,6 +57,12 @@ def main():
         for mode in ('slow-window', 'launcher-failure', 'capture-loss', 'bus-loss'):
             cases.append((mode, 'session_probe.py', [mode], {'FLOE_PROBE_TOOLKIT': 'gtk4'}))
         cases.append(('chromium', 'session_probe.py', ['clipboard-chromium'], {'FLOE_PROBE_CURSOR': '1'}))
+    elif args.suite == 'gtk-baseline':
+        binary = Path(os.environ['FLOE_TEST_GTK4_BASELINE'])
+        if not binary.is_absolute() or not binary.is_file():
+            raise ValueError('Actual minimum GTK runtime application is required')
+        result['runtime'] = json.loads(binary.with_name('runtime.json').read_text())
+        cases.append(('gtk4-baseline', 'session_probe.py', ['clipboard-x11'], {'FLOE_PROBE_TOOLKIT': 'gtk4'}))
     else:
         # These are fixture prerequisites in each package's existing private
         # data namespace. No installed user application is started for setup.

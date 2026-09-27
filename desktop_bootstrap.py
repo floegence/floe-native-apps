@@ -51,7 +51,7 @@ def read_configuration(path):
                 not isinstance(item, str) or '\x00' in item for key, item in environment.items())):
         raise ValueError('Invalid application environment')
     resources = value['resources']
-    required = {'component', 'shell', 'capture', 'library', 'xwayland', 'ibus_daemon', 'qt_plugins'}
+    required = {'component', 'shell', 'capture', 'library', 'xwayland', 'ibus_daemon', 'qt_plugins', 'gtk_modules'}
     if (type(resources) is not dict or not required <= resources.keys() or
             resources.keys() - required - {'ibus_portal'} or
             not all(absolute(item) for item in resources.values())):
@@ -151,7 +151,7 @@ def assemble(value, record, completed):
         raise ValueError('Combined desktop helper requires its planned backend')
     services = DesktopServices(resources['component'], value['directory'])
     package = DesktopPackageResources(value['directory'], value['runtime'], plan['observation']['package'],
-                                      environment, resources['qt_plugins'])
+                                      environment, resources['qt_plugins'], resources['gtk_modules'])
     graphics = None
     def finished():
         graphics.close()

@@ -96,6 +96,7 @@ class DesktopServices:
                     'GIO_EXTRA_MODULES', 'DBUS_STARTER_ADDRESS', 'DBUS_STARTER_BUS_TYPE', 'FONTCONFIG_PATH'):
             environment.pop(key, None)
         environment.update({
+            'GTK_IM_MODULE': 'ibus',
             'GIO_MODULE_DIR': str(self.component / 'usr/lib/gio/modules'),
             'GI_TYPELIB_PATH': str(self.component / 'usr/lib/girepository-1.0'),
             'GDK_PIXBUF_MODULE_FILE': str(self.private / 'pixbuf.loaders'),

@@ -17,7 +17,9 @@ def main():
         raise ValueError('Qualification source archive requires an absolute path')
     paths = [*repository.glob('*.py'), *source.glob('*.py'), *source.glob('*.sh'),
              *source.glob('*.c'), *source.glob('*.h'), *source.glob('*.cpp'), *source.glob('Dockerfile*'),
-             repository / 'qualification/input_fixture.py', *repository.glob('native/qt_native.*')]
+             repository / 'qualification/input_fixture.py', repository / 'qualification/gtk4_baseline.c',
+             *repository.glob('native/qt_native.*'),
+             repository / 'native/gtk_native.c']
     files, payloads = {}, {}
     for path in sorted(paths):
         if path.name in files or path.is_symlink():

@@ -261,7 +261,7 @@ class DesktopSession:
             raise ValueError('Combined native display is unavailable')
         authorized = self.graphics.authorize(display)
         self.application_environment.update(DISPLAY=display, XAUTHORITY=authorized['XAUTHORITY'])
-        self.application_environment.update(GTK_IM_MODULE='ibus', IBUS_ENABLE_SYNC_MODE='1',
+        self.application_environment.update(IBUS_ENABLE_SYNC_MODE='1',
             IBUS_ADDRESS=self.ibus_address, XMODIFIERS='@im=floe-client')
         # This process owns one graphical instance. These are helper-local
         # native library connections, never mutations of the user's environment.

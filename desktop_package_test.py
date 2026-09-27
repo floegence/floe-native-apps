@@ -21,8 +21,14 @@ class PackageInputTests(unittest.TestCase):
         plugins.mkdir()
         for major in (5, 6):
             (plugins / f'libfloe-client-native-qt{major}.so').write_bytes(b'verified module ' + bytes([major]))
+        self.gtk = self.root / 'gtk'
+        self.gtk.mkdir()
+        for major in (3, 4):
+            (self.gtk / f'libfloe-gtk{major}-native.so').write_bytes(b'verified GTK module ' + bytes([major]))
         self.environment = {'HOME': str(self.home), 'QT_IM_MODULE': 'host-ime',
-            'QT_PLUGIN_PATH': '/host/plugins', 'CUSTOM': 'untouched'}
+            'QT_PLUGIN_PATH': '/host/plugins', 'CUSTOM': 'untouched',
+            'GTK_IM_MODULE': 'host-ime', 'GTK_IM_MODULE_FILE': '/host/gtk.cache',
+            'GTK_PATH': '/host/gtk', 'GIO_EXTRA_MODULES': '/host/gio'}
         self.package = {'kind': 'flatpak', 'id': 'org.example.Editor'}
         app = self.home / '.var/app' / self.package['id']
         app.mkdir(parents=True, mode=0o700)
@@ -30,7 +36,7 @@ class PackageInputTests(unittest.TestCase):
 
     def prepare(self):
         with patch('desktop_package.snap_runtime', return_value=self.instance):
-            return DesktopPackageResources(self.instance, self.instance, self.package, self.environment, self.modules)
+            return DesktopPackageResources(self.instance, self.instance, self.package, self.environment, self.modules, self.gtk)
 
     def test_flatpak_uses_only_a_unique_application_private_module_directory(self):
         before = dict(self.environment)
@@ -72,6 +78,33 @@ class PackageInputTests(unittest.TestCase):
         self.assertEqual(prepared.directory.parent, self.instance)
         self.assertEqual(prepared.environment['QT_PLUGIN_PATH'], str(prepared.directory) + ':/host/plugins')
         self.assertNotIn('FLOE_NATIVE_FLATPAK_QT', prepared.environment)
+
+    def test_native_gtk_uses_private_abi_paths_without_host_ibus_or_search_paths(self):
+        self.package = {'kind': 'deb', 'id': 'fixture'}
+        prepared = self.prepare()
+        self.addCleanup(prepared.close)
+        self.assertEqual(prepared.environment['GTK_IM_MODULE'], 'floe-client-native')
+        self.assertNotIn('GIO_EXTRA_MODULES', prepared.environment)
+        root = Path(prepared.environment['GTK_PATH'])
+        self.assertTrue(root.is_relative_to(prepared.directory))
+        gtk4 = root / '4.0.0/immodules/libfloe-gtk4-native.so'
+        self.assertEqual(gtk4.read_bytes(), (self.gtk / gtk4.name).read_bytes())
+        cache = Path(prepared.environment['GTK_IM_MODULE_FILE']).read_text()
+        self.assertIn('"floe-client-native"', cache)
+        self.assertIn('libfloe-gtk3-native.so', cache)
+        self.assertNotIn('gtk4', cache)
+        self.assertNotIn('/host/', cache)
+
+    def test_sandbox_gtk_uses_its_own_ibus_without_native_modules(self):
+        for package in (self.package, {'kind': 'snap', 'id': 'fixture', 'confinement': 'strict'}):
+            self.package = package
+            prepared = self.prepare()
+            self.addCleanup(prepared.close)
+            self.assertEqual(prepared.environment['GTK_IM_MODULE'], 'ibus')
+            for key in ('GTK_PATH', 'GTK_IM_MODULE_FILE', 'GIO_EXTRA_MODULES'):
+                self.assertNotIn(key, prepared.environment)
+            if prepared.directory:
+                self.assertFalse((prepared.directory / 'gtk').exists())
 
     def test_first_launch_creates_only_the_standard_package_resource_root(self):
         self.package['id'] = 'org.example.FirstLaunch'

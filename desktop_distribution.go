@@ -88,7 +88,7 @@ func desktopManifest(architecture string) (desktopDistributionManifest, string, 
 // DesktopTools is the single verified layout used by planning and launch.
 // It does not discover a host compositor or substitute a system input service.
 type DesktopTools struct {
-	Root, Python, Shell, Capture, Library, Xwayland, IBusDaemon, IBusPortal, QtPlugins string
+	Root, Python, Shell, Capture, Library, Xwayland, IBusDaemon, IBusPortal, QtPlugins, GTKModules string
 }
 
 func desktopRequiredResources(architecture string) []string {
@@ -195,7 +195,7 @@ func ResolveDesktopTools(root, architecture string) (DesktopTools, error) {
 	return DesktopTools{Root: root, Python: filepath.Join(base, "bin", "python3"), Shell: filepath.Join(base, "artifacts", "desktop-shell.so"),
 		Capture: filepath.Join(base, "artifacts", "desktop-capture"), Library: filepath.Join(base, "artifacts", "libweston-14.so.0"),
 		Xwayland: filepath.Join(base, "artifacts", "xwayland.so"), IBusDaemon: filepath.Join(base, "bin", "ibus-daemon"),
-		IBusPortal: filepath.Join(base, "bin", "ibus-portal"), QtPlugins: filepath.Join(base, "qt")}, nil
+		IBusPortal: filepath.Join(base, "bin", "ibus-portal"), QtPlugins: filepath.Join(base, "qt"), GTKModules: filepath.Join(base, "gtk")}, nil
 }
 
 func desktopWrappers(architecture string) map[string]string {

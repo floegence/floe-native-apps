@@ -1,0 +1,14 @@
+# Disposable native GTK ABI baseline. Never an application runtime.
+ARG TARGET_ARCH
+FROM public.ecr.aws/docker/library/debian@sha256:032c9cd584e6c6d7a98e7edb50ce9233b2c585f4f7e2a5cd093521af779886df AS amd64
+ENV FLOE_BUILD_ARCH=amd64
+FROM public.ecr.aws/docker/library/debian@sha256:131ddca8f135f432bbf51f9e7523d246634a68ccadb14469f1050f882c86f0a9 AS arm64
+ENV FLOE_BUILD_ARCH=arm64
+FROM ${TARGET_ARCH} AS builder
+COPY ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+COPY scripts/input_builder.sh scripts/input_gtk_builder.sh scripts/input_toolkits.json /tmp/
+COPY input_modules/sources/ /tmp/sources/
+RUN test "$(dpkg --print-architecture)" = "$FLOE_BUILD_ARCH" && \
+    rm -f /etc/apt/apt.conf.d/docker-clean && touch /tmp/floe-input-build-fixture && \
+    sh /tmp/input_builder.sh 5 && sh /tmp/input_gtk_builder.sh 5 && \
+    sha256sum /var/lib/apt/lists/*InRelease /var/cache/apt/archives/*.deb > /native-builder-archives.sha256

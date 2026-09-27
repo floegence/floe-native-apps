@@ -53,6 +53,20 @@ class ContextTests(unittest.TestCase):
         self.native.focus = NativeFocus(3, 1, 120, 19, False)
         self.assertIsNone(self.contexts.context_for(self.native.target))
 
+    def test_native_gtk_registers_with_the_existing_ordered_context_owner(self):
+        self.contexts.unregister(':1.7')
+        for toolkit in ('gtk3-native', 'gtk4-native'):
+            with self.subTest(toolkit=toolkit):
+                self.contexts.register(':1.7', 121, 1, toolkit)
+                _, code = self.begin()
+                sequence, text = self.contexts.take(':1.7', code, 19)
+                self.assertEqual(text, '同🙂')
+                self.assertTrue(self.contexts.done(':1.7', sequence))
+                self.assertTrue(self.contexts.markers.slots)
+                self.contexts.released(':1.7', code)
+                self.assertEqual(self.completed[-1], None)
+                self.contexts.unregister(':1.7')
+
     def test_payload_is_taken_once_by_the_exact_surface_then_completed_by_toolkit(self):
         token, code = self.begin()
         self.assertEqual(self.sent, [(1, token.target, [f'key {code} 1', f'key {code} 0'])])
