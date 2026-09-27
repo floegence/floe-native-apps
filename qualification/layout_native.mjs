@@ -38,7 +38,8 @@ try {
   await page.goto(viewerAddress+'/?port='+new URL(address).port+'&path=/&password='+encodeURIComponent(password)+'&floating_menu=false&encoding=png&clipboard=false&offscreen='+offscreen);
   await page.waitForFunction(()=>window.floeXpraClient?.connected&&Object.values(floeXpraClient.id_to_window).some(win=>floeXpraClient.floePointer.targetForWindow(win)),null,{timeout:25000});
   await page.evaluate(()=>{
-   const c=floeXpraClient;window.layoutEvents=[];window.remoteSizes=[];
+   const c=floeXpraClient;window.layoutEvents=[];window.remoteSizes=[];window.paintEvents=[];
+   const damage=c.do_send_damage_sequence;c.do_send_damage_sequence=function(...args){paintEvents.push(args);return damage.apply(this,args)};
    const send=c.send;c.send=function(packet){if(['configure-display','configure-window'].includes(packet[0]))layoutEvents.push(JSON.parse(JSON.stringify(packet)));return send.call(this,packet)};
    const fit=win=>{
     if(win.override_redirect||win.tray)return;
@@ -123,6 +124,20 @@ try {
    const paintWait=Date.now()-paintStarted;
    if(content<8) {
     await writeFile(receipt+'.png',screenshot);
+    const diagnostics=await page.evaluate(()=>{
+     const canvas=primary.canvas,copy=document.createElement('canvas');
+     copy.width=copy.height=4;copy.getContext('2d').drawImage(canvas,0,0,4,4);
+     const elements=[canvas,primary.div,floeXpraClient.container].map(element=>{
+      const style=getComputedStyle(element);
+      return {id:element.id,rect:element.getBoundingClientRect().toJSON(),
+       display:style.display,visibility:style.visibility,opacity:style.opacity,transform:style.transform};
+     });
+     return {canvas:[canvas.width,canvas.height],elements,connected:floeXpraClient.connected,
+      covering:document.elementsFromPoint(160,180).map(element=>({tag:element.tagName,id:element.id,classes:element.className})),
+      raw:[...copy.getContext('2d').getImageData(0,0,4,4).data],paintEvents:paintEvents.slice(-40),layoutEvents,remoteSizes};
+    });
+    await writeFile(receipt+'.diagnostics.json',JSON.stringify(diagnostics,null,2));
+    await page.screenshot({path:receipt+'.full.png'});
     await writeFile(receipt.replace(/\.json$/,'.layout.json'),JSON.stringify({offscreen,policy,record,native,results,pixels,paintWait},null,2));
     assert.fail(`native application content is absent after ${policy}`);
    }

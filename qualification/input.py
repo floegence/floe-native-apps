@@ -131,7 +131,8 @@ for(const editor of editors)editor.addEventListener('input',()=>{const body=JSON
         listener.bind(('127.0.0.1', 0))
         port = listener.getsockname()[1]
         listener.close()
-        args = [config['python'], config['launcher'], 'start', '--daemon=no', '--systemd-run=no',
+        args = [config['python'], str(source / 'input_trace.py'), config['launcher'],
+                str(directory / 'input-trace.jsonl'), 'start', '--daemon=no', '--systemd-run=no',
                 '--attach=no', '--use-display=no', '--html=' + (config.get('legacy_html') or str(state / 'www') if pointer_mode or layout_mode or kind == 'gnome' else 'no'), '--source=', '--source-start=',
                 '--socket-dir=' + str(directory), '--socket-dirs=' + str(directory),
                 '--sessions-dir=' + str(directory / 'sessions'), '--bind-ws=127.0.0.1:' + str(port),
@@ -199,7 +200,7 @@ for(const editor of editors)editor.addEventListener('input',()=>{const body=JSON
         if evidence:
             target = Path(evidence) / ('density-' + str(config['density'])) / kind
             target.mkdir(parents=True, exist_ok=True)
-            for name in ('process.json', 'application.json', 'received.json', 'received.txt', 'received.unicode.json', 'received.density.json', 'received.json.png', 'received.ready', 'received.hover', 'received.clicked', 'received.pointer.json', 'received.layout.json', 'received.layout-native.json', 'received.windows.json', 'server.log'):
+            for name in ('process.json', 'application.json', 'input-trace.jsonl', 'received.json', 'received.txt', 'received.unicode.json', 'received.density.json', 'received.json.png', 'received.json.full.png', 'received.json.diagnostics.json', 'received.ready', 'received.hover', 'received.clicked', 'received.pointer.json', 'received.layout.json', 'received.layout-native.json', 'received.windows.json', 'server.log'):
                 if (directory / name).exists():
                     shutil.copy2(directory / name, target / name)
                 elif (target / name).exists():
