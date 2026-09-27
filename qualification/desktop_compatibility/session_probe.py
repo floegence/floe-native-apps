@@ -160,7 +160,7 @@ def main():
         helper(root, Path(sys.argv[3]), Path(sys.argv[4]), sys.stdin.readline().strip(), sys.argv[5])
         return
     mode = sys.argv[2] if len(sys.argv) > 2 else 'normal'
-    assert mode in ('normal', 'chromium', 'clipboard', 'clipboard-x11', 'clipboard-chromium', 'slow-window', 'launcher-failure', 'support-failure', 'capture-loss', 'bus-loss', 'runtime-noexec', 'terminate', 'terminate-windowless')
+    assert mode in ('normal', 'chromium', 'clipboard', 'clipboard-x11', 'clipboard-chromium', 'slow-window', 'launcher-failure', 'support-failure', 'capture-loss', 'bus-loss', 'compositor-loss', 'runtime-noexec', 'terminate', 'terminate-windowless')
     from control_probe import ControlClient
     evidence = Path(tempfile.mkdtemp(prefix='persistent-session-', dir=root))
     runtime = Path(tempfile.mkdtemp(prefix='floe-session-', dir=f'/run/user/{os.getuid()}'))
@@ -351,8 +351,8 @@ def main():
         if browser and os.environ.get('FLOE_PROBE_CURSOR') == '1':
             from cursor_fixture import exercise
             exercise(client, target, browser, result)
-        if mode in ('capture-loss', 'bus-loss'):
-            service_name = 'capture' if mode == 'capture-loss' else 'bus'
+        if mode in ('capture-loss', 'bus-loss', 'compositor-loss'):
+            service_name = {'capture-loss': 'capture', 'bus-loss': 'bus', 'compositor-loss': 'compositor'}[mode]
             service = next(x for x in records() if x.get('service') == service_name)
             descriptor = os.pidfd_open(service['pid'])
             try:
@@ -360,6 +360,17 @@ def main():
                 signal.pidfd_send_signal(descriptor, signal.SIGTERM)
             finally:
                 os.close(descriptor)
+            if mode == 'compositor-loss':
+                # GTK exits itself when its display disappears. The helper must
+                # observe that real exit and release its remaining services;
+                # cleanup may not require an already-dead Xwayland connection.
+                assert process.wait(timeout=15) == 1
+                assert any(x.get('state') == 'failed' for x in records())
+                exited = next(x for x in records() if x.get('state') == 'exited')
+                assert not exited['termination_requested']
+                result['application_exit'] = exited
+                result['graphics_failure_cleanup'], result['passed'] = True, True
+                return
             wait(lambda: any(x.get('state') == 'failed' for x in records()), 'Capture failure not reported')
             assert client.response(client.request('status'))['result']['state'] == 'unavailable'
             assert client.response(input({'kind': 'key', 'code': 48, 'pressed': True}))['error'] == 'INPUT_TARGET_UNAVAILABLE'

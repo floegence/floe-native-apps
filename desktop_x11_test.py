@@ -1,11 +1,44 @@
 """Xwayland uses the same native marker owner and never trusts advisory PIDs."""
 from types import SimpleNamespace
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from desktop_context import NativeContexts
 from desktop_context_test import Peer
 from desktop_native import NativeFocus, NativeTarget
+from desktop_x11 import X11Resources
+
+
+class X11ResourceDisposalTests(unittest.TestCase):
+    def resources(self, connection):
+        class ConnectionClosedError(Exception):
+            pass
+        errors = SimpleNamespace(XError=type('XError', (Exception,), {}),
+                                 ConnectionClosedError=ConnectionClosedError)
+        with patch.dict('sys.modules', {'Xlib.error': errors}):
+            resources = X11Resources(connection)
+        return resources, ConnectionClosedError
+
+    def test_server_loss_cannot_interrupt_idempotent_resource_disposal(self):
+        connection = Mock()
+        resources, closed = self.resources(connection)
+        connection.close.side_effect = closed('Display connection closed by server')
+        resources.close()
+        resources.close()
+        connection.close.assert_called_once()
+        self.assertIsNone(resources.owner_pid(42))
+        self.assertFalse(resources.focused_within(42))
+        connection.create_resource_object.assert_not_called()
+
+    def test_live_connection_is_closed_once_and_other_failures_are_not_hidden(self):
+        connection = Mock()
+        resources, _ = self.resources(connection)
+        resources.close()
+        resources.close()
+        connection.close.assert_called_once()
+        resources, _ = self.resources(Mock(close=Mock(side_effect=ValueError('unexpected failure'))))
+        with self.assertRaises(ValueError):
+            resources.close()
 
 
 class NativeX11Tests(unittest.TestCase):
