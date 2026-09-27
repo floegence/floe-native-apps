@@ -37,6 +37,17 @@ test('first frame, readonly, hidden and local controls cannot resolve targets',(
  s.client.server_readonly=false;s.win.minimized=true;assert.equal(s.adapter.isTargetValid(t),false);
  s.win.minimized=false;s.win.canvas.isConnected=false;assert.equal(s.adapter.isTargetValid(t),false);
 });
+test('offscreen flow-control acknowledgements cannot authorize an unpainted target',()=>{
+ const s=setup(),acknowledged=[];
+ s.context.Utilities={s:value=>value};s.client.protocol={};
+ s.client.do_send_damage_sequence=(...args)=>acknowledged.push(args);
+ const packet=['draw',1,0,0,640,480,'offscreen-painted',null,1,0,{decode_time:10}];
+ s.client.do_process_draw(packet,0);
+ assert.equal(s.adapter.targetForWindow(s.win),null);
+ assert.equal(acknowledged.length,1,'skipped frames still acknowledge transport capacity');
+ s.client.do_process_draw(packet,1);
+ assert.ok(s.adapter.targetForWindow(s.win));
+});
 test('positions preserve display density while wheel distance never scales',()=>{
  for(const scale of [1,1.25,1.5,2,3]) {
   const s=setup();s.client.scale=scale;const t=s.ready();

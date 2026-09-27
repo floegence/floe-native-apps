@@ -53,7 +53,7 @@ func preparePointerHTML(index, client, window []byte) ([]byte, []byte, []byte, e
 	// Bind completion to the actual canvas captured before asynchronous decoding.
 	c = replace(c, "    const ptype = packet[0];\n    const wid = packet[1];\n    const win = this.id_to_window[wid];", "    const ptype = packet[0];\n    const wid = packet[1];\n    const win = this.id_to_window[wid];\n    const floeCanvas = win?.canvas;")
 	c = replace(c, "    function decode_result(error) {", "    function decode_result(error) {\n      if (!error && start !== 0) client.floePointer?.painted(win, floeCanvas);")
-	c = replace(c, "    if (coding === \"offscreen-painted\") {", "    if (coding === \"offscreen-painted\") {\n      this.floePointer?.painted(win, floeCanvas);")
+	c = replace(c, "    if (coding === \"offscreen-painted\") {", "    if (coding === \"offscreen-painted\") {\n      if (start !== 0) this.floePointer?.painted(win, floeCanvas);")
 	for _, name := range []string{"move", "down", "up", "scroll"} {
 		w = replace(w, "    mouse_"+name+"_callback,\n", "")
 		w = replace(w, "    this.mouse_"+name+"_cb = mouse_"+name+"_callback || dummy;\n", "")

@@ -468,6 +468,11 @@ resize requests. Popups and override-redirect windows retain native placement.
 Destroy and disconnect revoke layout ownership. Layout never changes actual
 maximize/minimize state. Both regular and worker canvases preserve painted pixels
 through resize and ignore unchanged sizes.
+The offscreen decoder has one ordered decode/paint queue. It acknowledges damage
+only after drawing into the canvas, and retires late decoded images on window
+removal. Skipped video and no-op packets retain transport acknowledgement without
+authorizing first-frame input. Browser compositing and actual native application
+pixels remain separate acceptance evidence; decoding alone is insufficient.
 
 `PrepareViewer(originalHTML)` produces an immutable `PreparedViewer` using the
 same reviewed v20/v21 transformation as `PrepareInputClient`. `Document` and

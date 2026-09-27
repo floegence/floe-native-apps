@@ -59,10 +59,44 @@ func prepareLayoutHTML(index, client, window []byte) ([]byte, []byte, []byte, er
 }
 
 func prepareCanvasWorker(source []byte) ([]byte, error) {
-	old := "    this.canvas.width = w;\n    this.canvas.height = h;"
-	if strings.Count(string(source), old) != 1 {
-		return nil, fmt.Errorf("unsupported Xpra offscreen canvas geometry contract")
+	prepared := string(source)
+	replace := func(old, next string) error {
+		if strings.Count(prepared, old) != 1 {
+			return fmt.Errorf("unsupported Xpra offscreen canvas contract near %.64q", old)
+		}
+		prepared = strings.Replace(prepared, old, next, 1)
+		return nil
 	}
-	prepared := strings.Replace(string(source), old, "    floeResizeCanvas(this.canvas, w, h);", 1)
+	for _, change := range [][2]string{
+		{"    this.canvas.width = w;\n    this.canvas.height = h;", "    floeResizeCanvas(this.canvas, w, h);"},
+		{`    // Tell the server we are done with this packet
+    self.postMessage({
+      draw: clonepacket,
+      start
+    });`, `    // Decoding alone must not acknowledge painted pixels or authorize input.`},
+		{`    if (packet[6] === "throttle") {
+      return;
+    }`, `    if (this.closed || !this.canvas) { packet[7]?.close?.(); return; }
+    if (packet[6] === "throttle") {
+      self.postMessage({draw: clonepacket, start: 0});
+      return;
+    }`},
+		{`    this.paint_packet(wid, coding, image, x, y, w, h);`, `    // The existing decode queue owns paint order. A second rAF queue allowed
+    // damage acknowledgements and later geometry to overtake these pixels.
+    this.do_paint_packet(wid, coding, image, x, y, w, h);
+    if (coding.startsWith("bitmap")) image?.close?.();
+    self.postMessage({draw: clonepacket, start: coding === "void" ? 0 : start});`},
+		{"  close() {\n    this.eos();", "  close() {\n    this.closed = true;\n    this.eos();"},
+	} {
+		if err := replace(change[0], change[1]); err != nil {
+			return nil, err
+		}
+	}
+	start := strings.Index(prepared, "  paint_packet(wid, coding, image, x, y, width, height) {")
+	end := strings.Index(prepared, "  do_paint_packet(wid, coding, image, x, y, width, height) {")
+	if start < 0 || end <= start || strings.Count(prepared[start:end], "requestAnimationFrame(") != 1 {
+		return nil, fmt.Errorf("unsupported Xpra offscreen paint scheduling contract")
+	}
+	prepared = prepared[:start] + prepared[end:]
 	return []byte(prepared + "\n" + string(canvasSource)), nil
 }
