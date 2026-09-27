@@ -18,7 +18,8 @@ try {
  await page.evaluate(async source=>{
   const {createRemotePointer}=await import('data:text/javascript;base64,'+btoa(source));
   const c=floeXpraClient,a=c.floePointer;
-  window.pointer=createRemotePointer({surface:document.querySelector('#screen'),resolveTarget:e=>a.resolveTarget(e),isTargetValid:t=>a.isTargetValid(t),sendPointer:(p,t)=>a.sendPointer(p,t),release:t=>a.release(t)});
+  window.pointerDeliveries=[];
+  window.pointer=createRemotePointer({surface:document.querySelector('#screen'),resolveTarget:e=>a.resolveTarget(e),isTargetValid:t=>a.isTargetValid(t),sendPointer:(p,t)=>{pointerDeliveries.push({kind:p.kind,dx:p.dx,dy:p.dy});return a.sendPointer(p,t);},release:t=>a.release(t)});
   a.onInvalidate=()=>pointer.reset();
  },source);
  const cdp=await context.newCDPSession(page);
@@ -42,8 +43,17 @@ try {
   await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
  }
  await touch(80,310,0,-240);
+ const released=await page.evaluate(()=>pointerDeliveries);
+ assert.deepEqual(released.filter(p=>p.kind==='scroll').reduce((sum,p)=>[sum[0]+p.dx,sum[1]+p.dy],[0,0]),[0,240],'Release flushes the complete swipe distance');
  await wait(r=>r.outer[1]>0&&r.clicks===0,'swipe from button scrolls without clicking');
- await new Promise(r=>setTimeout(r,250));const stop=await read();await new Promise(r=>setTimeout(r,250));assert.deepEqual((await read()).outer,stop.outer,'Release stops scrolling');
+ // The remote application may animate already-delivered wheel input. Its
+ // asynchronous scroll receipt is not evidence of controller inertia. Chromium
+ // must consume both discrete 120-pixel wheel steps, and the shared controller
+ // must emit nothing after release, including its final queued animation frame.
+ if(kind==='chromium')await wait(r=>r.outer[1]===240,'application consumes the complete swipe');
+ await new Promise(r=>setTimeout(r,500));
+ assert.deepEqual(await page.evaluate(()=>pointerDeliveries),released,'Release emits no further pointer input');
+ evidence.push({label:'release flushes once with no controller inertia',deliveries:released,result:await read()});
  await page.mouse.move(point(80,220).x,point(80,220).y);await page.mouse.wheel(0,-2400);await wait(r=>r.outer[1]===0,'hardware wheel returns to top');
  await touch(460,260,-240,-160);
  await wait(r=>r.inner[0]>0&&r.inner[1]>0&&r.outer[1]===0,'diagonal nested scroll stays at initial hit point');

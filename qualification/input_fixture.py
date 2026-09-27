@@ -60,7 +60,8 @@ if kind == 'gtk':
     def save_density():
         receipt.with_suffix('.density.json').write_text(json.dumps({
             'scale':window.get_scale_factor(),
-            'dpi':Gtk.Settings.get_default().get_property('gtk-xft-dpi') / 1024}))
+            'dpi':Gtk.Settings.get_default().get_property('gtk-xft-dpi') / 1024,
+            'size':[window.get_window().get_width(),window.get_window().get_height()]}))
         return True
     GLib.timeout_add(100, save_density)
     editors[0].grab_focus()
@@ -277,7 +278,7 @@ elif kind in ('gtk4', 'gtk4-entry'):
             receipt.with_suffix('.density.json').write_text(json.dumps({
                 'scale':window.get_scale_factor(),
                 'dpi':Gtk.Settings.get_default().get_property('gtk-xft-dpi') / 1024,
-                'size':[window.get_width(),window.get_height()]}))
+                'size':[window.get_surface().get_width(),window.get_surface().get_height()]}))
             return True
         GLib.timeout_add(100, save_density)
     app.connect('activate', activate)

@@ -209,6 +209,17 @@ class Client(GObjectXpraClient):
             self.quit(0)
             return False
         if not self.failure and self.editing and not self.fields and self.acknowledged == 42 and actual == ['完成🙂', '']:
+            if kind in ('gtk', 'gtk4', 'gtk4-entry'):
+                try:
+                    native = json.loads(receipt.with_suffix('.density.json').read_text())
+                except (OSError, ValueError):
+                    return True
+                # Density changes can asynchronously resize the native window
+                # after our configure request. Wait for its real allocation and
+                # the server's window notification to agree before one unsplit
+                # focus burst; requested dimensions are not click authority.
+                if native['scale'] != density or tuple(n * density for n in native['size']) != self.canvas.size:
+                    return True
             print('PASS', kind, 'selection replacement and deletion preserve exact Unicode', flush=True)
             self.fields = True
             for sequence in range(43, 55):

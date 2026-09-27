@@ -845,6 +845,11 @@ the published `@floegence/floe-webapp-core` package. Native fixtures assert actu
 GTK and Chromium scroll positions, nested scrolling, taps, double taps, right
 clicks and slider dragging. Browser event tests do not certify physical iOS,
 iPadOS or Android devices.
+The native receipt driver waits for actual toolkit allocation and Xpra geometry
+to agree before its unsplit focus-change burst; a requested size is not a native
+allocation. Pointer qualification asserts complete swipe delivery and no further
+controller output after release, separately from the application's asynchronous
+wheel animation. Chromium's final scroll receipt must include the entire swipe.
 
 Hosted qualification installs the downloaded Chromium build's own setuid
 sandbox helper in the disposable runner, following Chromium's documented test

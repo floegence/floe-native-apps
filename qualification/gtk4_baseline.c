@@ -30,7 +30,10 @@ static void changed(GtkTextBuffer *buffer, gpointer unused) {
 static gboolean density(gpointer window) {
     int dpi = 0;
     g_object_get(gtk_settings_get_default(), "gtk-xft-dpi", &dpi, NULL);
-    char *data = g_strdup_printf("{\"scale\":%d,\"dpi\":%d}", gtk_widget_get_scale_factor(window), dpi / 1024);
+    GdkSurface *surface = gtk_native_get_surface(GTK_NATIVE(window));
+    char *data = g_strdup_printf("{\"scale\":%d,\"dpi\":%d,\"size\":[%d,%d]}",
+        gtk_widget_get_scale_factor(window), dpi / 1024,
+        gdk_surface_get_width(surface), gdk_surface_get_height(surface));
     char *name = g_strdup(receipt);
     char *dot = strrchr(name, '.');
     if (dot) *dot = 0;
