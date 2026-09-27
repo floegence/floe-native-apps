@@ -57,6 +57,16 @@ not change permissions on a real user's state to support qualification. The
 production path must never require Docker. A successful check proves a live
 private bus, GIO launch, a window, decoded pixels, and delivered input.
 
+The system Xpra fixture pins every required split package to version 6.5.3-r0-1.
+`qualification/system_xpra` retains the publisher's original signed Noble Release
+from 2026-09-27, complete architecture indexes and public signing key from
+`https://xpra.org/xpra.asc`. `scripts/prepare_system_xpra.py` verifies that signature,
+each complete index and each original publisher download before installation in
+a disposable runner. Local gzip encoding only compresses the original index bytes.
+Live mirror synchronization and newer split packages cannot silently change this
+fixture; integrity errors still stop qualification. Production acquisition and
+the managed component catalog remain unchanged.
+
 `Release qualification` performs fresh downloads and installation on native
 amd64 and arm64 runners. It records install and distribution logs as workflow
 artifacts. Changes to native binaries, wrappers, environment isolation,

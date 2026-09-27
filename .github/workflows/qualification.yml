@@ -167,13 +167,11 @@ jobs:
             2>&1 | tee "$RUNNER_TEMP/qualification/gtk4-current-context.log"
       - name: Install signed system Xpra fixture
         run: |
-          curl --fail --silent --show-error --location https://xpra.org/xpra.asc -o "$RUNNER_TEMP/xpra.asc"
-          sudo install -m 644 "$RUNNER_TEMP/xpra.asc" /usr/share/keyrings/xpra.asc
-          printf '%s\n' 'deb [signed-by=/usr/share/keyrings/xpra.asc] https://xpra.org noble main' \
-            | sudo tee /etc/apt/sources.list.d/xpra.list
-          sudo apt-get update
+          python3 scripts/prepare_system_xpra.py --arch "${{ matrix.arch }}" "$RUNNER_TEMP/xpra-debs"
+          cp "$RUNNER_TEMP/xpra-debs/provenance.json" "$RUNNER_TEMP/qualification/system-xpra-packages.json"
+          sudo apt-get -o APT::Update::Error-Mode=any update
           sudo apt-get install -y --no-install-recommends \
-            xpra=6.5.3-r0-1 xpra-x11=6.5.3-r0-1 \
+            "$RUNNER_TEMP/xpra-debs/"*.deb \
             libx264-164 libxcb-imdkit1 libxcb-util1 dbus xauth
       - name: Qualify the same input contract with system Xpra
         env:
@@ -254,6 +252,15 @@ jobs:
             python3-gi python3-pil python3-xlib python3-dbus python3-pyqt5 python3-pyqt6 \
             gir1.2-gtk-3.0 gir1.2-gtk-4.0 qtwayland5 qt6-wayland \
             flatpak snapd libfuse2t64 dbus-x11 xauth fonts-dejavu-core
+          # Prepare the disposable runner's real user service manager. Snap
+          # scope and document-portal tests require it without a desktop login.
+          sudo systemctl start "user@$(id -u).service"
+          export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+          export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+          test -S "$XDG_RUNTIME_DIR/bus"
+          systemctl --user show-environment >/dev/null
+          echo "XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR" >> "$GITHUB_ENV"
+          echo "DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS" >> "$GITHUB_ENV"
           npm ci --prefix qualification --ignore-scripts --no-audit --no-fund
           node qualification/node_modules/playwright/cli.js install --with-deps chromium
           sandbox=$(python3 -c 'import os,pathlib; p=list(pathlib.Path(os.environ["PLAYWRIGHT_BROWSERS_PATH"]).rglob("chrome_sandbox")); assert len(p)==1; print(p[0])')

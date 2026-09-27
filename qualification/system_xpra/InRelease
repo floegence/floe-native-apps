@@ -1,0 +1,62 @@
+-----BEGIN PGP SIGNED MESSAGE-----
+Hash: SHA512
+
+Origin: xpra.org
+Label: Ubuntu
+Suite: noble
+Codename: noble
+Architectures: amd64 arm64
+Components: main
+Date: Sun, 27 Sep 2026 15:12:43 +0000
+MD5Sum:
+ 933c83e00ae75307dccdec289d202cc1           446378 main/binary-amd64/Packages
+ e4de5ccd2f6afa2d92f5bf3d8c6e467d            46369 main/binary-amd64/Packages.bz2
+ d845c1da06e55f3bd6b076ec3f3a9019            58093 main/binary-amd64/Packages.gz
+ bcdb63ad78e8d7b6b12987585790ce47            47800 main/binary-amd64/Packages.lzma
+ ea92ee20cd8b492250ab42c29025392f           274902 main/binary-arm64/Packages
+ 5ac6188b531280b563fbb1a8a198c292            30605 main/binary-arm64/Packages.bz2
+ 34c2ba2b7ea1d4b15b4555ea9b4147b4            37147 main/binary-arm64/Packages.gz
+ 54d79add9e9a4f5fef17d02ab8f9c86a            30639 main/binary-arm64/Packages.lzma
+SHA1:
+ a6ee23188ea12432e8f4ad18dbfe00c7859ddc07           446378 main/binary-amd64/Packages
+ 3ba538959d3f02a964509329389dee2d11bf1298            46369 main/binary-amd64/Packages.bz2
+ 5697e145a98c04d197f7db593c3cbb92704f2f80            58093 main/binary-amd64/Packages.gz
+ 0b9d12b49c0ad2345b902ef80c2a4c67f47e09b6            47800 main/binary-amd64/Packages.lzma
+ 7abf6ffe9d211a97da161f22a6b9e0c5a340b906           274902 main/binary-arm64/Packages
+ c60497dd5d809c93437db14fcda06b3305b719fe            30605 main/binary-arm64/Packages.bz2
+ 1e3119b1d9b74aa7841733c6b0e3c84e0f0b93b0            37147 main/binary-arm64/Packages.gz
+ d72043e0d1cb2cae2c51a4de141da80c86db0313            30639 main/binary-arm64/Packages.lzma
+SHA256:
+ ee1509d8252ebd3a683bee4eef76fe127913408fc21a6124036a1889116ed9c0           446378 main/binary-amd64/Packages
+ f67ae4b8412030cdb5e1ca854da3772ce08490d0ee9b4e635543ae64e0462c25            46369 main/binary-amd64/Packages.bz2
+ 6835caccfa0598e07f291669ba694001f49f3b0aa9f4ccd569f596ac263bfe38            58093 main/binary-amd64/Packages.gz
+ 3d62730c34a3cc7ba8122a2f6aba1468df4efedfa9ba075595095353cec90e13            47800 main/binary-amd64/Packages.lzma
+ 3c359591377b76bb4be3756ed515065c8a62c685015b011f7eb2852dd78c56a7           274902 main/binary-arm64/Packages
+ d3e4f98bb952d83ed994639148d5b620ab5ea4cd85e17bcb80e062eaf3320683            30605 main/binary-arm64/Packages.bz2
+ fa1f0dc719fbb448d28f6a158242d5491d58d145479047aee8658238cf1a8c3b            37147 main/binary-arm64/Packages.gz
+ 7756e38b60e5ae3ebbe72d7153c547bda0f10d5dd28baf3eaad05ee52eb61106            30639 main/binary-arm64/Packages.lzma
+SHA512:
+ 39ff8e3c5e981aaed435f631e207282e997975d683659e11ca1c24414dce8d310b03b87dbe91d08342f53b18ceee58730e6d8b7b8b81d2a11ce40734d8ed81fb           446378 main/binary-amd64/Packages
+ e4f681e380b17e243c4a7cbd21e109e9aa8f9abcf0ab8cd870c8141f462fdd1ef685b9c1dd6be54a8d2ed88b2c7be0de8458860c15a2fbf46e78de6ac40165ca            46369 main/binary-amd64/Packages.bz2
+ 4abb71161298e67af3b2cf1d0f6344678eb549bbc89c4c2e80e5389ce5a6037da8727bbf376dddcbd00ee4ffba32b9838b0175ddbdf4c4061efd17247db727f0            58093 main/binary-amd64/Packages.gz
+ 0067c214980bb6d77aa0089f5ed16fa95dfdd291b95817d588ab2f3613837ccb269be356b34c1373c4d0f20da1c40177af1f3e85a790ca093d557083870813f7            47800 main/binary-amd64/Packages.lzma
+ a0b03610e69b68be5e96a35aafd479ed2930ff5ba3f056c6af25115dddb2754337194f5c48fcc879210a2462950e0cb54790c67faf742fb01a61ddae055209b9           274902 main/binary-arm64/Packages
+ de320302a0bf0879d564a3ff542b886a8d0565b19cfaf1b8b54bb480833515a291e8823a0bdb2659e27b43a6e4c7d216bbf2082834ddbc14f157134f5f594df8            30605 main/binary-arm64/Packages.bz2
+ daddcc359fe41ff8e88681c1ae02e91b129189be836e963f98be094d6240baa46fa05d95b91a285fe5003dc1810edae0ccf61d6c9deeca80338739bddc20a0f1            37147 main/binary-arm64/Packages.gz
+ a40156166bc556a01faada82c65d1a00dbc8675bd2c98103ef7aea0e8c1bd751fc5dd73003a0137205e54ae51c72ffce46bd482cb7c406072b06d6f5ea354460            30639 main/binary-arm64/Packages.lzma
+-----BEGIN PGP SIGNATURE-----
+
+iQIzBAEBCgAdFiEEtJk7VzIxSON5d+XYcyVMrReXj68FAmq5MmsACgkQcyVMrReX
+j69agg//RHzupdmx0/mXkt93xkPy5NYMdd2z9EGK3u2B83WQ83zPrbRxCtKT8ZhA
+cDg85GXX/ExJYTS3RTuA8n+l5Az6i1+818KYHGRi6xI0lApxCRAMmmiKZw4xi3LD
+kdzGUitSFAikqsbc/sEV+Umam/20FTScJvc3pkC62uJEtdvmC4SX4q/kxr7JEyul
+3PYagaJE5/0vOASMxSOo7XhNJ2ucIrpjQ2rn3wJIMjbby21wuqsHPYeos3vFMPsS
+HooO6DV8jsfxF06qkRN/h3fa++DPtKc/XkrLVnV3IxPnR4p3LdXIVSLJIis5sGo0
+ZrQaCo9dOnsVBBVB7O0KtWbPcWGmTDm9LsC3XMFqPWl2q6bqqwQx6EE1/urzQFun
+aZwVaN9ZSDy8Q0wTQzup10okwiajSvlbCXn8an68hzZjQj9DuFoWBhs0wl55rJwi
+/nsLR44yu5hfTPkTVDpCOp5MoXVGJGnnd5hylthz6oWGadLv0eGdNvnTqBkLAdIc
+ZF5s7lsh5OjYnIIxTafY3+HgdQN6tE057fxFe2Y8O55ziti1puWGZn2mpp1seSkb
+npr1E9SsAYcpDfcW+i2vFyeqxYKpQSJYv6yXpw6sryehz7ogzNUNdlXxpIrJkBIv
+edpaWH5UTr0Nb4yj7FhpCgSCPBbfU4jkkuSWtogpKlAghHejPYk=
+=wiGn
+-----END PGP SIGNATURE-----
