@@ -354,11 +354,15 @@ class DesktopSession:
         self.transition('portals')
         if self.host_documents:
             from desktop_documents import DocumentAuthority
-            from desktop_document_service import DocumentService
+            from desktop_document_service import DocumentService, HostDocumentServiceUnavailable
             self.document_authority = DocumentAuthority()
-            self.documents = DocumentService(self.connection, self.host_bus,
-                self.plan['observation']['package']['id'], self.document_authority, self.record,
-                unavailable=lambda: self.fail('DESKTOP_HOST_SERVICE_UNAVAILABLE'))
+            try:
+                self.documents = DocumentService(self.connection, self.host_bus,
+                    self.plan['observation']['package']['id'], self.document_authority, self.record,
+                    unavailable=lambda: self.fail('DESKTOP_HOST_SERVICE_UNAVAILABLE'))
+            except HostDocumentServiceUnavailable:
+                self.fail('DESKTOP_HOST_SERVICE_UNAVAILABLE')
+                return
         self.portals = DesktopPortals(self.services, self.bus_address,
             Path(self.application_environment['XDG_RUNTIME_DIR']) / self.application_environment['WAYLAND_DISPLAY'],
             self.application_environment, host_documents=self.host_documents,

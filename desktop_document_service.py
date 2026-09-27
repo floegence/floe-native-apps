@@ -21,6 +21,10 @@ XML = '<node><interface name="' + NAME + '"><property name="version" type="u" ac
     for method, pair in SIGNATURES.items()) + '</interface></node>'
 
 
+class HostDocumentServiceUnavailable(ValueError):
+    """The real host dependency could not be activated or validated."""
+
+
 class DocumentService:
     def __init__(self, private, host_address, app_id, authority, record, *, unavailable=None):
         self.private, self.authority, self.record = private, authority, record
@@ -30,32 +34,36 @@ class DocumentService:
         self.host_closed = 0
         self.closed, self.owned_name = False, False
         try:
-            self.host = Gio.DBusConnection.new_for_address_sync(host_address,
-                Gio.DBusConnectionFlags.AUTHENTICATION_CLIENT | Gio.DBusConnectionFlags.MESSAGE_BUS_CONNECTION,
-                None, None)
-            self.host.set_exit_on_close(False)
-            self.host_closed = self.host.connect('closed', lambda *_args: self.lost())
-            if self.host.get_guid() == private.get_guid():
-                raise ValueError('Document host and private buses must differ')
-            # An SSH/headless user session may have the official service
-            # installed but dormant. Activate only this fixed dependency via
-            # the real bus, then pin and validate its actual unique owner.
-            activation = self.host.call_sync('org.freedesktop.DBus', '/org/freedesktop/DBus',
-                'org.freedesktop.DBus', 'StartServiceByName', GLib.Variant('(su)', (NAME, 0)),
-                GLib.VariantType.new('(u)'), Gio.DBusCallFlags.NONE, 5000, None).unpack()[0]
-            if activation not in (1, 2):
-                raise ValueError('Official host document activation is unavailable')
-            self.host_owner = self.host.call_sync('org.freedesktop.DBus', '/org/freedesktop/DBus',
-                'org.freedesktop.DBus', 'GetNameOwner', GLib.Variant('(s)', (NAME,)),
-                GLib.VariantType.new('(s)'), Gio.DBusCallFlags.NONE, 3000, None).unpack()[0]
-            credentials = self.credentials(self.host, self.host_owner)
-            if credentials.get('UnixUserID') != os.getuid():
-                raise ValueError('Host document service belongs to another user')
-            self.version = self.host.call_sync(self.host_owner, PATH, 'org.freedesktop.DBus.Properties', 'Get',
-                GLib.Variant('(ss)', (NAME, 'version')), GLib.VariantType.new('(v)'),
-                Gio.DBusCallFlags.NONE, 3000, None).get_child_value(0).get_variant()
-            if self.version.get_type_string() != 'u' or self.version.unpack() < 3:
-                raise ValueError('Host document protocol is unsupported')
+            try:
+                self.host = Gio.DBusConnection.new_for_address_sync(host_address,
+                    Gio.DBusConnectionFlags.AUTHENTICATION_CLIENT | Gio.DBusConnectionFlags.MESSAGE_BUS_CONNECTION,
+                    None, None)
+                self.host.set_exit_on_close(False)
+                self.host_closed = self.host.connect('closed', lambda *_args: self.lost())
+                if self.host.get_guid() == private.get_guid():
+                    raise ValueError('Document host and private buses must differ')
+                # An SSH/headless user session may have the official service
+                # installed but dormant. Activate only this fixed dependency via
+                # the real bus, then pin and validate its actual unique owner.
+                activation = self.host.call_sync('org.freedesktop.DBus', '/org/freedesktop/DBus',
+                    'org.freedesktop.DBus', 'StartServiceByName', GLib.Variant('(su)', (NAME, 0)),
+                    GLib.VariantType.new('(u)'), Gio.DBusCallFlags.NONE, 5000, None).unpack()[0]
+                if activation not in (1, 2):
+                    raise ValueError('Official host document activation is unavailable')
+                self.host_owner = self.host.call_sync('org.freedesktop.DBus', '/org/freedesktop/DBus',
+                    'org.freedesktop.DBus', 'GetNameOwner', GLib.Variant('(s)', (NAME,)),
+                    GLib.VariantType.new('(s)'), Gio.DBusCallFlags.NONE, 3000, None).unpack()[0]
+                credentials = self.credentials(self.host, self.host_owner)
+                if credentials.get('UnixUserID') != os.getuid():
+                    raise ValueError('Host document service belongs to another user')
+                self.version = self.host.call_sync(self.host_owner, PATH, 'org.freedesktop.DBus.Properties', 'Get',
+                    GLib.Variant('(ss)', (NAME, 'version')), GLib.VariantType.new('(v)'),
+                    Gio.DBusCallFlags.NONE, 3000, None).get_child_value(0).get_variant()
+                if self.version.get_type_string() != 'u' or self.version.unpack() < 3:
+                    raise ValueError('Host document protocol is unsupported')
+            except (OSError, ValueError, GLib.Error):
+                raise HostDocumentServiceUnavailable(
+                    "Official host document service is unavailable") from None
             self.node = Gio.DBusNodeInfo.new_for_xml(XML)
             self.registration = private.register_object(PATH, self.node.interfaces[0], self.call, self.property, None)
             self.subscription = self.host.signal_subscribe('org.freedesktop.DBus', 'org.freedesktop.DBus',

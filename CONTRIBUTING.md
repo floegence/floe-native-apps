@@ -457,7 +457,11 @@ its document dependency, then independently validates bus-name readiness. The
 restricted document facade binds the actual application supervisor and only its
 explicit initial files; it never exposes the host desktop bus. Before binding
 its unique host peer, it requests official D-Bus activation of the fixed document
-service. An installed but dormant service therefore works without a prior desktop
+service. A missing, failed or unsupported host document service produces
+`DESKTOP_HOST_SERVICE_UNAVAILABLE` before application execution; no package is
+installed and no alternative service is substituted. Disposable qualification
+runners install `xdg-desktop-portal` explicitly because Flatpak only recommends
+it on Ubuntu. An installed but dormant service works without a prior desktop
 login; unavailable activation remains a failure and never starts a replacement
 document authority. Full exports remove only the official `AS_NEEDED_BY_APP`
 optimization: installed package permissions cannot prove access for an instance

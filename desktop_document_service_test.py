@@ -31,6 +31,7 @@ class DocumentStartupTests(unittest.TestCase):
     def setUp(self):
         self.running, self.activation, self.uid = False, 1, os.getuid()
         self.host = Mock()
+        self.host.is_closed.return_value = False
         self.host.get_guid.return_value = 'host'
         self.host.call_sync.side_effect = self.call
         self.private = Mock()
@@ -48,6 +49,7 @@ class DocumentStartupTests(unittest.TestCase):
             loaded = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(loaded)
         self.Service = loaded.DocumentService
+        self.Unavailable = loaded.HostDocumentServiceUnavailable
 
     def call(self, destination, path, interface, method, arguments, *_rest):
         if method == 'StartServiceByName':
@@ -83,6 +85,19 @@ class DocumentStartupTests(unittest.TestCase):
         service = self.create()
         self.addCleanup(service.close)
         self.assertEqual(service.host_owner, ':1.9')
+
+    def test_missing_host_service_reports_dependency_failure_and_closes_connection(self):
+        self.host.call_sync.side_effect = RuntimeError('org.freedesktop.DBus.Error.ServiceUnknown')
+        with self.assertRaises(self.Unavailable):
+            self.create()
+        self.host.close_sync.assert_called_once()
+        self.private.register_object.assert_not_called()
+
+    def test_private_export_failure_is_not_misclassified_as_missing_host_service(self):
+        self.private.register_object.side_effect = RuntimeError('private export failed')
+        with self.assertRaisesRegex(RuntimeError, 'private export failed'):
+            self.create()
+        self.host.close_sync.assert_called_once()
 
     def test_unknown_activation_result_or_wrong_user_never_exports_private_service(self):
         for result, uid in ((3, os.getuid()), (1, os.getuid() + 1)):
