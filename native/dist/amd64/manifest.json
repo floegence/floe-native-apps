@@ -10,7 +10,7 @@
     "artifacts/desktop-shell.so": {
       "common": false,
       "executable": true,
-      "sha256": "c0d4935fad48a299f833d6924042e9d36f11c4ac1a6592aeb66c91f9173242ac",
+      "sha256": "640f3fae38a86b390d1740ac4eaa9fd62ff29bd8d267ca80fd9de7ccaa166ad4",
       "size_bytes": 71512
     },
     "artifacts/headless-backend.so": {
@@ -88,7 +88,7 @@
     "provenance/native.json": {
       "common": false,
       "executable": false,
-      "sha256": "0d78c964aedd2c39317930abf8dc23e9334e5a2434b58ceff8a5cdd4ecd5ae41",
+      "sha256": "aee8cf6f3ee872cebee5746583f6b5eb5732df75fad6b30c128261c8630f8c71",
       "size_bytes": 96278
     },
     "provenance/qt5.json": {
@@ -238,8 +238,8 @@
     "sources/tree/qualification/desktop_compatibility/probe_shell.c": {
       "common": true,
       "executable": false,
-      "sha256": "27fb120e97f9e2625882c77bc006c55458fd74ad4f773a0ad57d98c687381124",
-      "size_bytes": 72738
+      "sha256": "2f286695118ab0bdb78abecf0b8cd7700d275afe08a978a300a77734ebca105d",
+      "size_bytes": 72784
     },
     "sources/tree/scripts/build_desktop_native.sh": {
       "common": true,

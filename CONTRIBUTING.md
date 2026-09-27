@@ -310,6 +310,12 @@ Native oversized-dialog qualification checks both opposite-corner controls and
 the restored parent frame on Wayland and X11. Dimensions above 4096 pixels revoke
 sharing without terminating the application.
 
+A live native subsurface may outlast its parent and still issue a commit.
+Such a detached surface has no application-window identity and cannot become
+an input or capture target. Native Snap qualification opens Firefox's menu
+after an actual Unicode save and closes the parent window with the menu open;
+it requires normal application and compositor exit, not only a close request.
+
 `TestDesktopClient*` exercises fragmented packets, malformed framing, cancellation,
 concurrent writes and the real Python control/attachment boundary on native Linux,
 including takeover and late old-owner cleanup. Its synthetic native callbacks are

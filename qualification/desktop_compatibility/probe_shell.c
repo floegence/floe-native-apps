@@ -1,8 +1,7 @@
-/* Unpublished headless feasibility fixture, not the product compositor.
- * The portable candidate pins libweston 14.0.2.
+/* Private application compositor pinned to libweston 14.0.2.
  * Internal seat entry points below belong to that reviewed version;
  * a release must retain the corresponding original source and native ABI proof.
- * The private inherited socket is available only to the owning test process.
+ * The private inherited socket is available only to the owning session helper.
  */
 #define _GNU_SOURCE
 #include <libweston/libweston.h>
@@ -235,6 +234,8 @@ static uint64_t current_window(struct probe *p) {
 static struct probe_window *window_for_surface(struct probe *p, struct weston_surface *surface) {
     if (!surface) return NULL;
     struct weston_surface *root = weston_surface_get_main_surface(surface);
+    /* A live subsurface can commit after its parent has been destroyed. */
+    if (!root) return NULL;
     struct weston_desktop_surface *desktop = weston_surface_is_desktop_surface(root) ?
         weston_surface_get_desktop_surface(root) : NULL;
     for (unsigned int depth = 0; desktop && depth < 128; depth++) {
