@@ -251,7 +251,12 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             python3-gi python3-pil python3-xlib python3-dbus python3-pyqt5 python3-pyqt6 \
             gir1.2-gtk-3.0 gir1.2-gtk-4.0 qtwayland5 qt6-wayland \
-            flatpak snapd xdg-desktop-portal libfuse2t64 dbus-x11 xauth fonts-dejavu-core
+            flatpak snapd xdg-desktop-portal libfuse2t64 dbus-x11 xauth fonts-dejavu-core gdb
+          # Only these disposable application fixtures may write core files.
+          # Retain native backtraces, never the memory or launch environment.
+          install -d -m 700 "$RUNNER_TEMP/desktop-cores"
+          cat /proc/sys/kernel/core_pattern > "$RUNNER_TEMP/desktop-cores/original-pattern"
+          sudo sysctl -w "kernel.core_pattern=$RUNNER_TEMP/desktop-cores/core.%p"
           # Prepare the disposable runner's real user service manager. Snap
           # scope and document-portal tests require it without a desktop login.
           sudo systemctl start "user@$(id -u).service"
@@ -308,14 +313,27 @@ jobs:
             --evidence "$RUNNER_TEMP/desktop-evidence/gtk-baseline" --suite gtk-baseline
       - name: Verify native documents, clipboard, reconnect and failure boundaries
         run: |
+          ulimit -c unlimited
           python3 scripts/qualify_desktop_applications.py \
             --state "$RUNNER_TEMP/desktop-state" --preparer "$RUNNER_TEMP/desktop-prepare" \
             --evidence "$RUNNER_TEMP/desktop-evidence/native" --suite native
       - name: Verify strict Snap and Flatpak input, remote save and normal exit
         run: |
+          ulimit -c unlimited
           python3 scripts/qualify_desktop_applications.py \
             --state "$RUNNER_TEMP/desktop-state" --preparer "$RUNNER_TEMP/desktop-prepare" \
             --evidence "$RUNNER_TEMP/desktop-evidence/sandbox" --suite sandbox
+      - name: Retain native compositor crash diagnostics
+        if: always()
+        run: |
+          restore_core_pattern() {
+            if test -f "$RUNNER_TEMP/desktop-cores/original-pattern"; then
+              sudo sysctl -w "kernel.core_pattern=$(cat "$RUNNER_TEMP/desktop-cores/original-pattern")"
+            fi
+          }
+          trap restore_core_pattern EXIT
+          python3 scripts/desktop_crash_diagnostics.py \
+            "$RUNNER_TEMP/desktop-evidence" "$RUNNER_TEMP/desktop-cores"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:

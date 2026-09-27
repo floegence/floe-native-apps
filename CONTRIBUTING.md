@@ -334,6 +334,13 @@ application profiles. These jobs are necessary release gates; desktop environmen
 AppImage, RPM and classic Snap claims still require their corresponding actual
 application evidence. They are never inferred from these suites.
 
+Disposable private-desktop runners retain a compositor backtrace when a recorded
+native compositor exits with SIGSEGV. Core capture is limited to fixture process
+trees and the runner's temporary directory. Only stack addresses and mapped
+libraries are published; raw process memory, application cores and launch
+environments are excluded. A crash remains a failed qualification even when
+input and saved-file receipts already passed.
+
 The Flatpak GTK fixture observes the private IBus daemon's real focused,
 synchronous context before its initial click/text burst. A painted window alone
 does not prove an editable context. It also waits for the exact completed GNOME
