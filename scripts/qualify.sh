@@ -7,9 +7,11 @@ set -eu
 recipe=${NATIVE_RECIPE:-xpra}
 case "$recipe" in xpra|desktop) ;; *) echo "Unknown native recipe: $recipe" >&2; exit 1;; esac
 "$NATIVE_CHECK" -recipe "$recipe" -check "$NATIVE_ROOT"
-images="public.ecr.aws/docker/library/debian:13-slim public.ecr.aws/docker/library/alpine:3.23"
+# Pull distribution fixtures from their canonical publishers. The shared ECR
+# mirror can exhaust its data quota independently of native qualification.
+images="docker.io/library/debian:13-slim docker.io/library/alpine:3.23"
 if [ "${NATIVE_ARCH:-$(uname -m)}" = amd64 ] || [ "${NATIVE_ARCH:-$(uname -m)}" = x86_64 ]; then
-  images="$images public.ecr.aws/docker/library/archlinux:base public.ecr.aws/docker/library/rockylinux:9 public.ecr.aws/docker/library/almalinux:9 registry.access.redhat.com/ubi9/ubi-minimal:latest"
+  images="$images docker.io/library/archlinux:base docker.io/library/rockylinux:9 docker.io/library/almalinux:9 registry.access.redhat.com/ubi9/ubi-minimal:latest"
 fi
 for image in $images; do
   echo "Qualifying $image"
