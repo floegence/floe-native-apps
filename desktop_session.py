@@ -383,7 +383,8 @@ class DesktopSession:
         self.timeout = None
         self.helper.listen(self.runtime, self.instance, self.token, self.capture)
         self.capture = None
-        self.application = self.spawn('application', self.application_command, self.application_environment)
+        self.application = self.spawn('application', self.application_command,
+                                      self.services.launcher_environment(self.application_environment))
         if self.document_authority:
             # Bind on this event loop before dispatching the launcher's first
             # request. Only this supervisor's descendants may forward explicitly

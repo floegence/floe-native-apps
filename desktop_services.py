@@ -5,8 +5,10 @@ never activates an installation or changes the original component. Only support
 processes receive this environment; application launch retains its host runtime.
 """
 import os
+import json
 from pathlib import Path
 import platform
+import shlex
 import shutil
 import stat
 import subprocess
@@ -68,6 +70,11 @@ class DesktopServices:
             ET.SubElement(fonts, 'dir').text = str(path)
         ET.SubElement(fonts, 'cachedir').text = str(self.private / 'font-cache')
         ET.ElementTree(fonts).write(self.private / 'fonts.conf', encoding='utf-8', xml_declaration=True)
+        # GIO executes this helper directly, so it needs the same private musl
+        # loader as Python. It never becomes an application's library path.
+        wrapper = self.private / 'gio-launch-desktop'
+        wrapper.write_text('#!/bin/sh\nexec ' + shlex.join(self.command('usr/libexec/gio-launch-desktop')) + ' "$@"\n')
+        wrapper.chmod(0o700)
 
     def resource(self, relative, *, directory=False):
         path = Path(relative)
@@ -99,4 +106,17 @@ class DesktopServices:
             'FONTCONFIG_FILE': str(self.private / 'fonts.conf'),
             'PYTHONHOME': str(self.component / 'usr'), 'PYTHONNOUSERSITE': '1',
         })
+        return environment
+
+    def launcher_environment(self, base):
+        from launch_plan import restored_environment
+        original = restored_environment(base)
+        environment = self.environment(original)
+        environment['GIO_LAUNCH_DESKTOP'] = str(self.private / 'gio-launch-desktop')
+        # The existing GIO supervisor restores only these scoped differences
+        # on its application launch context. Display, bus and admitted input
+        # variables already belong to the private application session.
+        saved = {key: original.get(key) for key in environment.keys() | original.keys()
+                 if environment.get(key) != original.get(key)}
+        environment['FLOE_NATIVE_APPLICATION_ENV'] = json.dumps(saved)
         return environment

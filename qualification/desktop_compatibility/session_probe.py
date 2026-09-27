@@ -31,7 +31,7 @@ def helper(root, runtime, evidence, token, mode):
     from launch_plan import prepare
     environment = {**os.environ, 'XDG_RUNTIME_DIR': str(runtime), 'WAYLAND_DISPLAY': 'wayland-0',
         'DBUS_SESSION_BUS_ADDRESS': 'unix:path=' + str(runtime / 'bus'), 'GDK_BACKEND': 'wayland',
-        'FLOE_TEST_WINDOW_COLOR': '13579b'}
+        'FLOE_TEST_WINDOW_COLOR': '13579b', 'PYTHONPATH': '/floe-qualification/host-python'}
     if mode == 'clipboard-x11':
         environment['GDK_BACKEND'] = 'x11'
     for name in ('DISPLAY', 'XAUTHORITY', 'FLOE_NATIVE_APPLICATION_ENV', 'FLOE_NATIVE_INPUT_GTK_PATH',
@@ -60,7 +60,7 @@ def helper(root, runtime, evidence, token, mode):
         'shell': str(native / 'probe-shell.so'), 'capture': str(native / 'frame-probe'),
         'library': str(library / 'libweston-14.so.0'),
         'xwayland': str(library.parent / 'xwayland/xwayland.so'),
-        'ibus_daemon': os.environ['FLOE_PROBE_IBUS_DAEMON'], 'python': sys.executable}
+        'ibus_daemon': os.environ['FLOE_PROBE_IBUS_DAEMON']}
     if 'FLOE_PROBE_IBUS_PORTAL' in os.environ:
         resources['ibus_portal'] = os.environ['FLOE_PROBE_IBUS_PORTAL']
     if mode == 'support-failure':
@@ -80,6 +80,8 @@ def helper(root, runtime, evidence, token, mode):
     # Execute the installed entrypoint. The viewer has no fixture-only session
     # assembly, diagnostic callback patch, service launcher or direct input path.
     entry = Path(os.environ.get('FLOE_PROBE_DESKTOP_LAUNCHER', root / 'desktop_bootstrap.py'))
+    if 'FLOE_PROBE_DESKTOP_LAUNCHER' in os.environ:
+        os.execv(str(entry), [str(entry), str(configuration)])
     os.execv(sys.executable, [sys.executable, str(entry), str(configuration)])
 
 
@@ -144,7 +146,8 @@ def main():
     if mode in ('chromium', 'clipboard-chromium'):
         from chromium_context_probe import ChromiumPage
         browser = ChromiumPage(evidence, receipt, 'wayland')
-    prefix = 'import sys, time, runpy\n'
+    prefix = 'import sys, time, runpy, os, json\n'
+    prefix += f'open({str(evidence / "application-environment.json")!r}, "w").write(json.dumps({{"prefix": sys.prefix, "python_path": os.environ.get("PYTHONPATH"), "support_overrides": "FLOE_NATIVE_APPLICATION_ENV" in os.environ}}))\n'
     if mode == 'slow-window':
         prefix += 'time.sleep(42)\n'
     elif mode == 'launcher-failure':
@@ -218,6 +221,11 @@ def main():
         wait((lambda: browser.ready) if browser else receipt.exists,
              'No application readiness receipt', 50 if mode == 'slow-window' else 25)
         result['first_window_wait_seconds'] = time.monotonic() - began
+        if not browser:
+            actual = json.loads((evidence / 'application-environment.json').read_text())
+            assert actual['python_path'] == '/floe-qualification/host-python' and not actual['support_overrides']
+            assert actual['prefix'] != str(Path(os.environ['FLOE_PROBE_COMPONENT']) / 'usr')
+            result['application_environment_restored'] = True
         if mode == 'slow-window':
             assert result['first_window_wait_seconds'] > 40
         status = client.response(client.request('status'))['result']

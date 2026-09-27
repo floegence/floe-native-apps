@@ -63,8 +63,8 @@
     }
   ],
   "unproven_release_requirements": [
-    "Complete catalog-backed public preparation/launch resource realization around the installed first-party helper; source snapshot installation alone does not qualify portable Python, native libraries or package resources",
-    "Run remaining sandbox and lifecycle qualification through the installed helper; existing persistent Snap and Flatpak prototypes are not installation evidence",
+    "Complete catalog-backed public preparation/launch resource realization around the installed helper; private component Python/GIO/Xlib/XIM now has native arm64 installed-entrypoint evidence, not production catalog activation",
+    "Complete native amd64 installed portable-helper and remaining sandbox/lifecycle qualification; native arm64 GTK, Chromium, Flatpak GTK/Qt, launcher/service failures and noexec runtime now pass through the component-owned runtime",
     "Complete both native architectures and published installed-helper qualification of the Wayland text-input-v3 adapter; actual arm64 Chromium document/frame receipts are available, serial or socket flush alone is not consumption evidence",
     "Complete both native architectures, toolkit coverage and installed-helper qualification of cursor, clipboard, window/popup and display/input behavior; current clipboard receipts cover GTK3/GTK4/Qt5/Qt6 Wayland/Xwayland and Chromium Wayland on arm64",
     "The remaining DEB/RPM, AppImage, classic Snap, GNOME Xorg/Wayland, KDE Wayland, Xfce X11 and no-desktop combinations with dedicated actual systems and package identities",
@@ -338,6 +338,11 @@
       "case": "Go-installed persistent helper source snapshot on native arm64",
       "result": "One exclusive WriteDesktopLauncher snapshot contains the full first-party import closure. The actual entrypoint reads a private versioned configuration, revalidates the immutable plan and delegates to DesktopSession. Actual GTK4 and Chromium input/frame/clipboard, 42-second first window, launcher exit 46, support failure, capture/private-bus loss, restrictive noexec runtime, reconnect and normal cleanup pass. Flatpak GTK/Qt use the same entrypoint and pass remote Save As with exact file bytes and official document grants.",
       "limits": "Native amd64 bootstrap, portable helper Python/library closure, package-specific resource realization, activated components and the full desktop/package matrix remain required. These probes use the explicit task-owned native artifacts and a host Python runtime."
+    },
+    {
+      "case": "Installed portable helper runtime on native arm64 Ubuntu",
+      "result": "Go-installed immutable entrypoint and existing supervisor use component musl Python/GIO, Python Xlib and libxcb-imdkit. Actual GTK and pure Wayland Chromium Unicode/frame/reconnect receipts, Flatpak GNOME Text Editor and KWrite remote Save As with exact bytes, launcher exit 46, support/capture/bus failure and restrictive noexec socket runtime pass. Application Python environment is restored exactly.",
+      "limits": "Unactivated 194-archive signed candidate; native amd64, production component catalog, complete package/desktop matrix and release qualification remain required."
     }
   ],
   "rejected_assumptions": [
@@ -363,6 +368,7 @@
     "Xwayland removes its binding before the desktop surface removal callback finishes. Ending a grab during that callback must not emit another window state; retirement is the sole final publication.",
     "Xwayland may normalize a native key timestamp; the requested marker timestamp 61261328 arrived as 61261329. Native transactions use reserved press/release slots instead of timestamp identity, and cannot reuse an undrained slot.",
     "Setting only weston_seat_set_keyboard_focus does not activate XWM. It leaves X11 PointerRoot focus even when a key happens to reach the window under the pointer; use the compositor view activation API and retain actual X11 focus checks.",
-    "An IBus engine can focus its internal placeholder before any application registers. Native qualification requires real application provenance, not merely a non-empty engine focus path. Registered routing and the editable widget at native marker consumption are distinct boundaries."
+    "An IBus engine can focus its internal placeholder before any application registers. Native qualification requires real application provenance, not merely a non-empty engine focus path. Registered routing and the editable widget at native marker consumption are distinct boundaries.",
+    "The original Weston candidate lacks Python Xlib and libxcb-imdkit. A native private-Python import failure exposed the missing closure; host Python was hiding it. The installed helper and GIO supervisor now both run from the component and restore application environment before exec."
   ]
 }

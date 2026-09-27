@@ -258,15 +258,25 @@ exit before any native window is a startup failure, while a running process with
 no windows continues waiting. Component activation and package-specific resource
 realization remain required before declaring the combined backend supported.
 
-`WriteDesktopLauncher` installs the complete first-party Python import closure
-in a new private source directory. Existing directories are rejected: updates
+`WriteDesktopLauncher(directory, component, architecture)` installs the complete
+first-party Python import closure in a new private source directory. Existing directories are rejected: updates
 cannot rewrite the helper supporting a running application. Its returned entrypoint
-accepts one owner-only, bounded version-1 configuration file. The configuration
+executes the verified component's private Python through its musl loader, with
+private GI/GIO resources and no inherited Python/plugin/library injection paths.
+It accepts one owner-only, bounded version-1 configuration file. The configuration
 binds the immutable launch plan, original application environment, private runtime,
-instance/token and caller-verified compositor, capture, input-service and Python
+instance/token and caller-verified compositor, capture and input-service
 resources. Unknown fields/versions, symlinks, public files and duplicate JSON keys
 are rejected. Component resolution and package adaptation belong to the upstream
 installation/launch boundary, never renderer-supplied configuration.
+
+The application supervisor uses the same component Python and private GIO launcher.
+The existing scoped environment handoff restores the application's original
+interpreter, library and plugin environment before execution; only the admitted
+private graphics, bus and input addresses remain. Generated executable wrappers
+live in the instance resource directory, independently of a noexec socket runtime.
+The portable component closure must include Python Xlib and libxcb-imdkit as well
+as GI/GIO; host-installed modules must not hide a missing distribution dependency.
 
 The entrypoint revalidates the plan before preparing resources and delegates all
 processes to `DesktopSession`. Its bounded `desktop-status.json` is an atomic

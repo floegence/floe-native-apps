@@ -9,6 +9,7 @@ from unittest.mock import patch
 import xml.etree.ElementTree as ET
 
 from desktop_services import DesktopServices
+from launch_plan import restored_environment
 
 
 class DesktopServicesTests(unittest.TestCase):
@@ -24,6 +25,7 @@ class DesktopServicesTests(unittest.TestCase):
         for name in ('lib/ld-musl-' + loader + '.so.1', 'usr/bin/update-mime-database',
                      'usr/bin/glib-compile-schemas', 'usr/bin/gdk-pixbuf-query-loaders',
                      'usr/bin/gtk-query-immodules-3.0', 'usr/bin/dbus-daemon',
+                     'usr/bin/python3', 'usr/libexec/gio-launch-desktop',
                      'usr/share/mime/packages/types.xml', 'usr/share/glib-2.0/schemas/test.xml',
                      'usr/lib/gtk-3.0/3.0.0/immodules/im-ibus.so'):
             path = self.component / name
@@ -116,6 +118,21 @@ class DesktopServicesTests(unittest.TestCase):
         self.assertEqual(private['DBUS_SESSION_BUS_ADDRESS'], original['DBUS_SESSION_BUS_ADDRESS'])
         for key in ('LD_LIBRARY_PATH', 'PYTHONPATH', 'GTK_PATH', 'FONTCONFIG_PATH'):
             self.assertNotIn(key, private)
+
+    def test_private_supervisor_restores_exact_host_environment_before_application_exec(self):
+        prepared = self.prepare()
+        original = {'PATH': '/host/bin', 'HOME': '/host/home', 'DISPLAY': ':49',
+            'DBUS_SESSION_BUS_ADDRESS': 'unix:path=/private/bus', 'PYTHONHOME': '/host/python',
+            'PYTHONPATH': '/host/modules', 'GIO_EXTRA_MODULES': '/host/gio',
+            'GTK_IM_MODULE': 'ibus', 'IBUS_ADDRESS': 'private-input', 'CUSTOM': 'unchanged'}
+        before = dict(original)
+        supervisor = prepared.launcher_environment(original)
+        self.assertEqual(original, before)
+        self.assertEqual(restored_environment(supervisor), original)
+        self.assertEqual(supervisor['PYTHONHOME'], str(prepared.component / 'usr'))
+        self.assertNotIn('PYTHONPATH', supervisor)
+        self.assertTrue(Path(supervisor['GIO_LAUNCH_DESKTOP']).is_file())
+        self.assertEqual(prepared.command('usr/bin/python3')[-1], str(prepared.component / 'usr/bin/python3'))
 
 
 if __name__ == '__main__':

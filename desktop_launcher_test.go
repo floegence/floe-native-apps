@@ -6,12 +6,14 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
 func TestDesktopLauncherSnapshot(t *testing.T) {
 	directory := filepath.Join(t.TempDir(), "helper")
-	entry, err := WriteDesktopLauncher(directory)
+	component := desktopLauncherComponent(t)
+	entry, err := WriteDesktopLauncher(directory, component, "arm64")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -19,12 +21,32 @@ func TestDesktopLauncherSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := WriteDesktopLauncher(directory); err == nil {
+	if _, err := WriteDesktopLauncher(directory, component, "arm64"); err == nil {
 		t.Fatal("running helper source snapshot was overwritten")
 	}
 	after, err := os.ReadFile(entry)
 	if err != nil || !bytes.Equal(before, after) {
 		t.Fatalf("existing source changed: %v", err)
+	}
+	// Execute the wrapper against a task-owned recording loader. This proves
+	// argument boundaries and environment isolation even on non-Linux hosts.
+	loader := filepath.Join(component, "lib/ld-musl-aarch64.so.1")
+	if err := os.WriteFile(loader, []byte("#!/bin/sh\nprintf '%s\\n' \"$@\" \"$PYTHONHOME\" \"${PYTHONPATH-unset}\"\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	configuration := filepath.Join(directory, "quoted ' configuration.json")
+	probe := exec.Command(entry, configuration)
+	probe.Env = append(os.Environ(), "PYTHONPATH=/host/inherited/python")
+	output, err := probe.CombinedOutput()
+	canonical, pathErr := filepath.EvalSymlinks(component)
+	if pathErr != nil {
+		t.Fatal(pathErr)
+	}
+	want := strings.Join([]string{"--library-path", filepath.Join(canonical, "lib") + ":" + filepath.Join(canonical, "usr/lib"),
+		filepath.Join(canonical, "usr/bin/python3"), filepath.Join(directory, "desktop_bootstrap.py"),
+		configuration, filepath.Join(canonical, "usr"), "unset", ""}, "\n")
+	if err != nil || string(output) != want {
+		t.Fatalf("private launcher arguments/environment changed: %v\n%s", err, output)
 	}
 	python, err := exec.LookPath("python3")
 	if err != nil {
@@ -51,9 +73,45 @@ import desktop_bootstrap
 	}
 }
 
+func desktopLauncherComponent(t *testing.T) string {
+	t.Helper()
+	root := filepath.Join(t.TempDir(), "component with ' quote")
+	for _, name := range []string{"lib/ld-musl-aarch64.so.1", "usr/bin/python3", "usr/libexec/gio-launch-desktop"} {
+		path := filepath.Join(root, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("native fixture executable"), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return root
+}
+
 func TestDesktopLauncherRejectsRelativeDirectory(t *testing.T) {
-	if _, err := WriteDesktopLauncher("relative"); err == nil {
+	if _, err := WriteDesktopLauncher("relative", desktopLauncherComponent(t), "arm64"); err == nil {
 		t.Fatal("relative helper source directory accepted")
+	}
+}
+
+func TestDesktopLauncherRejectsEscapedComponentExecutable(t *testing.T) {
+	component, directory := desktopLauncherComponent(t), filepath.Join(t.TempDir(), "helper")
+	binary := filepath.Join(component, "usr/bin/python3")
+	if err := os.Remove(binary); err != nil {
+		t.Fatal(err)
+	}
+	outside := filepath.Join(t.TempDir(), "python3")
+	if err := os.WriteFile(outside, []byte("unverified"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, binary); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := WriteDesktopLauncher(directory, component, "arm64"); err == nil {
+		t.Fatal("component executable escaped its verified root")
+	}
+	if _, err := os.Stat(directory); !os.IsNotExist(err) {
+		t.Fatal("invalid resources created a helper snapshot")
 	}
 }
 
@@ -68,7 +126,7 @@ func TestNativeDesktopLauncherInstallation(t *testing.T) {
 	if runtime.GOOS != "linux" || !filepath.IsAbs(directory) {
 		t.Fatal("absolute native Linux helper fixture directory required")
 	}
-	entry, err := WriteDesktopLauncher(directory)
+	entry, err := WriteDesktopLauncher(directory, os.Getenv("FLOE_TEST_DESKTOP_COMPONENT"), runtime.GOARCH)
 	if err != nil {
 		t.Fatal(err)
 	}

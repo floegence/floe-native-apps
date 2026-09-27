@@ -25,7 +25,7 @@ def main():
         if name in urls or '/' + upstream_architecture + '/' not in parsed.path:
             raise ValueError('Duplicate or wrong-architecture candidate URL')
         urls[name] = line
-    artifacts, installed = [], 0
+    artifacts, installed, packages = [], 0, set()
     for path in sorted((root / 'apks').glob('*.apk')):
         url = urls.pop(path.name)
         with gzip.open(path, 'rb') as compressed:
@@ -39,6 +39,9 @@ def main():
                         metadata = dict(line.split(' = ', 1) for line in
                             archive.extractfile(member).read().decode().splitlines() if ' = ' in line)
         assert metadata and metadata['arch'] in (upstream_architecture, 'noarch')
+        if metadata['pkgname'] in packages:
+            raise ValueError('Multiple versions of a native package in candidate closure')
+        packages.add(metadata['pkgname'])
         repository = url.split('/')[-3]
         artifacts.append({'name': path.name, 'url': url, 'sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
             'size_bytes': path.stat().st_size, 'format': 'apk', 'license': metadata['license'],

@@ -51,7 +51,7 @@ def read_configuration(path):
                 not isinstance(item, str) or '\x00' in item for key, item in environment.items())):
         raise ValueError('Invalid application environment')
     resources = value['resources']
-    required = {'component', 'shell', 'capture', 'library', 'xwayland', 'ibus_daemon', 'python'}
+    required = {'component', 'shell', 'capture', 'library', 'xwayland', 'ibus_daemon'}
     if (type(resources) is not dict or not required <= resources.keys() or
             resources.keys() - required - {'ibus_portal', 'authentication'} or
             not all(absolute(item) for item in resources.values())):
@@ -155,7 +155,7 @@ def assemble(value, record, completed):
     record({'event': 'graphics', 'description': graphics.description})
     session = DesktopSession(value['directory'], value['runtime'], value['instance'], value['token'],
         services, graphics, ibus_command=[resources['ibus_daemon']], plan=plan,
-        application_launcher=[resources['python'], str(Path(__file__).with_name('application.py'))],
+        application_launcher=[*services.command('usr/bin/python3'), str(Path(__file__).with_name('application.py'))],
         application_environment=environment, completed=completed, record=record, host_bus=value['host_bus'],
         ibus_portal_command=[resources['ibus_portal']] if 'ibus_portal' in resources else (),
         initial_documents=value['initial_documents'])
