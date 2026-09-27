@@ -46,6 +46,24 @@ class Attachment:
 
 
 class NativeTests(unittest.TestCase):
+    def test_rejected_native_record_reports_location_without_payload_or_exception_text(self):
+        connection, producer = socket.socketpair()
+        self.addCleanup(producer.close)
+        lost = []
+        def reject(_line):
+            raise ValueError('private application text and credentials')
+        channel = NativeChannel(connection, Loop(), reject, lambda: lost.append(True))
+        self.addCleanup(channel.close)
+        producer.sendall(b'private application record\n')
+        with self.assertLogs('desktop_native', level='WARNING') as observed:
+            channel.read()
+        self.assertTrue(channel.closed)
+        self.assertEqual(lost, [True])
+        self.assertIn('ValueError', observed.output[0])
+        self.assertIn('reject', observed.output[0])
+        self.assertNotIn('private', observed.output[0])
+        self.assertNotIn('credentials', observed.output[0])
+
     def test_display_startup_uses_one_native_response_and_never_reuses_it(self):
         sent, completed = [], []
         native = NativeDesktop(sent.append, None)
