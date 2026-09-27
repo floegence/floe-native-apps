@@ -84,6 +84,7 @@ struct probe {
     struct weston_desktop_client *barrier_client;
     uint64_t barrier_sequence, barrier_window, barrier_connection;
     struct native_clipboard *clipboard;
+    struct weston_mode capture_mode;
 };
 struct probe_window {
     struct wl_list link;
@@ -415,7 +416,9 @@ static void window_metadata(struct wl_listener *listener, void *data) {
     encoded[length * 2] = '\0';
     emit(window->probe, "window-title %" PRIu64 " %s\n", window->identity, length ? encoded : "-");
 }
+static void fit_output(struct probe *p);
 static void scene_changed(struct probe *p) {
+    fit_output(p);
     emit(p, "scene %" PRIu64 " %" PRIu64 "\n", ++p->scene, input_window(p));
     schedule_cursor(p);
 }
@@ -790,6 +793,44 @@ static void position_window(struct probe_window *window) {
         const struct weston_xwayland_surface_api *api = weston_xwayland_surface_get_api(window->probe->compositor);
         api->send_position(weston_desktop_surface_get_surface(window->desktop), (int32_t)x, (int32_t)y);
     }
+}
+static void fit_output(struct probe *p) {
+    if (p->grab || wl_list_empty(&p->compositor->output_list)) return;
+    struct weston_output *output = wl_container_of(p->compositor->output_list.next, output, link);
+    struct probe_window *window;
+    int width = 1000, height = 700;
+    wl_list_for_each(window, &p->windows, link) {
+        if (!weston_view_is_mapped(window->view) || window->view->layer_link.layer != &p->layer ||
+            weston_desktop_surface_get_maximized(window->desktop) ||
+            weston_desktop_surface_get_fullscreen(window->desktop)) continue;
+        width = fmax(width, window->geometry.width);
+        height = fmax(height, window->geometry.height);
+    }
+    if (width == output->width && height == output->height) return;
+    /* One real viewport serves pixels, Wayland and Xwayland coordinates.
+     * Client display scaling then fits the complete frame without changing
+     * native seat coordinates or clipping dialogs at a fixed capture edge. */
+    if (width > 4096 || height > 4096) { control_lost(p); return; }
+    release_input(p);
+    p->capture_mode.width = width;
+    p->capture_mode.height = height;
+    p->capture_mode.refresh = output->current_mode->refresh;
+    p->capture_mode.flags = WL_OUTPUT_MODE_CURRENT | WL_OUTPUT_MODE_PREFERRED;
+    if (weston_output_mode_set_native(output, &p->capture_mode, 1) < 0) {
+        control_lost(p);
+        return;
+    }
+    wl_list_for_each(window, &p->windows, link) {
+        if (!weston_view_is_mapped(window->view) || window->view->layer_link.layer != &p->layer) continue;
+        if (weston_desktop_surface_get_maximized(window->desktop) ||
+            weston_desktop_surface_get_fullscreen(window->desktop))
+            weston_desktop_surface_set_size(window->desktop, width, height);
+        window->position.c.x = fmax(0, fmin(width - window->geometry.width, window->position.c.x));
+        window->position.c.y = fmax(0, fmin(height - window->geometry.height, window->position.c.y));
+        position_window(window);
+        weston_view_update_transform(window->view);
+    }
+    weston_compositor_damage_all(p->compositor);
 }
 static void surface_parent(struct weston_desktop_surface *desktop,
                            struct weston_desktop_surface *parent, void *data) {

@@ -1,8 +1,9 @@
-"""Strict Snap acceptance through the sole persistent session and authenticated IPC.
+"""Snap and native Firefox acceptance through the sole persistent session and authenticated IPC.
 
 The only application/profile/files here belong to this fixture. No compositor,
 input, portal or application process is assembled on the viewer side.
 """
+import argparse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import hashlib
 import json
@@ -27,10 +28,18 @@ from source_proof import record_sources
 
 
 def main():
-    root = Path(sys.argv[1]).resolve()
-    evidence = Path(tempfile.mkdtemp(prefix='snap-session-', dir=root))
+    parser = argparse.ArgumentParser()
+    parser.add_argument('source', type=Path)
+    parser.add_argument('--desktop', type=Path,
+        default=Path('/var/lib/snapd/desktop/applications/firefox_firefox.desktop'))
+    parser.add_argument('--kind', choices=('snap', 'deb', 'rpm'), default='snap')
+    parser.add_argument('--inspect-failure', action='store_true', help='Keep the isolated failed fixture alive for 60 seconds for native inspection')
+    parser.add_argument('--first-use', action='store_true', help='Handle the observed initial welcome dialog in the disposable profile')
+    args = parser.parse_args()
+    root = args.source.resolve()
+    evidence = Path(tempfile.mkdtemp(prefix='firefox-session-', dir=root))
     runtime = Path(tempfile.mkdtemp(prefix='floe-session-', dir=f'/run/user/{os.getuid()}'))
-    profile = Path(tempfile.mkdtemp(prefix='floe-session-test-', dir=Path.home() / 'snap/firefox/common'))
+    profile = Path(tempfile.mkdtemp(prefix='floe-session-test-', dir=Path.home() / 'snap/firefox/common' if args.kind == 'snap' else evidence))
     downloads = profile / 'downloads'
     downloads.mkdir()
     (profile / 'user.js').write_text('user_pref("browser.download.folderList", 2);\n'
@@ -44,9 +53,9 @@ def main():
             pass
 
         def do_GET(self):
-            body = b'''<!doctype html><meta charset="utf-8"><title>Floe persistent Snap input</title>
+            body = b'''<!doctype html><meta charset="utf-8"><title>Floe persistent Firefox input</title>
 <style>body{font:20px sans-serif;margin:30px;background:#b8d9ed}textarea{width:85%;height:350px;font:24px sans-serif}</style>
-<h1>Floe persistent Snap input</h1><textarea autofocus></textarea><p><button id="save">Save test text</button></p>
+<h1>Floe persistent Firefox input</h1><textarea autofocus></textarea><p><button id="save">Save test text</button></p>
 <div id="checkpoint" style="position:fixed;bottom:0;left:0;right:0;height:16px"></div><script>
 const field=document.querySelector('textarea'); let sequence=0,pending=Promise.resolve();
 const report=event=>{const body=JSON.stringify({sequence:++sequence,event,value:field.value});
@@ -110,11 +119,13 @@ report('loaded');</script>'''
         delivered(send({'kind': 'key', 'code': code, 'pressed': True}))
         delivered(send({'kind': 'key', 'code': code, 'pressed': False}))
     try:
-        original = Path('/var/lib/snapd/desktop/applications/firefox_firefox.desktop')
+        original = args.desktop.resolve(strict=True)
         entry = GLib.KeyFile.new()
         entry.load_from_file(str(original), GLib.KeyFileFlags.NONE)
-        assert entry.get_string('Desktop Entry', 'Exec') == '/snap/bin/firefox %u'
-        entry.set_string('Desktop Entry', 'Exec', f'/snap/bin/firefox -no-remote -profile "{profile}" http://127.0.0.1:{server.server_port}/')
+        command = entry.get_string('Desktop Entry', 'Exec')
+        assert command.count('%u') == 1
+        entry.set_string('Desktop Entry', 'Exec', command.replace('%u',
+            f'-no-remote -profile "{profile}" http://127.0.0.1:{server.server_port}/'))
         entry.set_boolean('Desktop Entry', 'DBusActivatable', False)
         (evidence / 'fixture.desktop').write_text(entry.to_data()[0])
         result['desktop_sha256'] = hashlib.sha256(original.read_bytes()).hexdigest()
@@ -129,20 +140,26 @@ report('loaded');</script>'''
         process.stdin.write((token + '\n').encode())
         process.stdin.close()
         wait(lambda: any(x.get('phase') == 'sharing_ready' or x.get('state') == 'failed' for x in records()),
-             'Persistent Snap helper did not prepare', 45)
+             'Persistent Firefox helper did not prepare', 45)
         assert not any(x.get('state') == 'failed' for x in records()), records()
         plan = json.loads(session_file(evidence, 'application-plan.json').read_text())
         result['package'], result['required_services'] = plan['observation']['package'], plan['observation']['services']
-        assert result['package']['kind'] == 'snap' and result['package']['confinement'] == 'strict'
+        assert result['package']['kind'] == args.kind
         client = ControlClient(evidence / 'viewer', runtime / 'control.sock', runtime.name, session_token(evidence, token))
         client.reconnect()
-        wait(lambda: any(x['event'] == 'loaded' for x in receipts), 'Real Snap Firefox page did not load', 45)
+        wait(lambda: any(x['event'] == 'loaded' for x in receipts), 'Real Firefox page did not load', 45)
         launched = json.loads(session_file(evidence, 'application.json').read_text())
         assert launched['state'] == 'running' and len(launched['launcher_pids']) == 1
         pid = launched['launcher_pids'][0]
-        cgroup = Path(f'/proc/{pid}/cgroup').read_text().strip()
-        assert re.search(r'/snap\.firefox\.firefox-[a-f0-9-]+\.scope$', cgroup)
-        result['scope'] = {'pid': pid, 'start_ticks': identity(pid)[1], 'cgroup': cgroup}
+        result['launcher'] = {'pid': pid, 'start_ticks': identity(pid)[1]}
+        if args.kind == 'snap':
+            assert result['package']['confinement'] == 'strict'
+            cgroup = Path(f'/proc/{pid}/cgroup').read_text().strip()
+            assert re.search(r'/snap\.firefox\.firefox-[a-f0-9-]+\.scope$', cgroup)
+            result['scope'] = {**result['launcher'], 'cgroup': cgroup}
+        if args.first_use:
+            target = paint('first-use', marker=(0, 98, 250))
+            click(500, 327)
         target = paint('loaded', marker=(184, 217, 237))
         click(300, 280)
         wait(lambda: any(x['event'] == 'pointerdown' for x in receipts), 'Actual field click was not received')
@@ -153,7 +170,7 @@ report('loaded');</script>'''
             expected += value + '\n'
         for request in pending:
             delivered(request)
-        wait(lambda: receipts[-1]['value'] == expected, 'Actual Snap document differs after ordered Unicode/Enter')
+        wait(lambda: receipts[-1]['value'] == expected, 'Actual Firefox document differs after ordered Unicode/Enter')
         checksum = 2166136261
         for byte in expected.encode():
             checksum = ((checksum ^ byte) * 16777619) & 0xffffffff
@@ -174,7 +191,8 @@ report('loaded');</script>'''
             state = client.response(client.request('status'))['result']
             return state['window'] is not None and state['window'] != previous
         wait(dialog, 'Official remote file dialog did not appear')
-        target = paint('save-dialog', absent=(marker,))
+        dialog_window = client.response(client.request('status'))['result']['window']
+        target = paint('save-dialog', window=dialog_window)
         assert target['window'] != previous
         key(28)
         saved = downloads / 'floe-confirmed-text.txt'
@@ -211,6 +229,9 @@ report('loaded');</script>'''
         result['application_exit'], result['passed'] = exited, True
     except BaseException:
         result['error'] = traceback.format_exc()
+        if args.inspect_failure:
+            (evidence / 'inspection.json').write_text(json.dumps({'evidence': str(evidence), 'helper': result.get('helper'), 'error': result['error']}))
+            time.sleep(60)
     finally:
         if client:
             client.close()

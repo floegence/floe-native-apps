@@ -130,7 +130,7 @@ class DesktopGraphics:
             assets = self.resource('usr/share/weston', directory=True)
             for name in ('icon_window.png', 'sign_close.png', 'sign_maximize.png', 'sign_minimize.png'):
                 self.resource('usr/share/weston/' + name)
-            backend = self.resource('usr/lib/libweston-14/headless-backend.so')
+            backend = native_path(library.parent / 'headless-backend.so')
             keyboard = self.resource('usr/share/X11/xkb', directory=True)
             original = self.resource('usr/bin/Xwayland').read_bytes()
             if original.count(b'/usr/bin\0') != 1:
@@ -158,6 +158,7 @@ class DesktopGraphics:
             self.description = {'version': version, 'derived_weston_sha256': self.digest(library.read_bytes()),
                 'shell_sha256': self.digest(shell.read_bytes()), 'capture_sha256': self.digest(capture.read_bytes()),
                 'xwayland_module_sha256': self.digest(xwayland.read_bytes()),
+                'headless_module_sha256': self.digest(backend.read_bytes()),
                 'original_xwayland_sha256': self.digest(original), 'prepared_xwayland_sha256': self.digest(relocated)}
         except BaseException:
             if self.authority_identity is not None:

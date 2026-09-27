@@ -63,7 +63,7 @@
     }
   ],
   "unproven_release_requirements": [
-    "Complete the remaining DEB/RPM, AppImage, classic Snap, GNOME Xorg/Wayland, KDE Wayland and Xfce X11 actual system/package matrix; headless native GTK/Qt/Chromium and strict Snap/Flatpak are independently qualified on amd64/arm64.",
+    "Complete native RPM application qualification and exact-source installed application reruns where code changed. DEB, original AppImage and classic Snap editor document/save/exit cases now pass on amd64; actual GNOME Xorg/Wayland, KDE Wayland and Xfce X11 shell coexistence cases pass in the task-owned Ubuntu 24.04 native KVM guest. These headless virtual-display fixtures are not physical GPU/desktop certifications.",
     "Complete native cancellation/recovery/security and exact-tag release qualification; the combined recipe pins separate identities with original APKs, native build/source manifests and licenses.",
     "Formal upstream release and Go proxy/checksum/artifact readback before consuming product integration; source and fixture success are not publication."
   ],
@@ -372,6 +372,21 @@
       "source_archive_sha256": "67ad09ef69f270b0a2b77840773e4392e9675ed7744c5313ab8767f1a6a37f80",
       "saved_document_sha256": "f3c143fec9fe6784fe0653fd383cf15ccb8f4116f0aa7218e84c37174d007185",
       "limits": "Task-owned native fixtures and auditable modified source snapshot; exact released tag, remaining desktop/package matrix and consuming viewer acceptance remain required."
+    },
+    {
+      "case": "Oversized native dialogs, original AppImage and classic Snap editor on installed combined components",
+      "result": "Native amd64 and arm64 Wayland/X11 GTK dialogs expand the actual headless output, accept both opposite-corner clicks and restore the parent viewport. Native DEB Firefox saves exact Unicode bytes through the complete GTK chooser. Notepad Next v0.15 original mounted AppImage, GNOME Text Editor and classic Snap Emacs 31.1 pass 65 repeated/long Unicode+Enter transactions, actual save bytes, reconnect and normal exit on amd64. The same event-loop ordering has one 30-second bounded native completion deadline and explicitly answers scene-cancelled requests.",
+      "component_digests": {
+        "amd64": "60fbbf168c623ee553f1deb23cd35bfebe1ba36615917d1164d21bed508a52bb",
+        "arm64": "e292b3f44de2dccbc86dfa7468a9d1de82eee5915d717e4a79d2a31891d71a04"
+      },
+      "source_archive_sha256": "ec36223a2a15e484ad36cb547823f3bcaea10062bed57535bed88658566d67b2",
+      "saved_document_sha256": {
+        "notepad_next_appimage": "f3c143fec9fe6784fe0653fd383cf15ccb8f4116f0aa7218e84c37174d007185",
+        "classic_snap_emacs": "f3c143fec9fe6784fe0653fd383cf15ccb8f4116f0aa7218e84c37174d007185",
+        "gnome_text_editor_with_extra_serialization_newline": "90d80a1a07e9dcbd1ca813143fb492878ab49b51bb010f830172f8661dd6bcc3"
+      },
+      "limits": "Unpublished, modified source at base 6e04e19; exact-release qualification and consuming viewer integration remain required. Literal-text AppImage fixture disables its own word completion and URL highlighting; Emacs fixture uses its documented maximized launch to avoid font-driven geometry changes. Real system IMEs and mobile devices remain separate."
     }
   ],
   "rejected_assumptions": [

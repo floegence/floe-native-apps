@@ -147,7 +147,11 @@ class DesktopAttachment:
     def retire_input(self):
         self.ready, self.awaiting = None, None
         if self.owner:
-            self.order.invalidate(self.owner)
+            owner = self.owner
+            pending, queued = self.order.invalidate(owner)
+            requests = ([pending] if pending is not None else []) + [item[1] for item in queued]
+            for request in requests:
+                self.reply(owner, request, error='INPUT_TARGET_UNAVAILABLE')
             self.native.release(self.epoch)
 
     def scene_changed(self):

@@ -176,6 +176,26 @@ class AttachmentTests(unittest.TestCase):
             'connection': 2, 'window': 1, 'generation': 1, 'text': ''}}])
         self.assertFalse(any(message.get('event') == 'clipboard' for message in previous.messages))
 
+    def test_scene_retirement_answers_every_cancelled_request_once(self):
+        self.ready()
+        self.input('text', text='fixture')
+        pending = self.request_id
+        self.input(code=28, pressed=True)
+        queued = self.request_id
+        completed = self.native.commits[-1][2]
+        self.native.target = SimpleNamespace(window=1, generation=2)
+        self.attachment.scene_changed()
+        expected = [{'id': request, 'error': 'INPUT_TARGET_UNAVAILABLE'} for request in (pending, queued)]
+        actual = [message for message in self.owner.messages if message.get('id') in (pending, queued)]
+        self.assertEqual(actual, expected)
+        completed(None)
+        self.attachment.scene_changed()
+        self.assertEqual([message for message in self.owner.messages if message.get('id') in (pending, queued)], expected)
+        self.assertEqual(self.native.input, [])
+        self.ready()
+        self.input(code=28, pressed=True)
+        self.assertEqual(len(self.native.input), 1)
+
     def test_metadata_update_does_not_cancel_text_or_require_another_frame(self):
         self.ready()
         self.input('text', text='document')

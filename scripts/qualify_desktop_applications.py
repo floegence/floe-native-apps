@@ -57,6 +57,8 @@ def main():
         for mode in ('slow-window', 'launcher-failure', 'capture-loss', 'bus-loss'):
             cases.append((mode, 'session_probe.py', [mode], {'FLOE_PROBE_TOOLKIT': 'gtk4'}))
         cases.append(('chromium', 'session_probe.py', ['clipboard-chromium'], {'FLOE_PROBE_CURSOR': '1'}))
+        for protocol in ('wayland', 'x11'):
+            cases.append(('oversized-' + protocol, 'oversized_session_probe.py', [protocol], {}))
     elif args.suite == 'gtk-baseline':
         binary = Path(os.environ['FLOE_TEST_GTK4_BASELINE'])
         if not binary.is_absolute() or not binary.is_file():
@@ -68,7 +70,7 @@ def main():
         # data namespace. No installed user application is started for setup.
         subprocess.run(['snap', 'list', 'firefox'], check=True, stdout=subprocess.DEVNULL)
         (Path.home() / 'snap/firefox/common').mkdir(parents=True, exist_ok=True)
-        cases.append(('snap-firefox', 'snap_session_probe.py', [], {}))
+        cases.append(('snap-firefox', 'firefox_session_probe.py', [], {}))
         for application in ('org.gnome.TextEditor', 'org.kde.kwrite'):
             subprocess.run(['flatpak', 'info', '--user', application], check=True, stdout=subprocess.DEVNULL)
             (Path.home() / '.var/app' / application).mkdir(parents=True, exist_ok=True)

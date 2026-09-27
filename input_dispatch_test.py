@@ -54,9 +54,11 @@ class DispatchTests(unittest.TestCase):
         self.contexts, self.xim = Adapter(), Adapter()
         self.timers = {}
         self.next_timer = 0
-        def timeout(_ms, callback):
+        self.now, self.deadlines = 0, {}
+        def timeout(ms, callback):
             self.next_timer += 1
             self.timers[self.next_timer] = callback
+            self.deadlines[self.next_timer] = self.now + ms
             return self.next_timer
         self.dispatch = InputDispatch(self.server, self.xim, self.contexts, timeout,
                                       lambda token: self.timers.pop(token, None))
@@ -107,6 +109,20 @@ class DispatchTests(unittest.TestCase):
         self.assertEqual(len(self.acks), 1)
         self.assertEqual(self.acks[0][2], 'INPUT_DELIVERY_TIMEOUT')
         self.assertEqual(self.contexts.cancelled, ['context'])
+
+    def test_slow_native_commit_keeps_following_keys_ordered_until_completion(self):
+        self.commit(text='界🙂' * 2000)
+        self.enter()
+        self.now = 8000
+        for token in list(self.timers):
+            if self.deadlines[token] <= self.now:
+                self.timers.pop(token)()
+        self.assertEqual(self.acks, [], 'A valid long edit must not expire before its native completion')
+        self.assertEqual(self.keys, [])
+        self.contexts.pending(None)
+        self.assertEqual(self.acks, [('floe-input-result', 1, '')])
+        self.assertEqual(self.keys, ['Enter'])
+        self.assertEqual(self.timers, {})
 
     def test_revoke_cancels_unconsumed_native_handoff(self):
         self.commit()

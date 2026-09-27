@@ -29,7 +29,7 @@ def main():
     common = output / 'common'
     common.mkdir(parents=True)
     required = {'desktop-shell.so', 'desktop-capture', 'libweston-14.so.0',
-                'xwayland.so', 'ibus-daemon', 'ibus-portal', 'libibus-1.0.so.5'}
+                'xwayland.so', 'headless-backend.so', 'ibus-daemon', 'ibus-portal', 'libibus-1.0.so.5'}
     catalogs = []
     originals = {'weston-14.0.2.tar.xz': 'b47216b3530da76d02a3a1acbf1846a9cd41d24caa86448f9c46f78f20b6e0ac',
                  'ibus-1.5.33.tar.gz': '58941c9b8285891c776b67fb2039eebe0d61d63a51578519febfc5481b91e831'}

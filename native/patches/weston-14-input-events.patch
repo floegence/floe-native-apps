@@ -142,3 +142,44 @@
 +		goto out_free;
 +	}
 +
+--- a/libweston/backend-headless/headless.c
++++ b/libweston/backend-headless/headless.c
+@@ -393,0 +394,35 @@
++headless_output_switch_mode(struct weston_output *base, struct weston_mode *mode)
++{
++	struct headless_output *output = to_headless_output(base);
++	struct weston_renderer *renderer = base->compositor->renderer;
++	struct weston_size size = { mode->width, mode->height };
++	struct weston_geometry area = { 0, 0, mode->width, mode->height };
++	struct weston_renderbuffer *buffer;
++
++	/* The private software output follows native window bounds. Keep one
++	 * mode and renderbuffer, and publish the real output size to Xwayland:
++	 * merely scaling its view leaves X11 pointer coordinates clamped. */
++	if (!output || renderer->type != WESTON_RENDERER_PIXMAN ||
++	    mode->width < 1 || mode->height < 1 ||
++	    mode->width > 4096 || mode->height > 4096)
++		return -1;
++	if (mode->width == base->current_mode->width &&
++	    mode->height == base->current_mode->height)
++		return 0;
++	/* Resizing retires the renderer's damage-buffer list. Register the
++	 * replacement afterwards so every repaint includes its damage. */
++	if (!renderer->resize_output(base, &size, &area))
++		return -1;
++	buffer = renderer->pixman->create_image(base, output->backend->formats[0],
++	                                       mode->width, mode->height);
++	if (!buffer)
++		return -1;
++	weston_renderbuffer_unref(output->renderbuffer);
++	output->renderbuffer = buffer;
++	output->mode.width = mode->width;
++	output->mode.height = mode->height;
++	output->mode.refresh = mode->refresh;
++	return 0;
++}
++
++static int
+@@ -435 +470 @@
+-	output->base.switch_mode = NULL;
++	output->base.switch_mode = headless_output_switch_mode;

@@ -37,6 +37,7 @@ files = {
     'desktop-capture': output / 'shell/frame-probe',
     'libweston-14.so.0': output / 'weston/install/usr/lib/libweston-14.so.0.0.2',
     'xwayland.so': output / 'weston/install/usr/lib/libweston-14/xwayland.so',
+    'headless-backend.so': output / 'weston/install/usr/lib/libweston-14/headless-backend.so',
     'ibus-daemon': output / 'ibus/artifacts/ibus-daemon',
     'ibus-portal': output / 'ibus/artifacts/ibus-portal',
     'libibus-1.0.so.5': output / 'ibus/artifacts/libibus-1.0.so.5.0.533',

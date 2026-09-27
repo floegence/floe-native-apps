@@ -250,12 +250,31 @@ authentication must not displace the current viewer.
 returns a request ID, not an application receipt; `Read` returns native events and
 correlated replies. Metadata and PNG payloads are bounded and read as one complete
 event. The consumer must decode and paint a frame before sending `frame_ack`.
-Input always names its original connection, window and geometry generation. The
+Input always names its original connection, window and geometry generation. Scene
+retirement returns an explicit error for every cancelled request on the current
+attachment; callers never wait indefinitely or replay input into a replacement
+target. Detach cancels silently on the retired connection only. The
 helper remains the sole owner of admission and input ordering. There is no client
 queue, automatic acknowledgement, reconnect loop or replay. Cancellation during
 I/O closes the partial stream. `Close` detaches sharing and never terminates the
 helper or application. Waiting, unavailable capture and connection loss are not
 application-exit evidence.
+
+Confirmed text has one 30-second native completion deadline shared by Xpra and
+the combined backend. A long edit may keep a real editor's event loop busy for
+more than three seconds. Following input stays queued until the actual native
+completion; a deadline only reports failure and revokes it. It never implies
+success, retries text or releases the queued Enter. Qualification records exact
+saved bytes, including original mounted AppImages, as the application evidence.
+
+The private software output grows to contain the selected native window family
+and returns to its 1000 by 700 baseline after oversized dialogs close. The same
+bounded output dimensions drive capture, Wayland and Xwayland pointer positions;
+view scaling cannot substitute for resizing X11's actual coordinate space. Output
+changes retire the painted scene and require a newly decoded frame before input.
+Native oversized-dialog qualification checks both opposite-corner controls and
+the restored parent frame on Wayland and X11. Dimensions above 4096 pixels revoke
+sharing without terminating the application.
 
 `TestDesktopClient*` exercises fragmented packets, malformed framing, cancellation,
 concurrent writes and the real Python control/attachment boundary on native Linux,

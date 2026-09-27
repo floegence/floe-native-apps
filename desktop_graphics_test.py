@@ -33,6 +33,7 @@ class DesktopGraphicsTests(unittest.TestCase):
         (self.shell.parent / 'frame-probe').write_bytes(b'fixture capture')
         self.library = self.shell.parent / 'libweston-14.so.0'
         self.library.write_bytes(b'fixture library')
+        (self.library.parent / 'headless-backend.so').write_bytes(b'fixture resizable output')
         self.xwayland = self.shell.parent / 'xwayland.so'
         self.xwayland.write_bytes(b'fixture XWM')
         self.environment = {'WAYLAND_DISPLAY': 'wayland-private', 'XDG_RUNTIME_DIR': str(self.instance),

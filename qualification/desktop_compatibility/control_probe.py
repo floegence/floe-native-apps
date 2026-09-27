@@ -102,7 +102,8 @@ class ControlClient:
         if self.client:
             self.client.close()
         self.client = socket.socket(socket.AF_UNIX)
-        self.client.settimeout(5)
+        from input_order import DELIVERY_TIMEOUT_MS
+        self.client.settimeout(DELIVERY_TIMEOUT_MS / 1000 + 5)
         self.client.connect(self.endpoint)
         self.client.sendall(encode_message({'version': 1, 'instance': self.instance, 'token': self.token}))
         kind, body = self.receive()
@@ -170,7 +171,7 @@ class ControlClient:
         return self.request_id
 
     def paint(self, stage, expected=None, marker=None, required=(), absent=(), accept_bounds=None,
-              sample_point=(200, 240)):
+              sample_point=(200, 240), window=None):
         from PIL import Image
         import hashlib
         recorded = []
@@ -188,6 +189,7 @@ class ControlClient:
                       'encoded_bytes': len(data), 'decoded_sha256': hashlib.sha256(image.tobytes()).hexdigest()}
             colors = {color: count for count, color in image.getcolors(frame['width'] * frame['height'])}
             matches = not any(colors.get(color, 0) for color in absent)
+            matches = matches and (window is None or frame['window'] == window)
             if marker is not None:
                 matches = matches and colors.get(marker, 0) >= 20
                 if matches:
@@ -214,7 +216,9 @@ class ControlClient:
             if not record['admitted']:
                 assert response['error'] == 'FRAME_TARGET_UNAVAILABLE'
                 continue
-            assert len(colors) > 16
+            # Newly mapped native dialogs may first paint a blank surface.
+            # Decode/ack it, but require actual UI pixels before interaction.
+            matches = matches and len(colors) > 16
             if expected is not None:
                 assert record['inactive_window_pixels'] == 0, 'Inactive native window pixels leaked into the selected frame'
             if matches:

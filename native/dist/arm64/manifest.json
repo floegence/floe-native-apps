@@ -4,14 +4,20 @@
     "artifacts/desktop-capture": {
       "common": false,
       "executable": true,
-      "sha256": "779f4b6abeec4310fc4d648f92f28ad0cbd5eaf9c69ac47d3a58743efb5819ef",
+      "sha256": "da1aa68c891faee9fc8b13f0b990d7acc651581806912dd8f6dc70ea5253e4f2",
       "size_bytes": 67528
     },
     "artifacts/desktop-shell.so": {
       "common": false,
       "executable": true,
-      "sha256": "caa8a54b8f7f11b9d80381714dfd01e8a1b6580fb652302bf6ed833376b855cb",
+      "sha256": "35e1b152ab4a0a2d778889b6655f61954a57786141c05f58d7488060e3095d7f",
       "size_bytes": 67336
+    },
+    "artifacts/headless-backend.so": {
+      "common": false,
+      "executable": true,
+      "sha256": "01730e4d238c2eb986808d39e29863a38c59c9ccd203d63e67bf8045e56c9c9c",
+      "size_bytes": 67400
     },
     "artifacts/ibus-daemon": {
       "common": false,
@@ -82,8 +88,8 @@
     "provenance/native.json": {
       "common": false,
       "executable": false,
-      "sha256": "69884a65fed5b9e1711c56b9fd7d6f1089a91aef925e43ae3d280ce016b5384d",
-      "size_bytes": 86060
+      "sha256": "2355182717d4ada98fac100bbb52741792e3e4ad24348a0874944c890163b402",
+      "size_bytes": 91014
     },
     "provenance/qt5.json": {
       "common": false,
@@ -136,14 +142,14 @@
     "sources/tree/native/patches/weston-14-input-events.json": {
       "common": true,
       "executable": false,
-      "sha256": "5a83644164d8e8e00d92e43fd942569437007d2d2be683a6c0e2003acdc47d4e",
-      "size_bytes": 2298
+      "sha256": "f92f5d25f1f58350b63e7c2f838a8c83aa66b7c0ae5fa176576b04c7530aaedb",
+      "size_bytes": 2573
     },
     "sources/tree/native/patches/weston-14-input-events.patch": {
       "common": true,
       "executable": false,
-      "sha256": "ec299461e7f8fa00835bfa5b01049d00c37877e5fad2a7ff56307ffab73e14ff",
-      "size_bytes": 5191
+      "sha256": "6c5002ea30cafff439eff425e5bfd48739c7fff522983d816bda2e1cbe1a5985",
+      "size_bytes": 6896
     },
     "sources/tree/native/protocols/text-input-unstable-v3.xml": {
       "common": true,
@@ -226,20 +232,20 @@
     "sources/tree/qualification/desktop_compatibility/frame_probe.c": {
       "common": true,
       "executable": false,
-      "sha256": "8adb44094cb331f27f0edda2c39251b877a434cbb386fe21102d2206866e0ab5",
-      "size_bytes": 9270
+      "sha256": "3a6f5057058a039c9337ab7b1b58254a44a8da758f71909dbc28574fab581cd6",
+      "size_bytes": 9485
     },
     "sources/tree/qualification/desktop_compatibility/probe_shell.c": {
       "common": true,
       "executable": false,
-      "sha256": "5c95be08155323eb6ada96042eecb807f22cb8b1bda9e068f09ba47d2f7fcba4",
-      "size_bytes": 70514
+      "sha256": "27fb120e97f9e2625882c77bc006c55458fd74ad4f773a0ad57d98c687381124",
+      "size_bytes": 72738
     },
     "sources/tree/scripts/build_desktop_native.sh": {
       "common": true,
       "executable": false,
-      "sha256": "a4d5c700a185e5ef45a38a68f88bfdf08371a27a569d2ae1005d941bddeec120",
-      "size_bytes": 4388
+      "sha256": "a3499c8daba859c59d766b2a593073cd24a39b36eb6ef8f5ed2f019ae9f7e8ce",
+      "size_bytes": 4483
     },
     "sources/tree/scripts/input_builder.sh": {
       "common": true,

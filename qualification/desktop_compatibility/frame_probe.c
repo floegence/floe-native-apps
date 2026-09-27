@@ -187,6 +187,9 @@ int main(void) {
     /* Fixture ABI uses native-endian uint32 fields; it never crosses a host
      * boundary. Each request follows consumption of the previous full frame. */
     while (receive(fd, &sequence, sizeof sequence) == 0) {
+        /* Consume the output size announced before the helper's scene barrier
+         * before allocating the next buffer. No cached-size retry loop. */
+        if (wl_display_roundtrip(c.display) < 0) goto done;
         if (!sequence || sequence <= previous || prepare_buffer(&c) < 0) goto done;
         previous = sequence;
         c.result = 0;

@@ -6,6 +6,8 @@ completion can release following input; transport writes never complete text.
 """
 from collections import deque
 
+DELIVERY_TIMEOUT_MS = 30000
+
 
 def valid_text(text):
     if not isinstance(text, str):
@@ -65,7 +67,10 @@ class OrderedInput:
                     self.timer = 0
                     completed('INPUT_DELIVERY_TIMEOUT')
                     return False
-                self.timer = self.timeout_add(3000, expired)
+                # A native editor may synchronously lay out a full 16 KB commit.
+                # Keep the one transaction deadline; only its actual completion
+                # can release following input, never elapsed time or dispatch.
+                self.timer = self.timeout_add(DELIVERY_TIMEOUT_MS, expired)
                 try:
                     adapter.commit(token, text, completed)
                 except Exception:
@@ -86,10 +91,16 @@ class OrderedInput:
             pending[2].cancel(pending[3])
 
     def invalidate(self, owner):
+        # Return cancelled request identities to transports that owe a reply.
+        # The scheduler still owns cancellation, timers and late completion.
+        cancelled = [operation for current, operation in self.queue if current is owner]
         self.queue = deque(item for item in self.queue if item[0] is not owner)
+        sequence = None
         if self.pending and self.pending[0] is owner:
+            sequence = self.pending[1]
             self.cancel_pending()
         self.drain()
+        return sequence, cancelled
 
     def close(self):
         self.closed = True

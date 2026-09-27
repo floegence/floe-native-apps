@@ -78,7 +78,8 @@ class LaunchReceipt:
             if event['event'] == 'graphics':
                 description = event.get('description')
                 expected = {'version', 'derived_weston_sha256', 'shell_sha256', 'capture_sha256',
-                            'xwayland_module_sha256', 'original_xwayland_sha256', 'prepared_xwayland_sha256'}
+                            'xwayland_module_sha256', 'headless_module_sha256',
+                            'original_xwayland_sha256', 'prepared_xwayland_sha256'}
                 if (set(event) != {'event', 'description'} or type(description) is not dict or
                         set(description) != expected or description['version'] != 'weston 14.0.2' or
                         any(not re.fullmatch('[0-9a-f]{64}', description[key]) for key in expected - {'version'}) or

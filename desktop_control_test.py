@@ -222,6 +222,23 @@ class ControlTests(unittest.TestCase):
         self.assertEqual(self.application.detached, [owner])
         self.assertEqual(owner.buffered, 0)
 
+    def test_admitted_input_batch_can_receive_all_cancellation_replies(self):
+        client = self.connect()
+        self.receive(client)
+        owner = self.server.current
+        # A native context loss can cancel the pending transaction and all 256
+        # queued operations in one event turn, before the socket is writable.
+        for request in range(1, 258):
+            self.assertTrue(owner.send({'id': request, 'error': 'INPUT_TARGET_UNAVAILABLE'}))
+        self.assertIs(self.server.current, owner)
+        replies = []
+        for _ in range(257):
+            if owner.output:
+                owner.write()
+            replies.append(json.loads(self.receive(client)[1]))
+        self.assertEqual([reply['id'] for reply in replies], list(range(1, 258)))
+        self.assertTrue(all(reply['error'] == 'INPUT_TARGET_UNAVAILABLE' for reply in replies))
+
     def test_bounded_window_snapshot_does_not_expand_incoming_request_limit(self):
         client = self.connect()
         self.receive(client)

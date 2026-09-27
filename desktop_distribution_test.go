@@ -51,7 +51,7 @@ func TestDesktopDistributionProvenance(t *testing.T) {
 			"licenses/weston-14-COPYING.txt", "licenses/ibus-COPYING.txt", "licenses/LICENSE",
 			"provenance/native.json", "provenance/qt5.json", "provenance/qt6.json", "provenance/gtk.json",
 			"gtk/libfloe-gtk3-native.so", "gtk/libfloe-gtk4-native.so",
-			"artifacts/desktop-shell.so", "artifacts/desktop-capture", "artifacts/libweston-14.so.0", "artifacts/xwayland.so",
+			"artifacts/desktop-shell.so", "artifacts/desktop-capture", "artifacts/libweston-14.so.0", "artifacts/xwayland.so", "artifacts/headless-backend.so",
 			"artifacts/ibus-daemon", "artifacts/ibus-portal", "artifacts/libibus-1.0.so.5",
 			"qt/platforminputcontexts/libfloe-client-native-qt5.so", "qt/platforminputcontexts/libfloe-client-native-qt6.so"} {
 			if _, ok := manifest.Files[name]; !ok {

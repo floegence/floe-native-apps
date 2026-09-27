@@ -19,6 +19,10 @@ MAX_MESSAGE = 128 * 1024
 # JSON escaping can expand that display metadata sixfold. Incoming requests
 # retain the smaller independent bound above.
 MAX_OUTPUT = 2 * 1024 * 1024
+# One cancellation may answer a pending input and the complete 256-operation
+# queue before the event loop writes. Keep room for its accompanying state and
+# cursor records while independently bounding both record and byte growth.
+MAX_OUTPUT_RECORDS = 512
 MAX_FRAME = 4096 * 4096 * 4
 MAX_CURSOR = 5 * 1024 * 1024
 MAX_PEERS = 8
@@ -243,7 +247,7 @@ class Peer:
         except ValueError:
             self.close()
             return False
-        if self.control_buffered + len(data) > MAX_OUTPUT or len(self.output) >= 128:
+        if self.control_buffered + len(data) > MAX_OUTPUT or len(self.output) >= MAX_OUTPUT_RECORDS:
             self.close()
             return False
         self.append(data, completed=completed)
