@@ -20,7 +20,7 @@ jobs:
           - arch: arm64
             runner: ubuntu-24.04-arm
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Fetch original source archives
         run: python3 scripts/fetch_desktop_sources.py "$RUNNER_TEMP/desktop-sources"
       - name: Build in one native compiler environment
@@ -45,7 +45,7 @@ jobs:
           docker run --rm -v "$PWD:/src:ro" -v "$RUNNER_TEMP/desktop-native:/out" \
             floe-desktop-native sh /src/qualification/desktop_compatibility/fetch_candidate.sh /out/candidate \
             2>&1 | tee "$RUNNER_TEMP/desktop-native/acquisition.log"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: desktop-native-candidate-${{ matrix.arch }}
