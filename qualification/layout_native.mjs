@@ -39,6 +39,13 @@ try {
   await page.waitForFunction(()=>window.floeXpraClient?.connected&&Object.values(floeXpraClient.id_to_window).some(win=>floeXpraClient.floePointer.targetForWindow(win)),null,{timeout:25000});
   await page.evaluate(()=>{
    const c=floeXpraClient;window.layoutEvents=[];window.remoteSizes=[];window.paintEvents=[];
+   // Retain one original PNG to distinguish native capture from viewer paint
+   // failures. These are task-owned fixture pixels, never user application data.
+   const draw=c.packet_handlers.draw;
+   c.packet_handlers.draw=function(packet){
+    if(Utilities.s(packet[6])==='png')window.lastNativePNG={geometry:packet.slice(1,6),sequence:packet[8],bytes:Array.from(packet[7])};
+    return draw.call(this,packet);
+   };
    const damage=c.do_send_damage_sequence;c.do_send_damage_sequence=function(...args){paintEvents.push(args);return damage.apply(this,args)};
    const send=c.send;c.send=function(packet){if(['configure-display','configure-window'].includes(packet[0]))layoutEvents.push(JSON.parse(JSON.stringify(packet)));return send.call(this,packet)};
    const fit=win=>{
@@ -124,6 +131,8 @@ try {
    const paintWait=Date.now()-paintStarted;
    if(content<8) {
     await writeFile(receipt+'.png',screenshot);
+    const sourcePNG=await page.evaluate(()=>window.lastNativePNG);
+    if(sourcePNG)await writeFile(receipt+'.source.png',Buffer.from(sourcePNG.bytes));
     const diagnostics=await page.evaluate(()=>{
      const canvas=primary.canvas,copy=document.createElement('canvas');
      copy.width=copy.height=4;copy.getContext('2d').drawImage(canvas,0,0,4,4);
@@ -145,10 +154,19 @@ try {
    results.push({offscreen,policy,...record,native,pixels,paintWait});return record;
   }
   for(const policy of legacy?['logical']:['logical','native','logical','native','logical']) {
-   const record=await stable(policy);
-   await page.evaluate(policy=>{for(let i=0;i<30;i++)floeXpraClient.set_display_density(policy)},policy);
+   await stable(policy);
+   // Painting may finish after the geometry sample in stable(). Capture the
+   // baseline in the same browser turn as the operation under test, so earlier
+   // native layout work cannot be attributed to these identical selections.
+   const before=await page.evaluate(policy=>{
+    const count=layoutEvents.length;
+    for(let i=0;i<30;i++)floeXpraClient.set_display_density(policy);
+    return count;
+   },policy);
    await page.waitForTimeout(300);
-   assert.equal(await page.evaluate(()=>layoutEvents.length),record.events,'identical settings sent layout commands');
+   const after=await page.evaluate(()=>({events:layoutEvents,remote:remoteSizes}));
+   if(after.events.length!==before)await writeFile(receipt+'.diagnostics.json',JSON.stringify({offscreen,policy,before,...after,results},null,2));
+   assert.equal(after.events.length,before,'identical settings sent layout commands');
   }
   if(!legacy){
    await page.evaluate(()=>{for(const mode of ['native','logical','native','logical','native'])floeXpraClient.set_display_density(mode)});
