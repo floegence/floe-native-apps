@@ -78,6 +78,13 @@ def install_server_input(address):
         wrap(self, ('key-action', 'key-repeat', 'pointer-button', 'button-action',
                     'pointer', 'pointer-position', 'wheel-motion', 'layout-changed', 'keymap-changed',
                     'focus', 'close-window', 'configure-window', 'map-window', 'unmap-window',
+                    # Xpra 6.5 resolves legacy aliases before looking up a
+                    # handler. Wrap its actual registrations as well; alias
+                    # packets must not bypass a pending text transaction.
+                    'pointer-motion', 'pointer-wheel', 'keyboard-event', 'keyboard-config',
+                    'keyboard-sync', 'set-keyboard-sync-enabled', 'keyboard-sync-enabled-status',
+                    'window-focus', 'window-close', 'window-configure', 'window-map',
+                    'window-unmap', 'window-action',
                     'clipboard-token'))
         self.add_packet_handler('floe-input', lambda protocol, packet: self.floe_input.enqueue(protocol, packet), True)
 

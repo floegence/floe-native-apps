@@ -176,6 +176,10 @@ for(const editor of editors)editor.addEventListener('input',()=>{const body=JSON
                                     capture_output=True, text=True, timeout=40)
         if client.returncode or 'PASS ' + kind + ' ' not in client.stdout:
             raise RuntimeError('Application receipt assertion failed: ' + client.stdout + client.stderr)
+        ordered = {event.get('kind') for line in (directory / 'input-trace.jsonl').read_text().splitlines()
+                   if (event := json.loads(line)).get('phase') == 'ordered-event'}
+        if 'focus' not in ordered and 'window-focus' not in ordered:
+            raise RuntimeError('Native window focus bypassed the shared input scheduler')
         # Detach and server cleanup use the real input scheduler. A passing
         # document receipt must not hide a broken disconnect or shutdown path.
         server.terminate()

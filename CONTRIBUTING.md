@@ -448,6 +448,14 @@ with managed and system Xpra on both architectures. GTK receipts also assert its
 actual backing scale and unchanged logical text DPI. Both runs retain the complete
 Unicode, focus and clipboard assertions below.
 
+The authenticated input scheduler wraps the handlers actually registered by
+each supported Xpra version, including 6.5's canonical pointer, keyboard and
+window names. Legacy packet aliases resolve to those same handlers before
+dispatch; they cannot move focus, close a window or deliver later input ahead
+of a pending confirmed-text transaction. Native qualification records packet
+types at the scheduler boundary, never their input bodies, and verifies that
+real window focus takes this path on managed and system installations.
+
 ### Window layout and viewer snapshots
 
 `set_window_layout(wid, "viewport" | "dialog" | "native")` makes the SDK the

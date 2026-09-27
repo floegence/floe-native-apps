@@ -13,6 +13,7 @@ launcher, trace_path = sys.argv[1:3]
 sys.argv = [launcher, *sys.argv[3:]]
 sys.path.insert(0, str(Path(launcher).parent))
 from input_context import Contexts
+from input_dispatch import InputDispatch
 
 trace = open(trace_path, 'w', buffering=1)
 
@@ -27,6 +28,16 @@ def record(context, phase, **details):
 
 original_init, original_commit = Contexts.__init__, Contexts.commit
 original_take, original_done, original_cancel = Contexts.take, Contexts.done, Contexts.cancel
+original_enqueue = InputDispatch.enqueue
+
+
+def enqueue(self, protocol, packet, handler=None):
+    if handler is not None:
+        # Packet type only: keys, coordinates, clipboard and text bodies never
+        # become diagnostic output. This proves the actual registered Xpra
+        # handler entered the shared scheduler, including legacy aliases.
+        trace.write(json.dumps({'time':monotonic(), 'phase':'ordered-event', 'kind':packet[0]}) + '\n')
+    return original_enqueue(self, protocol, packet, handler)
 
 
 def initialize(self, address, display, marker):
@@ -63,4 +74,5 @@ def cancel(self, token):
 
 Contexts.__init__, Contexts.commit = initialize, commit
 Contexts.take, Contexts.done, Contexts.cancel = take, done, cancel
+InputDispatch.enqueue = enqueue
 runpy.run_path(launcher, run_name='__main__')
