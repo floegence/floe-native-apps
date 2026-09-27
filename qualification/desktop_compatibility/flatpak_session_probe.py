@@ -71,12 +71,6 @@ def main():
             path.mkdir(mode=0o700)
             overrides.append(env_key + '=' + str(path))
         executable = 'gnome-text-editor' if app_id == 'org.gnome.TextEditor' else 'kwrite'
-        if app_id == 'org.kde.kwrite':
-            plugins = Path(os.environ['FLOE_PROBE_QT_PLUGINS']) / 'platforminputcontexts'
-            shutil.copytree(plugins, state / 'input-module/platforminputcontexts')
-            result['qt_modules_sha256'] = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in plugins.glob('*.so')}
-            overrides += ['QT_IM_MODULE=floe-client-native', 'QT_PLUGIN_PATH=' + str(state / 'input-module'),
-                          'FLOE_NATIVE_DESKTOP_INPUT=' + app_id + '.FloeClientInput']
         assert '--command=' + executable in command
         command = command.replace('--command=' + executable, '--command=env', 1)
         command = command.replace(' ' + app_id + ' ', ' ' + app_id + ' ' + ' '.join(overrides) + ' ' + executable + ' ', 1)
@@ -103,6 +97,17 @@ def main():
         wait(lambda: any(x.get('phase') == 'sharing_ready' or x.get('state') == 'failed' for x in records()),
              'Persistent Flatpak helper did not prepare', 45)
         assert not any(x.get('state') == 'failed' for x in records()), records()
+        # The production helper now owns sandbox module placement. Qualification
+        # only observes this instance's immutable bytes and eventual cleanup.
+        prefix = '.floe-native-input-' + hashlib.sha256(str(evidence).encode()).hexdigest()[:16] + '-'
+        inputs = list((Path.home() / '.var/app' / app_id).glob(prefix + '*'))
+        assert len(inputs) == 1, 'No unique instance-owned Qt module directory'
+        result['input_resources'] = {'directory': str(inputs[0]), 'modules': {}}
+        for major in (5, 6):
+            name = f'platforminputcontexts/libfloe-client-native-qt{major}.so'
+            actual = (inputs[0] / name).read_bytes()
+            assert actual == (Path(os.environ['FLOE_PROBE_QT_PLUGINS']) / name).read_bytes()
+            result['input_resources']['modules'][name] = hashlib.sha256(actual).hexdigest()
         plan = json.loads((evidence / 'application-plan.json').read_text())
         result['package'], result['required_services'] = plan['observation']['package'], plan['observation']['services']
         assert result['package']['kind'] == 'flatpak'
@@ -171,6 +176,8 @@ def main():
         exited = next(x for x in records() if x.get('state') == 'exited')
         assert process.returncode == 0 and exited['exit_code'] == 0 and not exited['termination_requested']
         assert destination.read_bytes() == expected.encode()
+        assert not inputs[0].exists(), 'Finished application retained its private input resources'
+        result['input_resources']['removed_after_exit'] = True
         result['application_exit'], result['passed'] = exited, True
     except BaseException:
         result['error'] = traceback.format_exc()

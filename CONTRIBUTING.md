@@ -265,7 +265,7 @@ executes the verified component's private Python through its musl loader, with
 private GI/GIO resources and no inherited Python/plugin/library injection paths.
 It accepts one owner-only, bounded version-1 configuration file. The configuration
 binds the immutable launch plan, original application environment, private runtime,
-instance/token and caller-verified compositor, capture and input-service
+instance/token and caller-verified compositor, capture, input-service and Qt adapter
 resources. Unknown fields/versions, symlinks, public files and duplicate JSON keys
 are rejected. Component resolution and package adaptation belong to the upstream
 installation/launch boundary, never renderer-supplied configuration.
@@ -319,7 +319,16 @@ The session binds the official file portal's launched process before it queries
 its document dependency, then independently validates bus-name readiness. The
 restricted document facade binds the actual application supervisor and only its
 explicit initial files; it never exposes the host desktop bus. Qt registration
-uses the package's existing allowed bus namespace. Host document-service loss
+uses the package's existing allowed bus namespace. The helper copies the verified
+Qt5/Qt6 modules into one unique, owner-only directory inside the package's normal
+`~/.var/app/<id>` root. It does not alter application profiles or sandbox permissions.
+After original-plan revalidation, the sole GIO supervisor adds the official Flatpak
+`--env=QT_PLUGIN_PATH` option while retaining every original Exec argument and
+field code verbatim; runtime metadata otherwise overrides an inherited plugin path.
+The helper removes only its own module directory after application exit, never
+on viewer detach. Native applications receive the same adapters inside their
+instance resource directory. Strict Snap uses standard input interfaces without
+assuming it can load a host module; a focused unsupported context remains an error. Host document-service loss
 reports unavailable state, while disposal preserves host grants. GTK and Qt
 persistent-session fixtures deny broad host/home filesystem access, verify exact
 remote Save As bytes, and remove only their own two document grants. The installed

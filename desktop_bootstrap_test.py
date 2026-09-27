@@ -19,7 +19,7 @@ class BootstrapTests(unittest.TestCase):
             'directory': str(self.directory), 'runtime': str(self.directory),
             'environment': {'PATH': '/usr/bin:/bin'}, 'plan': {'version': 1},
             'resources': {key: '/verified/' + key for key in
-                ('component', 'shell', 'capture', 'library', 'xwayland', 'ibus_daemon')},
+                ('component', 'shell', 'capture', 'library', 'xwayland', 'ibus_daemon', 'qt_plugins')},
             'host_bus': None, 'initial_documents': []}
 
     def write(self, value):
@@ -88,12 +88,12 @@ class BootstrapTests(unittest.TestCase):
         self.config['plan']['backend'] = {'id': 'wayland'}
         modules = {name: SimpleNamespace(**{constructor: Mock()}) for name, constructor in
             (('desktop_services', 'DesktopServices'), ('desktop_graphics', 'DesktopGraphics'),
-             ('desktop_session', 'DesktopSession'))}
+             ('desktop_session', 'DesktopSession'), ('desktop_package', 'DesktopPackageInput'))}
         modules['launch_plan'] = SimpleNamespace(revalidate=Mock(side_effect=ValueError('stale plan')))
         with patch.dict('sys.modules', modules), self.assertRaisesRegex(ValueError, 'stale plan'):
             assemble(self.config, Mock(), Mock())
         for module, constructor in (('desktop_services', 'DesktopServices'), ('desktop_graphics', 'DesktopGraphics'),
-                                    ('desktop_session', 'DesktopSession')):
+                                    ('desktop_session', 'DesktopSession'), ('desktop_package', 'DesktopPackageInput')):
             getattr(modules[module], constructor).assert_not_called()
 
 

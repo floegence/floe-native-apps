@@ -39,11 +39,7 @@ def helper(root, runtime, evidence, token, mode):
                  'QT_IM_MODULE', 'QT_PLUGIN_PATH', 'QT_QPA_PLATFORM'):
         environment.pop(name, None)
     if fixture_toolkit().startswith('qt'):
-        # Qualification supplies already-built native adapters. Installation
-        # must eventually realize this same module directory from its catalog.
-        plugins = Path(os.environ['FLOE_PROBE_QT_PLUGINS']).resolve(strict=True)
-        environment.update(QT_IM_MODULE='floe-client-native', QT_PLUGIN_PATH=str(plugins),
-            QT_QPA_PLATFORM='xcb' if mode == 'clipboard-x11' else 'wayland')
+        environment['QT_QPA_PLATFORM'] = 'xcb' if mode == 'clipboard-x11' else 'wayland'
     for key, name in (('XDG_CONFIG_HOME', 'config'), ('XDG_CACHE_HOME', 'cache'), ('XDG_DATA_HOME', 'data')):
         path = runtime / name
         path.mkdir(mode=0o700)
@@ -60,7 +56,8 @@ def helper(root, runtime, evidence, token, mode):
         'shell': str(native / 'probe-shell.so'), 'capture': str(native / 'frame-probe'),
         'library': str(library / 'libweston-14.so.0'),
         'xwayland': str(library.parent / 'xwayland/xwayland.so'),
-        'ibus_daemon': os.environ['FLOE_PROBE_IBUS_DAEMON']}
+        'ibus_daemon': os.environ['FLOE_PROBE_IBUS_DAEMON'],
+        'qt_plugins': os.environ['FLOE_PROBE_QT_PLUGINS']}
     if 'FLOE_PROBE_IBUS_PORTAL' in os.environ:
         resources['ibus_portal'] = os.environ['FLOE_PROBE_IBUS_PORTAL']
     if mode == 'support-failure':

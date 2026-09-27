@@ -19,6 +19,7 @@ gi.require_version("Gio", "2.0")
 from gi.repository import Gio, GLib  # noqa: E402
 from launch_plan import Unavailable, revalidate, restored_environment  # noqa: E402
 from application_processes import LaunchChildren  # noqa: E402
+from application_package import private_flatpak_command  # noqa: E402
 
 
 def write_receipt(path, state, **details):
@@ -109,10 +110,13 @@ def launch(app, receipt, plan=None):
                     children, lambda event: print(json.dumps(event), flush=True))
             except Exception:
                 raise Unavailable('APPLICATION_HOST_SERVICE_UNAVAILABLE', 'host_services') from None
-        if app.get_boolean("DBusActivatable"):
+        package_command = private_flatpak_command(app, plan, restored_environment(os.environ), GLib)
+        if app.get_boolean("DBusActivatable") or package_command is not None:
             entry = GLib.KeyFile.new()
             entry.load_from_file(app.get_filename(), GLib.KeyFileFlags.NONE)
             entry.set_boolean("Desktop Entry", "DBusActivatable", False)
+            if package_command is not None:
+                entry.set_string("Desktop Entry", "Exec", package_command)
             path = receipt.with_name("launch.desktop")
             path.write_text(entry.to_data()[0], encoding="utf-8")
             path.chmod(0o600)
@@ -126,6 +130,7 @@ def launch(app, receipt, plan=None):
         context.unsetenv("FLOE_NATIVE_APPLICATION_ENV")
         context.unsetenv("FLOE_NATIVE_ROOT")
         context.unsetenv('FLOE_NATIVE_HOST_BUS')
+        context.unsetenv('FLOE_NATIVE_FLATPAK_QT')
         # Support-tool Python clears GTK_PATH and the saved host map restores it.
         # Apply the input launcher's explicit private path only to the final app.
         gtk_path = os.environ.get("FLOE_NATIVE_INPUT_GTK_PATH")

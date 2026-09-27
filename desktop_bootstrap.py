@@ -51,7 +51,7 @@ def read_configuration(path):
                 not isinstance(item, str) or '\x00' in item for key, item in environment.items())):
         raise ValueError('Invalid application environment')
     resources = value['resources']
-    required = {'component', 'shell', 'capture', 'library', 'xwayland', 'ibus_daemon'}
+    required = {'component', 'shell', 'capture', 'library', 'xwayland', 'ibus_daemon', 'qt_plugins'}
     if (type(resources) is not dict or not required <= resources.keys() or
             resources.keys() - required - {'ibus_portal', 'authentication'} or
             not all(absolute(item) for item in resources.values())):
@@ -142,6 +142,7 @@ def assemble(value, record, completed):
     from desktop_services import DesktopServices
     from desktop_graphics import DesktopGraphics
     from desktop_session import DesktopSession
+    from desktop_package import DesktopPackageInput
     from launch_plan import revalidate
     resources = value['resources']
     environment = dict(value['environment'])
@@ -153,12 +154,21 @@ def assemble(value, record, completed):
         **{name: resources[name] for name in ('shell', 'capture', 'library', 'xwayland')},
         authentication=resources.get('authentication'))
     record({'event': 'graphics', 'description': graphics.description})
-    session = DesktopSession(value['directory'], value['runtime'], value['instance'], value['token'],
-        services, graphics, ibus_command=[resources['ibus_daemon']], plan=plan,
-        application_launcher=[*services.command('usr/bin/python3'), str(Path(__file__).with_name('application.py'))],
-        application_environment=environment, completed=completed, record=record, host_bus=value['host_bus'],
-        ibus_portal_command=[resources['ibus_portal']] if 'ibus_portal' in resources else (),
-        initial_documents=value['initial_documents'])
+    package_input = DesktopPackageInput(value['directory'], plan['observation']['package'], environment,
+                                        resources['qt_plugins'])
+    def finished():
+        package_input.close()
+        completed()
+    try:
+        session = DesktopSession(value['directory'], value['runtime'], value['instance'], value['token'],
+            services, graphics, ibus_command=[resources['ibus_daemon']], plan=plan,
+            application_launcher=[*services.command('usr/bin/python3'), str(Path(__file__).with_name('application.py'))],
+            application_environment=package_input.environment, completed=finished, record=record, host_bus=value['host_bus'],
+            ibus_portal_command=[resources['ibus_portal']] if 'ibus_portal' in resources else (),
+            initial_documents=value['initial_documents'])
+    except BaseException:
+        package_input.close()
+        raise
     return session
 
 

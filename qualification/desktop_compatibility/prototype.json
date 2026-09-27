@@ -63,7 +63,7 @@
     }
   ],
   "unproven_release_requirements": [
-    "Complete catalog-backed public preparation/launch resource realization around the installed helper; private component Python/GIO/Xlib/XIM now has native arm64 installed-entrypoint evidence, not production catalog activation",
+    "Complete catalog-backed public preparation/launch and policy-compatible socket/runtime placement around the installed helper; native arm64 private Python and native/Flatpak Qt resource realization now pass, without production catalog activation",
     "Complete native amd64 installed portable-helper and remaining sandbox/lifecycle qualification; native arm64 GTK, Chromium, Flatpak GTK/Qt, launcher/service failures and noexec runtime now pass through the component-owned runtime",
     "Complete both native architectures and published installed-helper qualification of the Wayland text-input-v3 adapter; actual arm64 Chromium document/frame receipts are available, serial or socket flush alone is not consumption evidence",
     "Complete both native architectures, toolkit coverage and installed-helper qualification of cursor, clipboard, window/popup and display/input behavior; current clipboard receipts cover GTK3/GTK4/Qt5/Qt6 Wayland/Xwayland and Chromium Wayland on arm64",
@@ -343,6 +343,11 @@
       "case": "Installed portable helper runtime on native arm64 Ubuntu",
       "result": "Go-installed immutable entrypoint and existing supervisor use component musl Python/GIO, Python Xlib and libxcb-imdkit. Actual GTK and pure Wayland Chromium Unicode/frame/reconnect receipts, Flatpak GNOME Text Editor and KWrite remote Save As with exact bytes, launcher exit 46, support/capture/bus failure and restrictive noexec socket runtime pass. Application Python environment is restored exactly.",
       "limits": "Unactivated 194-archive signed candidate; native amd64, production component catalog, complete package/desktop matrix and release qualification remain required."
+    },
+    {
+      "case": "General session-owned Qt package resources on native arm64",
+      "result": "The installed helper prepares both verified Qt ABI modules for native applications and inside the normal Flatpak app resource root, with identity-bound cleanup. The shared supervisor adds the official Flatpak --env plugin path after revalidating the original desktop entry. GTK and KWrite actual Unicode/Enter, official remote Save As, byte equality, detach and cleanup pass without fixture module copies. Qt5/Qt6 Wayland/Xwayland clipboard and document regression passes. Actual GIO argument expansion preserves original quoted arguments and file handling, including literal percent, quotes, dollar, backtick and backslash in the private path.",
+      "limits": "Native amd64, private socket/runtime placement, production component activation and full package/desktop qualification remain required. Strict Snap does not assume host module visibility; unsupported toolkit context remains explicit."
     }
   ],
   "rejected_assumptions": [
@@ -369,6 +374,7 @@
     "Xwayland may normalize a native key timestamp; the requested marker timestamp 61261328 arrived as 61261329. Native transactions use reserved press/release slots instead of timestamp identity, and cannot reuse an undrained slot.",
     "Setting only weston_seat_set_keyboard_focus does not activate XWM. It leaves X11 PointerRoot focus even when a key happens to reach the window under the pointer; use the compositor view activation API and retain actual X11 focus checks.",
     "An IBus engine can focus its internal placeholder before any application registers. Native qualification requires real application provenance, not merely a non-empty engine focus path. Registered routing and the editable widget at native marker consumption are distinct boundaries.",
-    "The original Weston candidate lacks Python Xlib and libxcb-imdkit. A native private-Python import failure exposed the missing closure; host Python was hiding it. The installed helper and GIO supervisor now both run from the component and restore application environment before exec."
+    "The original Weston candidate lacks Python Xlib and libxcb-imdkit. A native private-Python import failure exposed the missing closure; host Python was hiding it. The installed helper and GIO supervisor now both run from the component and restore application environment before exec.",
+    "Flatpak runtime Environment metadata overrides inherited QT_PLUGIN_PATH. Passing that variable to the host launcher does not expose a private adapter inside the sandbox. The revalidated supervisor adds its official --env option; original GIO Exec and field-code expansion remain authoritative."
   ]
 }

@@ -15,6 +15,9 @@ var applicationProcesses []byte
 //go:embed application_scope.py
 var applicationScope []byte
 
+//go:embed application_package.py
+var applicationPackage []byte
+
 // XpraApplicationLifetimeArgs binds an Xpra server to a monitored application
 // child, independently of its viewers and windows. Use a --start-child command
 // that remains alive until the application and its descendants have exited.
@@ -40,7 +43,7 @@ func XpraApplicationLifetimeArgs() []string {
 // The supervisor exposes only its admitted direct launcher's scope operation.
 func WriteApplicationLauncher(directory string) (string, error) {
 	for name, data := range map[string][]byte{"launch_plan.py": applicationPlanner,
-		"application_processes.py": applicationProcesses, "application_scope.py": applicationScope} {
+		"application_package.py": applicationPackage, "application_processes.py": applicationProcesses, "application_scope.py": applicationScope} {
 		if _, err := writeApplicationFile(directory, name, data, true); err != nil {
 			return "", err
 		}
