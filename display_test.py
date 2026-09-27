@@ -31,8 +31,7 @@ class DisplayTest(unittest.TestCase):
             client_configure_window=configure))
         bindings = SimpleNamespace(send_expose=lambda *args: events.append(('expose', *args)))
         with patch.dict('sys.modules', {
-            'xpra.x11.bindings.window': SimpleNamespace(X11WindowBindings=lambda: bindings),
-            'xpra.gtk.error': SimpleNamespace(xlog=nullcontext()),
+            'xpra.x11.server.seamless': SimpleNamespace(X11WindowBindings=lambda: bindings, xlog=nullcontext()),
         }):
             self.assertEqual(server.client_configure_window(window, (0, 0, 800, 700), 4), 'configured')
             self.assertEqual(events, [('configure', (0, 0, 800, 700), 4),
@@ -62,6 +61,7 @@ class DisplayTest(unittest.TestCase):
         source = Source()
         class Server:
             xdpi = ydpi = dpi = 96
+            def client_configure_window(self, *args): pass
             def set_xsettings(self, value): pass
             def parse_hello(self, *args): pass
             def get_server_features(self, source=None): return {}
@@ -123,6 +123,7 @@ class DisplayTest(unittest.TestCase):
         events=[]
         class Server:
             change_settings=True
+            def client_configure_window(self, *args): pass
             def set_xsettings(self,value):events.append(('settings',value))
             def parse_hello(self,source,caps,*args):
                 if self.change_settings:self.set_xsettings((2,[(1,b'Net/ThemeName','Adwaita',0)]))

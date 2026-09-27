@@ -720,6 +720,13 @@ resize requests. Popups and override-redirect windows retain native placement.
 Destroy and disconnect revoke layout ownership. Layout never changes actual
 maximize/minimize state. Both regular and worker canvases preserve painted pixels
 through resize and ignore unchanged sizes.
+After an accepted remote native resize, the display adapter requests one X11
+Expose for the accepted drawable dimensions. A shrinking redirected GL surface
+can lose its pixels without exposing a new edge; Xpra's synthetic capture damage
+does not ask the application to redraw. The request follows native configuration
+on Xpra's existing connection, with no timer, retry, renderer override or second
+capture path. Moves, unchanged sizes, rejected old counters and retired or hidden
+windows do not request a repaint. Ordinary application damage still owns delivery.
 The offscreen decoder has one ordered decode/paint queue. It acknowledges damage
 only after drawing into the canvas, and retires late decoded images on window
 removal. Skipped video and no-op packets retain transport acknowledgement without

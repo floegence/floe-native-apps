@@ -25,6 +25,7 @@ def install_display(server):
     original_hello = server.parse_hello
     original_handlers = server.init_packet_handlers
     original_features = server.get_server_features
+    original_configure_window = server.client_configure_window
     server.floe_display_density = None
     serial = 0
     current_settings = (0, [])
@@ -117,8 +118,25 @@ def install_display(server):
     def features(source=None):
         return {**original_features(source), 'floe-display': 2}
 
+    def configure_window(window, geometry, resize_counter=0):
+        before = window.get_dimensions()
+        result = original_configure_window(window, geometry, resize_counter)
+        after = window.get_dimensions()
+        if before != after and window.is_managed() and window.get_property('shown'):
+            # A redirected GL drawable can lose its contents when it shrinks.
+            # Xpra's synthetic damage only captures those contents; request an
+            # application repaint after the actual resize/ConfigureNotify, using
+            # the accepted native size rather than the client's requested size.
+            # The concrete backend provides the matching error context across
+            # Xpra's internal GTK module reorganization.
+            from xpra.x11.server.seamless import X11WindowBindings, xlog
+            with xlog:
+                X11WindowBindings().send_expose(window.xid, 0, 0, *after)
+        return result
+
     server.set_xsettings = settings
     server.parse_hello = hello
     server.init_packet_handlers = handlers
     server.get_server_features = features
+    server.client_configure_window = configure_window
     return server
