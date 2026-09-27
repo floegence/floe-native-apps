@@ -123,6 +123,24 @@ class SessionTests(unittest.TestCase):
                         completed=Mock(), record=Mock(), host_bus=address)
         self.assertEqual(list(Path(self.directory.name).iterdir()), [])
 
+    def test_missing_host_document_service_is_classified_before_application_launch(self):
+        session = self.module.DesktopSession.__new__(self.module.DesktopSession)
+        session.plan = {'observation': {'services': ['file-portal', 'document-portal'],
+                                        'package': {'id': 'org.example.Editor'}}}
+        session.closed, session.failed, session.host_documents = False, False, True
+        session.transition, session.fail, session.record = Mock(), Mock(), Mock()
+        session.connection, session.host_bus = Mock(), 'unix:path=/host/bus'
+        session.launch_application, session.spawn = Mock(), Mock()
+        class HostDocumentServiceUnavailable(ValueError):
+            pass
+        module = SimpleNamespace(DocumentService=Mock(side_effect=HostDocumentServiceUnavailable()),
+                                 HostDocumentServiceUnavailable=HostDocumentServiceUnavailable)
+        with patch.dict('sys.modules', {'desktop_document_service': module}):
+            session.guard(session.start_portals)()
+        session.fail.assert_called_once_with('DESKTOP_HOST_SERVICE_UNAVAILABLE')
+        session.spawn.assert_not_called()
+        session.launch_application.assert_not_called()
+
     def test_flatpak_ibus_portal_identity_is_ready_before_input_activation(self):
         session = self.module.DesktopSession.__new__(self.module.DesktopSession)
         session.plan = {'observation': {'services': ['ibus-portal']}}
