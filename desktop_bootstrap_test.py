@@ -60,6 +60,7 @@ class BootstrapTests(unittest.TestCase):
 
     def test_receipt_is_bounded_and_never_includes_launch_secrets_or_document_data(self):
         receipt = LaunchReceipt(self.directory, 'fixture', (123, 456))
+        self.addCleanup(receipt.close)
         receipt.record({'event': 'process', 'service': 'application', 'pid': 124, 'start_ticks': 457})
         receipt.record({'state': 'prepared', 'phase': 'sharing_ready',
                         'helper_pid': 123, 'helper_start_ticks': 456, 'socket': '/private/control.sock'})
@@ -78,11 +79,22 @@ class BootstrapTests(unittest.TestCase):
 
     def test_receipt_cannot_overwrite_a_replacement(self):
         receipt = LaunchReceipt(self.directory, 'fixture', (123, 456))
+        self.addCleanup(receipt.close)
         receipt.path.unlink()
         receipt.path.write_text('other owner')
         with self.assertRaises(ValueError):
             receipt.record({'state': 'starting', 'phase': 'graphics'})
         self.assertEqual(receipt.path.read_text(), 'other owner')
+
+    def test_receipt_close_preserves_last_observation_and_rejects_new_writes(self):
+        receipt = LaunchReceipt(self.directory, 'fixture', (123, 456))
+        self.addCleanup(receipt.close)
+        original = receipt.path.read_bytes()
+        receipt.close()
+        receipt.close()
+        with self.assertRaises(ValueError):
+            receipt.record({'state': 'starting', 'phase': 'graphics'})
+        self.assertEqual(receipt.path.read_bytes(), original)
 
     def test_plan_revalidation_precedes_resource_preparation_or_execution(self):
         self.config['plan']['backend'] = {'id': 'wayland'}

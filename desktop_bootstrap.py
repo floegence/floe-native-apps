@@ -70,7 +70,7 @@ class LaunchReceipt:
         self.value = {'version': 1, 'instance': instance,
             'helper_pid': helper[0], 'helper_start_ticks': helper[1], 'processes': [], 'transitions': [],
             'service_events': []}
-        self.identity = None
+        self.identity, self.stream, self.closed = None, None, False
         self.publish()
 
     def record(self, event):
@@ -120,23 +120,41 @@ class LaunchReceipt:
         self.publish()
 
     def publish(self):
+        if self.closed:
+            raise ValueError('Native launch receipt is closed')
         if self.identity is not None and owned_identity(self.path) != self.identity:
             raise ValueError('Native launch receipt was replaced')
         data = json.dumps(self.value, ensure_ascii=True, allow_nan=False).encode()
         if len(data) > 65536:
             raise ValueError('Native launch receipt exceeds limit')
         descriptor, temporary = tempfile.mkstemp(prefix='.desktop-status-', dir=self.path.parent)
+        stream = os.fdopen(descriptor, 'wb')
         try:
-            with os.fdopen(descriptor, 'wb') as stream:
-                stream.write(data)
+            stream.write(data)
+            stream.flush()
             if self.identity is None:
                 os.link(temporary, self.path)
             else:
                 os.replace(temporary, self.path)
             self.identity = owned_identity(self.path)
+            # Keep the current inode allocated until its next atomic replacement.
+            # An unlinked file's numeric inode may otherwise be reused immediately
+            # and make an unrelated replacement pass the ownership comparison.
+            previous, self.stream = self.stream, stream
+            stream = None
+            if previous:
+                previous.close()
         finally:
+            if stream:
+                stream.close()
             if os.path.exists(temporary):
                 os.unlink(temporary)
+
+    def close(self):
+        self.closed = True
+        if self.stream:
+            self.stream.close()
+            self.stream = None
 
 
 def assemble(value, record, completed):
@@ -205,6 +223,9 @@ def main():
             except (OSError, ValueError):
                 pass  # A replaced/unwritable receipt is never overwritten or logged.
         return 1
+    finally:
+        if receipt:
+            receipt.close()
 
 
 if __name__ == '__main__':

@@ -373,7 +373,9 @@ as GI/GIO; host-installed modules must not hide a missing distribution dependenc
 The entrypoint revalidates the plan before preparing resources and delegates all
 processes to `DesktopSession`. Its bounded `desktop-status.json` is an atomic
 receipt of that owner's native transitions/process identities, not a second
-lifecycle manager. It records prepared graphics digests and distinct content-free
+lifecycle manager. Its writer retains the current file descriptor until atomic
+replacement or shutdown, so inode reuse cannot authorize overwriting another
+file. It records prepared graphics digests and distinct content-free
 portal observations, never launch credentials, environment values or document
 text. Explicit preparation/launcher failures return a failed helper exit while
 retaining the authoritative application exit code in the receipt. Runtime-owned
