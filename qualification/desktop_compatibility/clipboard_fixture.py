@@ -1,6 +1,39 @@
 """Exact native paste/copy/cut receipts through authenticated viewer input."""
 import hashlib
 import json
+import os
+from pathlib import Path
+import signal
+import time
+
+
+def delayed_xwayland_publication(receipt, publish):
+    """Hold only this fixture's X server while the helper queues publication.
+
+    The fixed delay injects native scheduling adversity; it is not a readiness
+    wait or a retry. Exact application bytes remain the acceptance condition.
+    """
+    from application_processes import identity
+    status = json.loads((receipt.parent / 'session/desktop-status.json').read_text())
+    compositor = next(item for item in status['processes'] if item['service'] == 'compositor')
+    assert identity(compositor['pid'])[1] == compositor['start_ticks']
+    children = Path(f"/proc/{compositor['pid']}/task/{compositor['pid']}/children").read_text().split()
+    servers = [int(pid) for pid in children if any(Path(os.fsdecode(arg)).name == 'Xwayland'
+        for arg in Path(f'/proc/{pid}/cmdline').read_bytes().split(b'\0') if arg)]
+    assert len(servers) == 1, 'The fixture must own exactly one Xwayland process'
+    started = identity(servers[0])
+    descriptor = os.pidfd_open(servers[0])
+    try:
+        assert identity(servers[0]) == started and started[0] == compositor['pid']
+        signal.pidfd_send_signal(descriptor, signal.SIGSTOP)
+        try:
+            result = publish()
+            time.sleep(.2)
+        finally:
+            signal.pidfd_send_signal(descriptor, signal.SIGCONT)
+        return result
+    finally:
+        os.close(descriptor)
 
 
 def exercise(client, target, receipt, wait, result):
@@ -40,8 +73,12 @@ def exercise(client, target, receipt, wait, result):
     payload = value * 200
     assert len(payload.encode()) <= 16000
     shortcut(30)  # A
-    input({'kind': 'clipboard', 'text': payload})
-    assert 'error' not in client.response(shortcut(47))  # V
+    def publish_and_paste():
+        input({'kind': 'clipboard', 'text': payload})
+        return shortcut(47)  # V
+    last = (delayed_xwayland_publication(receipt, publish_and_paste)
+            if os.environ.get('FLOE_PROBE_PAUSE_XWAYLAND') == '1' else publish_and_paste())
+    assert 'error' not in client.response(last)
     wait(lambda: json.loads(receipt.read_text()) == [payload, ''], 'Native paste bytes differ')
     input({'kind': 'key', 'code': 28, 'pressed': True})
     last = input({'kind': 'key', 'code': 28, 'pressed': False})
