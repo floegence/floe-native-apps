@@ -32,6 +32,7 @@ def main():
     parser.add_argument('--standalone', action='store_true')
     parser.add_argument('--emacs', action='store_true', help='Use the documented Emacs isolated-start and save commands')
     parser.add_argument('--save-adds-newline', action='store_true', help='Assert the selected editor appends one additional newline when serializing a document')
+    parser.add_argument('--confirm-close-save', action='store_true', help='Confirm the observed GNOME save-on-close dialog after the saved file receipt')
     parser.add_argument('--inspect-failure', action='store_true', help='Keep only the failed task-owned fixture alive for 60 seconds for native inspection')
     parser.add_argument('--notepadnext', action='store_true', help='Use a disposable Notepad Next plain-text configuration without word completion')
     args = parser.parse_args()
@@ -169,9 +170,22 @@ def main():
         result.setdefault('unicode_transactions', 65)
         current = paint('saved')
         delivered(client.request('close_window', window=current['window']))
+        if args.confirm_close_save:
+            # A published file is not the editor's completed save transaction.
+            # GNOME 50 can still show its save-on-close dialog at this point.
+            # Inspect the actual dialog before clicking its observed Save button;
+            # never repeat text or silently discard the test document.
+            frames = client.paint('close-save', expected=(53, 132, 228), sample_point=(640, 446))
+            result['frames'] += frames
+            current = {key: frames[-1][key] for key in ('connection', 'window', 'generation')}
+            for operation in ({'kind': 'move', 'x': 612, 'y': 446},
+                              {'kind': 'button', 'button': 0, 'pressed': True, 'x': 612, 'y': 446},
+                              {'kind': 'button', 'button': 0, 'pressed': False, 'x': 612, 'y': 446}):
+                delivered(send(operation))
         process.wait(timeout=20)
         exited = next(x for x in records() if x.get('state') == 'exited')
         assert process.returncode == 0 and exited['exit_code'] == 0 and not exited['termination_requested']
+        assert saved_exactly(expected), 'Normal close changed the confirmed saved document'
         result['application_exit'], result['passed'] = exited, True
     except BaseException:
         result['error'] = traceback.format_exc()

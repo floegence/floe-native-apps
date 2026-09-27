@@ -939,6 +939,13 @@ native qualification must include GTK3 and GTK4 on both Wayland and X11 without
 host IBus modules. The installation self-check's component-owned musl GTK fixture
 uses its separate verified support IBus cache; it does not validate host ABI
 adapters in place of native application qualification.
+GTK3 may ship its Wayland context as a separate toolkit module or compile it
+into GTK. The adapter selects the implementation from the loaded toolkit: its
+normal module ABI for the separate build, or an explicitly selected public
+`GtkIMMulticontext` with a verified native context type for the built-in build.
+Neither path reads a host input-method cache or retries a text submission.
+Fedora RPM Firefox qualifies the built-in form; Ubuntu GTK3 qualifies the
+separate module on Wayland and retains the X11 marker regression.
 The release job also exports a disposable GTK 4.0.3/glibc 2.31 runtime using
 `prepare_gtk_baseline.py` and runs its real text widget through the installed
 public session API. Only the test executable is relinked to the original copied

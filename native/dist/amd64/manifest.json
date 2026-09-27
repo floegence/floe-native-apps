@@ -52,7 +52,7 @@
     "gtk/libfloe-gtk3-native.so": {
       "common": false,
       "executable": false,
-      "sha256": "4db6799fa8238b60ee4c75e7265ace3347c23f3789f9fb5308a618bbf9432dd4",
+      "sha256": "f6117e86c31ea8cefbf5a506ce6fb1c80e583db5c464bb06edc09d2fb16a668c",
       "size_bytes": 22432
     },
     "gtk/libfloe-gtk4-native.so": {
@@ -82,8 +82,8 @@
     "provenance/gtk.json": {
       "common": false,
       "executable": false,
-      "sha256": "82b4cde41c3476acafe174f4c760e246ca332301f5be850ad12be045f842d170",
-      "size_bytes": 76123
+      "sha256": "ba596e2eb0039cb6d1d62e4a77c5f103ff362916cbb6726c4ad4a75f618b8a84",
+      "size_bytes": 76177
     },
     "provenance/native.json": {
       "common": false,
@@ -124,8 +124,8 @@
     "sources/tree/native/gtk_native.c": {
       "common": true,
       "executable": false,
-      "sha256": "8ac6ac231045f64933f443dfe56b68cd489bba1297cca45fba588bfaac08354d",
-      "size_bytes": 15859
+      "sha256": "15d62a70c4136ab322621465c130e6c4fe725a70fd352cd6d69217dc55a2eb39",
+      "size_bytes": 16691
     },
     "sources/tree/native/patches/ibus-1.5-context-source.json": {
       "common": true,

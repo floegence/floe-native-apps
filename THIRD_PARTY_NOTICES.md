@@ -73,8 +73,10 @@ listeners, including decoration drag, together with the published controllers.
 `native/patches/weston-14-input-events.patch` is a reviewed modification of
 Weston 14.0.2 source, licensed under [the original Weston notices](licenses/weston-14-COPYING.txt).
 The adjacent JSON records the original archive, original source hashes and patch
-hash. `native/dist/<arch>/artifacts/libweston-14.so.0` and `xwayland.so` are
-derived from that source. The first-party shell and capture client link to the
+hash. `native/dist/<arch>/artifacts/libweston-14.so.0`, `xwayland.so` and
+`headless-backend.so` are derived from that source. The headless modification
+resizes the software framebuffer together with native output coordinates.
+The first-party shell and capture client link to the
 original public/private ABI of the pinned version. Original publisher archives
 and already activated installations are not modified. Build records identify the
 compiler, signed packages, patches, build scripts and final binary hashes.

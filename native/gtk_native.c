@@ -19,18 +19,22 @@ static GDBusConnection *bus;
 static GType context_type;
 static gpointer parent_class;
 static guint parent_size;
-#if GTK_MAJOR_VERSION == 4
 static GType wayland_delegate_type;
 static gpointer wayland_parent_class;
 static guint wayland_parent_size;
-#else
+#if GTK_MAJOR_VERSION == 3
 static GTypeModule *owner_module;
 static GModule *wayland_library;
 static GtkIMContext *(*wayland_create)(const char *);
 static void (*wayland_exit)(void);
 
+static GtkIMContext *create_builtin_wayland(const char *id) {
+    (void)id;
+    return g_object_new(wayland_delegate_type, NULL);
+}
+
 static gboolean load_wayland(void) {
-    if (wayland_library) return TRUE;
+    if (wayland_create) return TRUE;
     /* GTK3 ships this implementation as a toolkit module. Resolve it beside
      * the application's loaded GTK, never from a host input-method cache or
      * another bundled toolkit. Use its documented IM module ABI unchanged. */
@@ -38,9 +42,22 @@ static gboolean load_wayland(void) {
     if (!dladdr((void *)gtk_get_major_version, &library)) return FALSE;
     char *directory = g_path_get_dirname(library.dli_fname);
     char *path = g_build_filename(directory, "gtk-3.0", "3.0.0", "immodules", "im-wayland.so", NULL);
-    GModule *module = g_module_open(path, G_MODULE_BIND_LAZY | G_MODULE_BIND_LOCAL);
+    gboolean external = g_file_test(path, G_FILE_TEST_EXISTS);
+    GModule *module = external ? g_module_open(path, G_MODULE_BIND_LAZY | G_MODULE_BIND_LOCAL) : NULL;
     g_free(path);
     g_free(directory);
+    if (!external) {
+        /* GTK3 distributions can compile the same Wayland context into GTK.
+         * Select it through the public multicontext API; the private module
+         * cache deliberately excludes unrelated host input methods. Force its
+         * lazy creation and require the real native type before accepting it. */
+        GtkIMContext *delegate = create_builtin_wayland("wayland");
+        gtk_im_context_set_use_preedit(delegate, TRUE);
+        gboolean available = g_type_from_name("GtkIMContextWayland") != 0;
+        g_object_unref(delegate);
+        if (available) wayland_create = create_builtin_wayland;
+        return available;
+    }
     void (*initialize)(GTypeModule *);
     if (!module) return FALSE;
     if (!g_module_symbol(module, "im_module_init", (gpointer *)&initialize) ||
@@ -262,7 +279,6 @@ static void dispose(GObject *object) {
     G_OBJECT_CLASS(parent_class)->dispose(object);
 }
 
-#if GTK_MAJOR_VERSION == 4
 static gboolean *wayland_configured(GtkIMContext *context) {
     return (gboolean *)((char *)context + wayland_parent_size);
 }
@@ -287,7 +303,6 @@ static void wayland_class_init(gpointer klass, gpointer data) {
     wayland_parent_class = g_type_class_peek_parent(klass);
     GTK_IM_CONTEXT_CLASS(klass)->reset = wayland_reset;
 }
-#endif
 
 static void instance_init(GTypeInstance *instance, gpointer klass) {
     (void)klass;
@@ -338,14 +353,13 @@ static void class_init(gpointer klass, gpointer data) {
 
 static void register_type(GTypeModule *module) {
     GTypeQuery query;
-#if GTK_MAJOR_VERSION == 4
     g_type_query(GTK_TYPE_IM_MULTICONTEXT, &query);
     wayland_parent_size = query.instance_size;
     const GTypeInfo wayland_info = {.class_size = query.class_size, .class_init = wayland_class_init,
         .instance_size = query.instance_size + sizeof(gboolean), .instance_init = wayland_init};
     wayland_delegate_type = g_type_module_register_type(module, GTK_TYPE_IM_MULTICONTEXT,
         GTK_MAJOR_VERSION == 3 ? "FloeNativeGTK3Wayland" : "FloeNativeGTK4Wayland", &wayland_info, 0);
-#else
+#if GTK_MAJOR_VERSION == 3
     owner_module = module;
 #endif
     g_type_query(GTK_TYPE_IM_CONTEXT, &query);

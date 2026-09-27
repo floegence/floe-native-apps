@@ -1772,7 +1772,7 @@
     ],
     "preparation": {
       "contract": "wayland-xwayland-private-v1",
-      "native_sha256": "ab265bb687a8f6293ba7b785b3185ec3ce7f3643730116a6435153c97b9d1a5c"
+      "native_sha256": "978e7041ac8cdcd8eda20703a2d62a1a39fc35b84af1dd5cabfaec4c313b4da4"
     }
   },
   {
@@ -3557,7 +3557,7 @@
     ],
     "preparation": {
       "contract": "wayland-xwayland-private-v1",
-      "native_sha256": "9de2782b17081916a73ab63db5dfff49f5f32a4b4649216c7006e7b18d6d1737"
+      "native_sha256": "4c20bbc1e3b02c399064bb1b3e51170de024514dde6e400a4e8c2f51d0060483"
     }
   }
 ]

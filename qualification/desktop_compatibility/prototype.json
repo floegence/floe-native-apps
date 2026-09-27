@@ -63,7 +63,7 @@
     }
   ],
   "unproven_release_requirements": [
-    "Complete native RPM application qualification and exact-source installed application reruns where code changed. DEB, original AppImage and classic Snap editor document/save/exit cases now pass on amd64; actual GNOME Xorg/Wayland, KDE Wayland and Xfce X11 shell coexistence cases pass in the task-owned Ubuntu 24.04 native KVM guest. These headless virtual-display fixtures are not physical GPU/desktop certifications.",
+    "Exact-tag installed/native qualification and consuming viewer acceptance remain required. Native DEB/RPM, original mounted AppImage, strict/classic Snap and Flatpak application input/save/exit cases pass at the recorded source and component identities. GNOME Xorg/Wayland, KDE Wayland and Xfce X11 coexistence uses actual shells in a task-owned native KVM guest; these virtual-display fixtures are not physical GPU certifications.",
     "Complete native cancellation/recovery/security and exact-tag release qualification; the combined recipe pins separate identities with original APKs, native build/source manifests and licenses.",
     "Formal upstream release and Go proxy/checksum/artifact readback before consuming product integration; source and fixture success are not publication."
   ],
@@ -387,6 +387,21 @@
         "gnome_text_editor_with_extra_serialization_newline": "90d80a1a07e9dcbd1ca813143fb492878ab49b51bb010f830172f8661dd6bcc3"
       },
       "limits": "Unpublished, modified source at base 6e04e19; exact-release qualification and consuming viewer integration remain required. Literal-text AppImage fixture disables its own word completion and URL highlighting; Emacs fixture uses its documented maximized launch to avoid font-driven geometry changes. Real system IMEs and mobile devices remain separate."
+    },
+    {
+      "case": "Fedora 44 native RPM Firefox and GNOME Text Editor with SELinux Enforcing",
+      "result": "Firefox 156.0.1 and GNOME Text Editor 50.1 launch from their original desktop entry metadata in the installed private combined environment. Actual click, repeated and long Unicode+Enter, exact saved bytes, reconnect and normal exit pass. Text Editor shows its actual asynchronous save-on-close dialog; the fixture confirms Save and rechecks bytes after exit.",
+      "regression": "GTK3 3.24.52 on Fedora compiles its Wayland input context into GTK. Independent-module-only discovery failed with INPUT_CONTEXT_UNAVAILABLE. The rebuilt adapter selects the built-in implementation with GtkIMMulticontext and requires its native GType; distributions shipping the standalone toolkit module retain that module ABI.",
+      "source_archive_sha256": "95922e4971178d4a59b90d1c7d67f846468412222f62ad2051c21779d5d064c3",
+      "component_digests": {
+        "amd64": "36e67eb3c8ae6911f24edfa33127243a825c6c2ae1312c261162c31fc67691c3",
+        "arm64": "ceb2d592243b81566a700882abe373548bdd1ca9df1be7d7193a4a3b8ac21f52"
+      },
+      "saved_document_sha256": {
+        "firefox": "90eacea75e6907880fa5bcf142046029ceb60f9ce5d4700d7fadbe1defdd364c",
+        "text_editor": "90d80a1a07e9dcbd1ca813143fb492878ab49b51bb010f830172f8661dd6bcc3"
+      },
+      "limits": "Native amd64 KVM guest with original signed RPMs and unchanged SELinux policy. The archive is modified source at d9676dd; exact immutable release qualification and product integration remain pending. No physical GPU, system IME or mobile-device claim."
     }
   ],
   "rejected_assumptions": [
@@ -417,6 +432,7 @@
     "Flatpak runtime Environment metadata overrides inherited QT_PLUGIN_PATH. Passing that variable to the host launcher does not expose a private adapter inside the sandbox. The revalidated supervisor adds its official --env option; original GIO Exec and field-code expansion remain authoritative.",
     "A clean host may lack GTK IBus modules. Native GTK adapters now use the existing context scheduler on X11 and the application toolkit standard Wayland context without a host input module dependency.",
     "An installed but dormant official host document service needs fixed-name D-Bus activation before unique-owner validation on headless systems.",
-    "Official document AS_NEEDED_BY_APP checks installed Flatpak permissions, not per-instance revoked filesystem access. Passing that flag can return an inaccessible host path and lose Save As. The bounded facade requests an actual official export, preserving every other flag and requested permission."
+    "Official document AS_NEEDED_BY_APP checks installed Flatpak permissions, not per-instance revoked filesystem access. Passing that flag can return an inaccessible host path and lose Save As. The bounded facade requests an actual official export, preserving every other flag and requested permission.",
+    "GTK3 does not always ship im-wayland.so: Fedora compiles the same implementation into libgtk. Native discovery must handle the actual toolkit build, not infer module layout from the desktop or application name."
   ]
 }
