@@ -86,6 +86,21 @@ class BootstrapTests(unittest.TestCase):
             receipt.record({'state': 'starting', 'phase': 'graphics'})
         self.assertEqual(receipt.path.read_text(), 'other owner')
 
+    def test_process_exit_updates_only_its_recorded_identity_once(self):
+        receipt = LaunchReceipt(self.directory, 'fixture', (123, 456))
+        self.addCleanup(receipt.close)
+        receipt.record({'event': 'process', 'service': 'compositor', 'pid': 124, 'start_ticks': 457})
+        event = {'event': 'process-exit', 'service': 'compositor', 'pid': 124, 'exit_code': -11}
+        for change in ({'pid': 125}, {'service': 'application'}, {'exit_code': True},
+                       {'exit_code': 256}, {'text': 'private output'}):
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                receipt.record({**event, **change})
+        receipt.record(event)
+        self.assertEqual(json.loads(receipt.path.read_text())['processes'], [
+            {'event': 'process', 'service': 'compositor', 'pid': 124, 'start_ticks': 457, 'exit_code': -11}])
+        with self.assertRaises(ValueError):
+            receipt.record(event)
+
     def test_receipt_close_preserves_last_observation_and_rejects_new_writes(self):
         receipt = LaunchReceipt(self.directory, 'fixture', (123, 456))
         self.addCleanup(receipt.close)
