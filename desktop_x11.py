@@ -10,9 +10,12 @@ class X11Resources:
     def __init__(self, connection):
         from Xlib.error import XError, ConnectionClosedError
         self.connection = connection
+        self.connection_closed = ConnectionClosedError
         self.errors = (XError, ConnectionClosedError, OSError, ValueError)
 
     def owner_pid(self, xid):
+        if self.connection is None:
+            return None
         from Xlib.ext import res
         try:
             # XRes identifies an allocation range even after an individual
@@ -28,6 +31,8 @@ class X11Resources:
         return None
 
     def focused_within(self, xid):
+        if self.connection is None:
+            return False
         try:
             focus = self.connection.get_input_focus().focus
             child = focus.id if hasattr(focus, 'id') else focus
@@ -42,4 +47,12 @@ class X11Resources:
         return False
 
     def close(self):
-        self.connection.close()
+        connection, self.connection = self.connection, None
+        if connection is not None:
+            try:
+                connection.close()
+            except self.connection_closed:
+                # Xlib closes its socket on server loss, then raises while
+                # close() flushes it. The resource is already disposed; this
+                # must not interrupt the helper's remaining service cleanup.
+                pass

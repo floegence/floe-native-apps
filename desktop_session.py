@@ -194,6 +194,7 @@ class DesktopSession:
             code = child.get_exit_status() if child.get_if_exited() else -child.get_term_sig()
             if self.processes.get(name) is child:
                 self.processes.pop(name)
+                self.record({'event': 'process-exit', 'service': name, 'pid': pid, 'exit_code': code})
                 if not self.closed:
                     if name == 'application':
                         self.application_exited(code)

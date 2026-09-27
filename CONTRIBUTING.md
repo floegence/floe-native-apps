@@ -441,7 +441,10 @@ release, a 42-second first window,
 launcher exit 46, support failure before execution and capture/private-bus loss
 without application termination. A restrictive task-only runtime mount verifies
 that no generated executable lives on a noexec runtime. Cleanup must finish even
-when the private bus is already closed; qualification checks every recorded child
+when the private bus or Xwayland connection is already closed. The compositor-loss
+case observes GTK's own display-loss exit and requires the helper to release all
+remaining services; it never infers application exit from channel loss alone.
+Qualification checks every recorded child
 and removes its own mount normally. The fixture may explicitly terminate only its
 recorded test supervisor for failure cleanup; this is never viewer behavior.
 

@@ -75,6 +75,18 @@ class LaunchReceipt:
 
     def record(self, event):
         if 'event' in event:
+            if event['event'] == 'process-exit':
+                if (set(event) != {'event', 'service', 'pid', 'exit_code'} or
+                        type(event['pid']) is not int or type(event['exit_code']) is not int or
+                        not -64 <= event['exit_code'] <= 255):
+                    raise ValueError('Invalid native process exit receipt')
+                process = next((item for item in self.value['processes'] if
+                    (item['service'], item['pid']) == (event['service'], event['pid'])), None)
+                if process is None or 'exit_code' in process:
+                    raise ValueError('Native process exit is unknown or already observed')
+                process['exit_code'] = event['exit_code']
+                self.publish()
+                return
             if event['event'] == 'graphics':
                 description = event.get('description')
                 expected = {'version', 'derived_weston_sha256', 'shell_sha256', 'capture_sha256',
