@@ -7,6 +7,7 @@ Launch/process admission and toolkit context registration belong to the helper;
 window metadata alone never selects an input method or proves application exit.
 """
 from dataclasses import dataclass
+import logging
 import math
 from desktop_cursor import NativeCursor
 from desktop_clipboard import NativeClipboard
@@ -57,7 +58,14 @@ class NativeChannel:
                 raise ValueError('Native record exceeds limit')
         except BlockingIOError:
             pass
-        except (OSError, ValueError):
+        except (OSError, ValueError) as error:
+            # Report the failing code boundary, never the native record or
+            # exception message: either can contain application-owned content.
+            origin = error.__traceback__
+            while origin.tb_next:
+                origin = origin.tb_next
+            logging.getLogger(__name__).warning('Native channel read failed: %s at %s:%d',
+                type(error).__name__, origin.tb_frame.f_code.co_name, origin.tb_lineno)
             self.close()
 
     def write(self):
