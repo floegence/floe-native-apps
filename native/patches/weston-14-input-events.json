@@ -13,16 +13,19 @@
     "include/libweston/xwayland-api.h": "d96ca5a56a5608710f9c4212ea74f09bca171aab7df99f2685028b93eb590d83",
     "xwayland/window-manager.c": "032ed4f567bacdd7ec1b097bd68f4d4df034e2a472884c35fd1cadf8bc25962c",
     "xwayland/launcher.c": "f2cebfa6c2767e22c30f87da8d3aee56fb6146473dcb7f281e84c7918de1af37",
-    "libweston/backend-headless/headless.c": "aba39de6ddb59c82e04a123797f40d82d7c23d0ec706291e1137bb0b1a382508"
+    "libweston/backend-headless/headless.c": "aba39de6ddb59c82e04a123797f40d82d7c23d0ec706291e1137bb0b1a382508",
+    "xwayland/xwayland.h": "94c3d47d822c6ae6534e0fbb56e86a7d1ad8b3ca535ece5f88f9833d5855d3f6",
+    "xwayland/selection.c": "0974e2e95c262794481b9cdf1191b30daef908530b862f0ad4c01421951444e8"
   },
   "patch": "weston-14-input-events.patch",
-  "patch_sha256": "6c5002ea30cafff439eff425e5bfd48739c7fff522983d816bda2e1cbe1a5985",
+  "patch_sha256": "303e27ea5ef98d28354b6e494febb5282f6be48f02765859c0b73f67053e081e",
   "changes": [
     "Validate keyboard popup grabs against the last 32 actual keyboard event serials of the same client and focus lifetime; release cannot invalidate the preceding press",
     "Advertise wl_seat version 8 and carry value120 wheel metadata through the existing native grab and axis dispatch",
     "Expose the compositor-owned Xwayland surface-to-resource binding through a separate read-only versioned plugin API; advisory PID and title never authorize an input context",
     "Expose one pointer cursor signal for committed image, hotspot, explicit hide and surface destruction; the shell owns bounded transfer and no polling",
-    "Resize the private software headless output through its native mode callback so capture and Xwayland pointer coordinates share the same bounded dimensions"
+    "Resize the private software headless output through its native mode callback so capture and Xwayland pointer coordinates share the same bounded dimensions",
+    "Expose exact XFixes selection ownership acknowledgement through the private v2 resource API so X11 Paste cannot overtake clipboard publication; omit selection bodies from logging"
   ],
   "abi": "Fields append to core-allocated pointer/keyboard objects; existing member offsets and axis event layout remain unchanged. The native shell requires floe_notify_axis_value120 from this derived library.",
   "limitations": [

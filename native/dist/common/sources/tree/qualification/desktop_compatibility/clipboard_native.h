@@ -21,7 +21,7 @@ struct clipboard_writer {
 };
 struct native_clipboard {
     struct probe *probe;
-    struct wl_listener selection;
+    struct wl_listener selection, publication_sync;
     struct wl_list offers, writers;
     size_t writer_count;
     struct wl_event_source *reader, *timer;
@@ -30,9 +30,34 @@ struct native_clipboard {
     size_t size;
     bool available;
     char text[CLIPBOARD_LIMIT + 1];
+    struct clipboard_offer *publication;
+    struct wl_event_source *publication_timer;
+    uint64_t publication_sequence, publication_connection, publication_scene, publication_window;
 };
 static struct wl_event_loop *clipboard_loop(struct native_clipboard *clipboard) {
     return wl_display_get_event_loop(clipboard->probe->compositor->wl_display);
+}
+static void clipboard_publication_done(struct native_clipboard *clipboard, bool ready) {
+    if (!clipboard->publication) return;
+    struct probe *p = clipboard->probe;
+    uint64_t sequence = clipboard->publication_sequence;
+    ready = ready && p->connection == clipboard->publication_connection &&
+            p->scene == clipboard->publication_scene && input_window(p) == clipboard->publication_window &&
+            p->seat.selection_data_source == &clipboard->publication->base;
+    clipboard->publication = NULL;
+    wl_list_remove(&clipboard->publication_sync.link);
+    wl_list_init(&clipboard->publication_sync.link);
+    if (clipboard->publication_timer) wl_event_source_remove(clipboard->publication_timer);
+    clipboard->publication_timer = NULL;
+    emit(p, "clipboard-%s %" PRIu64 "\n", ready ? "published" : "rejected", sequence);
+}
+static int clipboard_publication_timeout(void *data) {
+    clipboard_publication_done(data, false);
+    return 0;
+}
+static void clipboard_publication_sync(struct wl_listener *listener, void *data) {
+    struct native_clipboard *clipboard = wl_container_of(listener, clipboard, publication_sync);
+    clipboard_publication_done(clipboard, clipboard->publication && data == &clipboard->publication->base);
 }
 static void clipboard_stop_read(struct native_clipboard *clipboard) {
     if (clipboard->reader) wl_event_source_remove(clipboard->reader);
@@ -42,6 +67,7 @@ static void clipboard_stop_read(struct native_clipboard *clipboard) {
     clipboard->fd = -1;
 }
 static void clipboard_pause(struct native_clipboard *clipboard) {
+    clipboard_publication_done(clipboard, false);
     clipboard_stop_read(clipboard);
     clipboard->available = false;
     clipboard->size = 0;
@@ -132,6 +158,8 @@ static void clipboard_offer_destroy(void *data) {
 }
 static void clipboard_cancel(struct weston_data_source *source) {
     struct clipboard_offer *offer = wl_container_of(source, offer, base);
+    if (offer->clipboard->publication == offer)
+        clipboard_publication_done(offer->clipboard, false);
     /* libweston removes its selection listener after cancel returns. Retire at
      * the next dispatch boundary, never free that listener during cancellation. */
     if (!offer->retirement)
@@ -193,12 +221,15 @@ static struct native_clipboard *clipboard_create_native(struct probe *p) {
     if (!clipboard) return NULL;
     clipboard->probe = p; clipboard->fd = -1;
     wl_list_init(&clipboard->offers); wl_list_init(&clipboard->writers);
+    wl_list_init(&clipboard->publication_sync.link);
+    clipboard->publication_sync.notify = clipboard_publication_sync;
     clipboard->selection.notify = clipboard_selection;
     wl_signal_add(&p->seat.selection_signal, &clipboard->selection);
     return clipboard;
 }
 static void clipboard_destroy_native(struct native_clipboard *clipboard) {
     if (!clipboard) return;
+    clipboard_publication_done(clipboard, false);
     clipboard_stop_read(clipboard);
     wl_list_remove(&clipboard->selection.link);
     struct weston_data_source *source = clipboard->probe->seat.selection_data_source;
@@ -214,7 +245,17 @@ static void clipboard_destroy_native(struct native_clipboard *clipboard) {
     wl_list_for_each_safe(writer, writer_next, &clipboard->writers, link) clipboard_writer_close(writer);
     free(clipboard);
 }
-static bool clipboard_publish(struct native_clipboard *clipboard, char *encoded) {
+static bool clipboard_publish(struct native_clipboard *clipboard, char *encoded, uint64_t sequence) {
+    struct probe *p = clipboard->probe;
+    const struct weston_xwayland_surface_api *api = weston_xwayland_surface_get_api(p->compositor);
+    struct wl_signal *sync = NULL;
+    if (api && api->is_xwayland_surface(p->current)) {
+        const struct floe_xwayland_resource_api *resources = weston_plugin_api_get(
+            p->compositor, FLOE_XWAYLAND_RESOURCE_API_NAME, sizeof *resources);
+        sync = resources ? resources->selection_sync(p->current) : NULL;
+        if (!sync) return false;
+    }
+    clipboard_publication_done(clipboard, false);
     size_t size = 0;
     if (wl_list_length(&clipboard->offers) >= 64) return false;
     if (strcmp(encoded, "-") && !decode_text(encoded, &size)) return false;
@@ -238,6 +279,23 @@ static bool clipboard_publish(struct native_clipboard *clipboard, char *encoded)
     if (clipboard->probe->seat.selection_data_source != &offer->base) {
         clipboard_offer_destroy(offer);
         return false;
+    }
+    clipboard->publication = offer;
+    clipboard->publication_sequence = sequence;
+    clipboard->publication_connection = p->connection;
+    clipboard->publication_scene = p->scene;
+    clipboard->publication_window = input_window(p);
+    if (sync) {
+        /* Native seat delivery and the XWM's X socket are independent. The
+         * exact XFixes ownership receipt releases the existing input queue. */
+        wl_signal_add(sync, &clipboard->publication_sync);
+        clipboard->publication_timer = wl_event_loop_add_timer(clipboard_loop(clipboard),
+            clipboard_publication_timeout, clipboard);
+        if (!clipboard->publication_timer) clipboard_publication_done(clipboard, false);
+        else wl_event_source_timer_update(clipboard->publication_timer, 3000);
+    } else {
+        /* Wayland selection and following seat events share the client stream. */
+        clipboard_publication_done(clipboard, true);
     }
     return true;
 }

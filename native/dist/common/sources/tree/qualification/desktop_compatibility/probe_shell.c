@@ -1282,8 +1282,8 @@ static void command(struct probe *p, char *line) {
     }
     int clipboard_prefix = 0;
     if (sscanf(line, "clipboard-set %" SCNu64 " %n", &identity, &clipboard_prefix) == 1 && clipboard_prefix > 0) {
-        bool published = p->connection && input_window(p) && clipboard_publish(p->clipboard, line + clipboard_prefix);
-        emit(p, "clipboard-%s %" PRIu64 "\n", published ? "published" : "rejected", identity);
+        bool accepted = p->connection && input_window(p) && clipboard_publish(p->clipboard, line + clipboard_prefix, identity);
+        if (!accepted) emit(p, "clipboard-rejected %" PRIu64 "\n", identity);
         return;
     }
     if (sscanf(line, "client-barrier %" SCNu64, &identity) == 1 && identity) {

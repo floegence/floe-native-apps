@@ -538,6 +538,10 @@ Unavailable, oversized or invalid UTF-8 offers produce an explicit clipboard
 error. Viewer-originated publications are not echoed as application Copy events.
 Only a painted target may publish or receive a snapshot; detach/target retirement
 discards in-flight snapshots while retaining the application's native selection.
+For an X11 target, the exact XFixes ownership notification completes publication;
+enqueueing the XWM request alone cannot order its separate X socket against native
+seat events. A superseded source, target change, XWM loss or bounded timeout rejects
+the pending publication without replay. The bridge never logs selection bodies.
 
 `session_probe.py` modes `clipboard`, `clipboard-x11` and `clipboard-chromium`
 exercise GTK3/GTK4/Qt5/Qt6 Wayland/Xwayland and pure Wayland Chromium Copy/Cut/Paste,
@@ -547,6 +551,10 @@ the empty second editor because the long pasted document occupies the original
 sample pixel. Select a toolkit with `FLOE_PROBE_TOOLKIT`; Qt records the exact modules in
 `FLOE_PROBE_QT_PLUGINS`. Native arm64 results do not qualify amd64,
 product clipboard permission handling or the complete distribution.
+The native release suite also pauses its own pidfd-verified Xwayland during
+publication and immediate Paste. This scheduling fault injection must preserve
+the same exact document bytes; the pause is not a production delay or readiness
+heuristic.
 
 The `chromium-v3` context probe isolates native text-input-v3 state progression.
 An empty `done` acknowledges each client commit; it does not acknowledge text

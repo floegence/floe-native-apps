@@ -107,18 +107,24 @@
 +	if (!weston_keyboard_has_input_serial(keyboard, client, serial) &&
 --- a/include/libweston/xwayland-api.h
 +++ b/include/libweston/xwayland-api.h
-@@ -41,0 +42,8 @@
+@@ -41,0 +42,11 @@
 +
-+/* Read-only native binding. The X server, not _NET_WM_PID, must separately
++/* Native resource observations. The X server, not _NET_WM_PID, must separately
 + * establish the resource owner's process identity. Existing Weston APIs and
 + * their ABI remain unchanged. */
-+#define FLOE_XWAYLAND_RESOURCE_API_NAME "floe_xwayland_resource_v1"
++#define FLOE_XWAYLAND_RESOURCE_API_NAME "floe_xwayland_resource_v2"
 +struct floe_xwayland_resource_api {
 +	uint32_t (*get_xid)(struct weston_surface *surface);
++	/* Emits the current source after XFixes confirms our exact ownership
++	 * request, or NULL when the XWM is destroyed. No text crosses this API. */
++	struct wl_signal *(*selection_sync)(struct weston_surface *surface);
 +};
 --- a/xwayland/window-manager.c
 +++ b/xwayland/window-manager.c
-@@ -2983,0 +2984,11 @@
+@@ -2945,0 +2946 @@
++	wl_signal_emit_mutable(&wm->selection_sync, NULL);
+@@ -2982,0 +2984,19 @@
++
 +static uint32_t
 +floe_xwayland_surface_xid(struct weston_surface *surface)
 +{
@@ -126,10 +132,17 @@
 +	return window ? window->id : XCB_WINDOW_NONE;
 +}
 +
++static struct wl_signal *
++floe_xwayland_selection_sync(struct weston_surface *surface)
++{
++	struct weston_wm_window *window = get_wm_window(surface);
++	return window ? &window->wm->selection_sync : NULL;
++}
++
 +const struct floe_xwayland_resource_api floe_resource_api = {
 +	floe_xwayland_surface_xid,
++	floe_xwayland_selection_sync,
 +};
-+
 --- a/xwayland/launcher.c
 +++ b/xwayland/launcher.c
 @@ -365,0 +366 @@
@@ -183,3 +196,33 @@
 @@ -435 +470 @@
 -	output->base.switch_mode = NULL;
 +	output->base.switch_mode = headless_output_switch_mode;
+--- a/xwayland/xwayland.h
++++ b/xwayland/xwayland.h
+@@ -91,0 +92,2 @@
++	struct wl_signal selection_sync;
++	uint32_t selection_sequence;
+--- a/xwayland/selection.c
++++ b/xwayland/selection.c
+@@ -421,2 +421,2 @@
+-	weston_log("read %d (available %d, mask 0x%x) bytes: \"%.*s\"\n",
+-		len, available, mask, len, (char *) p);
++	weston_log("read %d selection bytes (available %d, mask 0x%x)\n",
++		len, available, mask);
+@@ -661,0 +662,6 @@
++		if (wm->selection_sequence &&
++		    wm->selection_sequence == event->full_sequence) {
++			wm->selection_sequence = 0;
++			wl_signal_emit_mutable(&wm->selection_sync,
++					       seat ? seat->selection_data_source : NULL);
++		}
+@@ -721 +727,3 @@
+-	xcb_set_selection_owner(wm->conn,
++	/* The X socket and native seat socket have independent dispatch order.
++	 * Confirm this request through XFixes before releasing following input. */
++	wm->selection_sequence = xcb_set_selection_owner(wm->conn,
+@@ -724 +732 @@
+-				XCB_TIME_CURRENT_TIME);
++				XCB_TIME_CURRENT_TIME).sequence;
+@@ -779,0 +788,2 @@
++
++	wl_signal_init(&wm->selection_sync);

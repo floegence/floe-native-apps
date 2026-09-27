@@ -10,7 +10,7 @@
     "artifacts/desktop-shell.so": {
       "common": false,
       "executable": true,
-      "sha256": "cae353a78e928348ac2fc30a0094aecafe21b57a36a38302d6dff1de071c158e",
+      "sha256": "0761934454b11209516eae2e3872bb28b5f17a7e2999e0f9a7ebd3421f3dca88",
       "size_bytes": 67336
     },
     "artifacts/headless-backend.so": {
@@ -46,7 +46,7 @@
     "artifacts/xwayland.so": {
       "common": false,
       "executable": true,
-      "sha256": "8a070e389d63313386fb9c4e51c98796a694edc0dbb035df410715c983e38481",
+      "sha256": "4ddb1717bdd7b854d0186abdfbbd4d3f741dbf9eba8774ff480bcd336b21d075",
       "size_bytes": 133256
     },
     "gtk/libfloe-gtk3-native.so": {
@@ -88,7 +88,7 @@
     "provenance/native.json": {
       "common": false,
       "executable": false,
-      "sha256": "5cb261b363a9ab1a132733a56e4dfa9c4928e7221201cf0f63a3cfb3e2592865",
+      "sha256": "03101cac2dc3481cfca4f09a849f75e63dc1264959e68814d533f40488f9c2c1",
       "size_bytes": 91014
     },
     "provenance/qt5.json": {
@@ -142,14 +142,14 @@
     "sources/tree/native/patches/weston-14-input-events.json": {
       "common": true,
       "executable": false,
-      "sha256": "f92f5d25f1f58350b63e7c2f838a8c83aa66b7c0ae5fa176576b04c7530aaedb",
-      "size_bytes": 2573
+      "sha256": "420807a71883b33b94377534329dbf36f90e55e329ac7b4ce6c77c9a63298121",
+      "size_bytes": 2950
     },
     "sources/tree/native/patches/weston-14-input-events.patch": {
       "common": true,
       "executable": false,
-      "sha256": "6c5002ea30cafff439eff425e5bfd48739c7fff522983d816bda2e1cbe1a5985",
-      "size_bytes": 6896
+      "sha256": "303e27ea5ef98d28354b6e494febb5282f6be48f02765859c0b73f67053e081e",
+      "size_bytes": 8516
     },
     "sources/tree/native/protocols/text-input-unstable-v3.xml": {
       "common": true,
@@ -226,8 +226,8 @@
     "sources/tree/qualification/desktop_compatibility/clipboard_native.h": {
       "common": true,
       "executable": false,
-      "sha256": "fe6dc24331dabba59ffb586abb9346fe23ba4e55d79be0c0b0f251c402aaea55",
-      "size_bytes": 12485
+      "sha256": "4d388a8cbe6850b4f4ad650cf7f103a57b46b4748c4a442d5e5a697ec9d130af",
+      "size_bytes": 15788
     },
     "sources/tree/qualification/desktop_compatibility/frame_probe.c": {
       "common": true,
@@ -238,8 +238,8 @@
     "sources/tree/qualification/desktop_compatibility/probe_shell.c": {
       "common": true,
       "executable": false,
-      "sha256": "2f286695118ab0bdb78abecf0b8cd7700d275afe08a978a300a77734ebca105d",
-      "size_bytes": 72784
+      "sha256": "23d13babf52bcad2b4ca8c81ff46bf84c382a12c92052a708425f1e94f34f20f",
+      "size_bytes": 72776
     },
     "sources/tree/scripts/build_desktop_native.sh": {
       "common": true,
