@@ -1,6 +1,8 @@
-# Disposable native shell/capture compiler, never part of application execution.
+# One disposable native compositor/input compiler, never an application runtime.
 FROM public.ecr.aws/docker/library/alpine@sha256:85fe1e81d6758c208f3e1eed4338a1997e19d4be002d4dd32d3100c9a8c010a0
 RUN mkdir /builder-apks && apk update && apk fetch --recursive --output /builder-apks \
-    build-base weston-dev wayland-dev wayland-protocols libdrm-dev libpng-dev python3 && \
+    build-base weston-dev=14.0.2-r4 wayland-dev wayland-protocols libdrm-dev libpng-dev python3 \
+    meson ninja glib-dev dbus-dev gettext-dev intltool libtool iso-codes-dev libx11-dev \
+    libinput-dev libevdev-dev libxcursor-dev pango-dev xcb-util-cursor-dev && \
     apk verify /builder-apks/*.apk && apk add --no-network /builder-apks/*.apk && \
     sha256sum /builder-apks/*.apk > /builder-apks.sha256

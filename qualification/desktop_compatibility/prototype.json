@@ -63,7 +63,7 @@
     }
   ],
   "unproven_release_requirements": [
-    "Complete catalog-backed public preparation/launch and policy-compatible socket/runtime placement around the installed helper; native arm64 private Python and native/Flatpak Qt resource realization now pass, without production catalog activation",
+    "Complete production catalog-backed public preparation/launch and native amd64 qualification; installed native arm64 helper now owns private Python, native/Flatpak Qt modules and package-compatible graphics/bus resource placement",
     "Complete native amd64 installed portable-helper and remaining sandbox/lifecycle qualification; native arm64 GTK, Chromium, Flatpak GTK/Qt, launcher/service failures and noexec runtime now pass through the component-owned runtime",
     "Complete both native architectures and published installed-helper qualification of the Wayland text-input-v3 adapter; actual arm64 Chromium document/frame receipts are available, serial or socket flush alone is not consumption evidence",
     "Complete both native architectures, toolkit coverage and installed-helper qualification of cursor, clipboard, window/popup and display/input behavior; current clipboard receipts cover GTK3/GTK4/Qt5/Qt6 Wayland/Xwayland and Chromium Wayland on arm64",
@@ -348,6 +348,21 @@
       "case": "General session-owned Qt package resources on native arm64",
       "result": "The installed helper prepares both verified Qt ABI modules for native applications and inside the normal Flatpak app resource root, with identity-bound cleanup. The shared supervisor adds the official Flatpak --env plugin path after revalidating the original desktop entry. GTK and KWrite actual Unicode/Enter, official remote Save As, byte equality, detach and cleanup pass without fixture module copies. Qt5/Qt6 Wayland/Xwayland clipboard and document regression passes. Actual GIO argument expansion preserves original quoted arguments and file handling, including literal percent, quotes, dollar, backtick and backslash in the private path.",
       "limits": "Native amd64, private socket/runtime placement, production component activation and full package/desktop qualification remain required. Strict Snap does not assume host module visibility; unsupported toolkit context remains explicit."
+    },
+    {
+      "case": "Original strict Snap Firefox 156.0.1-1 revision 8968 on native arm64 Ubuntu 24.04",
+      "result": "Installed portable helper and sole GIO supervisor create the actual user-systemd scope; pure Wayland frames, repeated Unicode/Enter, remote official Save As, exact saved bytes, detach/reconnect and normal exit pass with stock AppArmor and browser sandbox. A task-only VM acquired the official signed Snap and content runtimes; no user host Runtime or desktop configuration changed.",
+      "limits": "Package-compatible runtime/socket paths are still fixture inputs; public upstream resource realization and production installed-component qualification remain incomplete. udesk24 itself is unreachable for fresh deployed validation."
+    },
+    {
+      "case": "Upstream-owned package socket and authorization realization on native arm64",
+      "result": "The installed helper generates a distinct private bus and display endpoint; strict Snap uses its policy-approved package runtime and control stays instance-private. Native GTK noexec, bus-loss preservation, strict Firefox, Flatpak GTK/Qt Unicode/Enter, detach/reconnect and exact remote Save As receipts pass after removing fixture-generated addresses. X11 authorization tracks atomic xauth replacement and is disposed only after native application/services exit.",
+      "limits": "Production component catalog activation, native amd64 installed-helper requalification and full distribution/desktop matrix remain required."
+    },
+    {
+      "case": "Unified native compositor/input builds on amd64 and arm64",
+      "result": "One signed native Alpine builder produces the first-party shell/capture, source-derived Weston/XWM and IBus daemon/portal/library. All seven final ELF files have native architecture, no RPATH/RUNPATH, retained original licenses and matching source/build/artifact digests. Rebuilt arm64 artifacts pass actual strict Snap Firefox and Flatpak GTK/Qt Unicode, remote Save As byte receipts and normal cleanup through the installed helper. The same acquisition script verifies the original amd64 runtime APK closure.",
+      "limits": "Candidate builds and acquired archives are not activated or published components. Production catalog/install/cancel/recovery qualification, rebuilt amd64 actual applications, remaining desktop/package matrix and formal release remain required."
     }
   ],
   "rejected_assumptions": [

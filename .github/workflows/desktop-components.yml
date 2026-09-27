@@ -1,0 +1,60 @@
+name: Desktop component build candidates
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    name: Build native (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Fetch original source archives
+        run: python3 scripts/fetch_desktop_sources.py "$RUNNER_TEMP/desktop-sources"
+      - name: Build in one native compiler environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker build -t floe-desktop-native \
+            -f qualification/desktop_compatibility/Dockerfile.desktop-native .
+          image=$(docker image inspect --format '{{.Id}}' floe-desktop-native)
+          mkdir -p "$RUNNER_TEMP/desktop-native"
+          docker run --rm --user "$(id -u):$(id -g)" \
+            -e FLOE_DESKTOP_BUILDER_IMAGE="$image" \
+            -v "$PWD:/src:ro" -v "$RUNNER_TEMP/desktop-sources:/inputs:ro" \
+            -v "$RUNNER_TEMP/desktop-native:/out" "$image" \
+            sh /src/scripts/build_desktop_native.sh \
+            /inputs/weston-14.0.2.tar.xz /inputs/ibus-1.5.33.tar.gz /out/build \
+            2>&1 | tee "$RUNNER_TEMP/desktop-native/build.log"
+      - name: Acquire the original signed runtime closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm -v "$PWD:/src:ro" -v "$RUNNER_TEMP/desktop-native:/out" \
+            floe-desktop-native sh /src/qualification/desktop_compatibility/fetch_candidate.sh /out/candidate \
+            2>&1 | tee "$RUNNER_TEMP/desktop-native/acquisition.log"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: desktop-native-candidate-${{ matrix.arch }}
+          path: |
+            ${{ runner.temp }}/desktop-native/*.log
+            ${{ runner.temp }}/desktop-native/build/build.json
+            ${{ runner.temp }}/desktop-native/build/artifacts/
+            ${{ runner.temp }}/desktop-native/build/licenses/
+            ${{ runner.temp }}/desktop-native/candidate/*.json
+            ${{ runner.temp }}/desktop-native/candidate/*.txt
+          retention-days: 30
+          if-no-files-found: error

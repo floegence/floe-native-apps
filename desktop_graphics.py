@@ -176,4 +176,12 @@ class DesktopGraphics:
         info = self.authentication.lstat()
         if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o600):
             raise ValueError('Native X11 authority is unavailable')
+        self.authority_identity = owned_identity(self.authentication)
         return {**self.application_environment, 'DISPLAY': display, 'XAUTHORITY': str(self.authentication)}
+
+    def close(self):
+        # The session calls this only after its application and services exit.
+        # Shared package runtimes must not retain instance authorization files.
+        if self.authority_identity is not None:
+            remove_owned(self.authentication, self.authority_identity)
+            self.authority_identity = None

@@ -29,8 +29,6 @@ def main():
     root = Path(sys.argv[1]).resolve()
     evidence = Path(tempfile.mkdtemp(prefix='snap-session-', dir=root))
     runtime = Path(tempfile.mkdtemp(prefix='floe-session-', dir=f'/run/user/{os.getuid()}'))
-    package_runtime = Path(f'/run/user/{os.getuid()}/snap.firefox')
-    assert package_runtime.is_dir() and package_runtime.stat().st_uid == os.getuid()
     profile = Path(tempfile.mkdtemp(prefix='floe-session-test-', dir=Path.home() / 'snap/firefox/common'))
     downloads = profile / 'downloads'
     downloads.mkdir()
@@ -120,8 +118,7 @@ report('loaded');</script>'''
         (evidence / 'fixture.desktop').write_text(entry.to_data()[0])
         result['desktop_sha256'] = hashlib.sha256(original.read_bytes()).hexdigest()
         (evidence / 'fixture-environment.json').write_text(json.dumps({
-            'environment': {'XDG_RUNTIME_DIR': str(package_runtime), 'WAYLAND_DISPLAY': 'wayland-' + secrets.token_hex(8),
-                'DBUS_SESSION_BUS_ADDRESS': 'unix:abstract=/tmp/dbus-floe-' + secrets.token_hex(12), 'GTK_USE_PORTAL': '1'},
+            'environment': {},
             'unset': ['GDK_BACKEND', 'QT_QPA_PLATFORM', 'MOZ_ENABLE_WAYLAND'],
             'host_bus': os.environ['DBUS_SESSION_BUS_ADDRESS']}))
         process = subprocess.Popen([sys.executable, str(root / 'session_probe.py'), str(root), 'helper',

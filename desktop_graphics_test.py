@@ -120,6 +120,27 @@ class DesktopGraphicsTests(unittest.TestCase):
         self.assertRegex(options['input'], r'^add :94 MIT-MAGIC-COOKIE-1 [a-f0-9]{32}\n$')
         self.assertEqual(options['timeout'], 10)
 
+    def test_disposal_removes_the_authority_created_by_atomic_xauth_update(self):
+        graphics = self.prepare()
+        retained = graphics.authentication.with_name('retained-initial-inode')
+        def update(*args, **kwargs):
+            graphics.authentication.rename(retained)
+            graphics.authentication.write_bytes(b'new private authorization')
+            graphics.authentication.chmod(0o600)
+        with patch('subprocess.run', side_effect=update):
+            graphics.authorize(':94')
+        graphics.close()
+        graphics.close()
+        self.assertFalse(graphics.authentication.exists())
+        self.assertTrue(retained.exists())
+
+    def test_disposal_preserves_a_replacement_authority(self):
+        graphics = self.prepare()
+        graphics.authentication.rename(graphics.authentication.with_name('retained-owned-authority'))
+        graphics.authentication.write_bytes(b'other owner')
+        graphics.close()
+        self.assertEqual(graphics.authentication.read_bytes(), b'other owner')
+
     def test_replaced_authority_is_rejected_before_executing_a_tool(self):
         graphics = self.prepare()
         # Retain the original inode so the fixture cannot accidentally reuse it.

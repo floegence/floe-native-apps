@@ -307,8 +307,13 @@ and removes its own mount normally. The fixture may explicitly terminate only it
 recorded test supervisor for failure cleanup; this is never viewer behavior.
 
 The persistent Snap probe uses the same session owner and authenticated viewer
-endpoint. Snap's existing policy-compatible graphics runtime hosts only a unique
-Wayland socket; the control endpoint stays in a separate instance-private runtime.
+endpoint. The upstream package-resource owner generates all private graphics and
+bus addresses after plan revalidation. Snap's standard owned package runtime
+hosts unique Wayland and X11 authorization files; the control endpoint stays in
+a separate instance-private runtime. Native and Flatpak graphics use that private
+runtime directly. Inherited desktop display, authority, Wayland FD and bus addresses
+are not reused. After application and service exit, authorization cleanup validates
+the actual post-xauth file identity and preserves replaced files.
 The launch plan requires an explicit, distinct host bus for the existing scoped
 systemd adapter. No ambient host-bus variable is accepted as authorization. Real
 strict Firefox scope, Unicode/Enter stress, detach/reconnect, remote official save
@@ -389,7 +394,7 @@ its final slow-renderer wait allows the intentionally queued application work
 to finish without adding delays to input delivery. This probe is explicitly not
 the authenticated confirmed-text adapter or a release claim.
 
-`Dockerfile.ibus-portable` and `build_portable_ibus.sh` produce native musl IBus
+`Dockerfile.desktop-native` and `build_portable_ibus.sh` produce native musl IBus
 daemon, portal and library candidates from the pinned original source and reviewed
 context-origin patch. The disposable builder retains signed APKs and records its
 immutable image identity, package closure, source/build hashes, ELF dependencies,
@@ -748,3 +753,22 @@ The standalone GNOME editor qualification uses private XDG directories and verif
 save followed by repeated Unicode, selection replacement, multiline text and Enter
 against bytes saved through the application. Both managed and system Xpra run it;
 no user editor is reused. Browser composition remains simulated.
+
+### Unified native component build candidates
+
+`qualification/desktop_compatibility/Dockerfile.desktop-native` is the single
+musl builder for the shell/capture, reviewed Weston derivation and private IBus.
+It verifies and retains every original builder APK before offline installation.
+`scripts/build_desktop_native.sh` verifies the two original source archives,
+rebuilds every affected artifact, uses Weston's normal staged installation to
+remove build loader paths, and rejects ELF architecture or RPATH mismatches.
+The resulting manifest covers original sources, reviewed patches, build scripts,
+compiler, signed dependencies, licenses and final binary bytes. Qt modules retain
+their separate glibc ABI baseline builds because they load into applications.
+
+`fetch_candidate.sh` acquires the original runtime APK closure in that disposable
+builder, including private Python Xlib and XIM dependencies. Its candidate catalog
+pins original bytes and license/source metadata without activating a package.
+Neither a successful build nor an archive manifest establishes package support:
+native installed-helper application, cancellation/recovery and exact-release
+qualification remain required before production catalog publication.

@@ -4,7 +4,9 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from desktop_package import DesktopPackageInput
+from unittest.mock import patch
+
+from desktop_package import DesktopPackageResources, snap_runtime
 
 
 class PackageInputTests(unittest.TestCase):
@@ -27,7 +29,8 @@ class PackageInputTests(unittest.TestCase):
         (app / 'user-document').write_text('unsaved')
 
     def prepare(self):
-        return DesktopPackageInput(self.instance, self.package, self.environment, self.modules)
+        with patch('desktop_package.snap_runtime', return_value=self.instance):
+            return DesktopPackageResources(self.instance, self.instance, self.package, self.environment, self.modules)
 
     def test_flatpak_uses_only_a_unique_application_private_module_directory(self):
         before = dict(self.environment)
@@ -48,6 +51,19 @@ class PackageInputTests(unittest.TestCase):
         self.assertFalse(first.directory.exists())
         self.assertTrue(second.directory.exists())
         self.assertEqual((second.directory.parent / 'user-document').read_text(), 'unsaved')
+
+    def test_graphics_endpoints_are_generated_per_instance_without_host_inheritance(self):
+        self.environment.update(DBUS_SESSION_BUS_ADDRESS='unix:path=/host/desktop-bus',
+            XDG_RUNTIME_DIR='/host/runtime', WAYLAND_DISPLAY='wayland-user', DISPLAY=':0',
+            XAUTHORITY='/host/authority', WAYLAND_SOCKET='19')
+        first, second = self.prepare(), self.prepare()
+        self.addCleanup(first.close)
+        self.addCleanup(second.close)
+        self.assertNotEqual(first.environment['DBUS_SESSION_BUS_ADDRESS'], 'unix:path=/host/desktop-bus')
+        self.assertNotEqual(first.environment['WAYLAND_DISPLAY'], second.environment['WAYLAND_DISPLAY'])
+        self.assertNotIn('DISPLAY', first.environment)
+        self.assertNotIn('WAYLAND_SOCKET', first.environment)
+        self.assertNotIn('XAUTHORITY', first.environment)
 
     def test_native_keeps_host_plugin_search_after_the_private_adapter(self):
         self.package = {'kind': 'deb', 'id': 'fixture'}
@@ -74,6 +90,23 @@ class PackageInputTests(unittest.TestCase):
         self.assertNotIn('QT_PLUGIN_PATH', prepared.environment)
         self.assertEqual(prepared.environment['QT_IM_MODULE'], 'ibus')
         prepared.close()
+
+    def test_snap_runtime_uses_only_its_owned_standard_directory(self):
+        base = self.root / 'run-user'
+        user = base / str(os.getuid())
+        user.mkdir(parents=True, mode=0o700)
+        def path(value):
+            return base if value == '/run/user' else Path(value)
+        with patch('desktop_package.Path', side_effect=path):
+            runtime = snap_runtime('fixture')
+            self.assertEqual(runtime, user / 'snap.fixture')
+            self.assertEqual(runtime.stat().st_mode & 0o777, 0o700)
+            runtime.chmod(0o755)
+            with self.assertRaises(ValueError):
+                snap_runtime('fixture')
+            self.assertEqual(runtime.stat().st_mode & 0o777, 0o755)
+            with self.assertRaises(ValueError):
+                snap_runtime('../desktop')
 
     def test_missing_or_escaped_module_never_leaves_partial_resources(self):
         module = self.modules / 'platforminputcontexts/libfloe-client-native-qt6.so'

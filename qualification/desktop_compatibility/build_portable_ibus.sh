@@ -38,7 +38,7 @@ record = {
     'original_source_sha256': digest(archive),
     'patch_sha256': digest(patch),
     'build_source_sha256': {name: digest(source / name) for name in
-        ('Dockerfile.ibus-portable', 'build_portable_ibus.sh', 'build_ibus.sh')},
+        ('Dockerfile.desktop-native', 'build_portable_ibus.sh', 'build_ibus.sh')},
     'signed_builder_archives': Path('/builder-apks.sha256').read_text().splitlines(),
     'packages': subprocess.check_output(['apk', 'info', '-vv'], text=True).splitlines(),
     'compiler': subprocess.check_output(['cc', '--version'], text=True).splitlines()[0],

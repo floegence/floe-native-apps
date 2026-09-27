@@ -88,12 +88,12 @@ class BootstrapTests(unittest.TestCase):
         self.config['plan']['backend'] = {'id': 'wayland'}
         modules = {name: SimpleNamespace(**{constructor: Mock()}) for name, constructor in
             (('desktop_services', 'DesktopServices'), ('desktop_graphics', 'DesktopGraphics'),
-             ('desktop_session', 'DesktopSession'), ('desktop_package', 'DesktopPackageInput'))}
+             ('desktop_session', 'DesktopSession'), ('desktop_package', 'DesktopPackageResources'))}
         modules['launch_plan'] = SimpleNamespace(revalidate=Mock(side_effect=ValueError('stale plan')))
         with patch.dict('sys.modules', modules), self.assertRaisesRegex(ValueError, 'stale plan'):
             assemble(self.config, Mock(), Mock())
         for module, constructor in (('desktop_services', 'DesktopServices'), ('desktop_graphics', 'DesktopGraphics'),
-                                    ('desktop_session', 'DesktopSession'), ('desktop_package', 'DesktopPackageInput')):
+                                    ('desktop_session', 'DesktopSession'), ('desktop_package', 'DesktopPackageResources')):
             getattr(modules[module], constructor).assert_not_called()
 
 

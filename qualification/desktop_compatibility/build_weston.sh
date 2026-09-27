@@ -11,7 +11,7 @@ mkdir -p "$destination"
 tar -xJf "$archive" -C "$destination"
 source_root=$destination/weston-14.0.2
 patch -d "$source_root" -p1 --fuzz=0 < "$patch_file"
-meson setup "$destination/build" "$source_root" --buildtype=release \
+meson setup "$destination/build" "$source_root" --buildtype=release --prefix=/usr --libdir=lib \
     -Dbackend-default=headless -Dbackend-headless=true -Dxwayland=true \
     -Dbackend-drm=false -Dbackend-drm-screencast-vaapi=false \
     -Dbackend-pipewire=false -Dbackend-rdp=false -Dbackend-vnc=false \
