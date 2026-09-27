@@ -169,6 +169,43 @@ within three seconds each, in addition to proving decoded pixels and input.
 Consumers retain their own authentication, private display, process lifetime,
 transport, and actual-window readiness checks.
 
+## Combined Wayland and Xwayland applications
+
+Use `DesktopForPlatform` with the same component `Manager` to prepare the combined
+recipe. `Manager.PlanDesktop` resolves an authorized desktop entry and binds its
+bytes, executable and package revision. `PrepareDesktopSession` creates a new,
+private immutable resource snapshot and returns the persistent helper command
+and authenticated endpoint. Launch it independently of viewer and Runtime
+cancellation, retaining its process generation and component identity.
+
+`DialDesktop` supplies bounded window, PNG frame, cursor, clipboard and lifecycle
+events. Decode and paint before `frame_ack`; bind input to that connection,
+window and geometry generation. Client input controllers own composition and
+pointer gestures. The helper owns native delivery and ordering. An unavailable
+context is an explicit failure; no text is replayed or sent through another route.
+Waiting for a window and unavailable capture never imply application exit.
+Closing the attachment retains the application; `terminate_application` requires
+explicit force-quit authorization.
+
+The private software compositor supports Wayland and Xwayland windows, menus,
+popups and remote file dialogs. Native DEB/RPM and AppImage applications retain
+their installed runtime. Strict/classic Snap and Flatpak retain their actual
+sandbox and require their installed package services. Snap scope requests reach
+only the real user systemd through an instance-bound adapter; Flatpak document
+authorization uses the official host document portal. Missing services fail
+clearly without installing packages, changing security policy or exposing the
+host desktop bus. Applications redirected to external existing processes are
+not adopted, and preparation never creates a replacement user profile.
+
+Native qualification includes Snap Firefox, Flatpak GTK/Qt, GNOME Text Editor,
+AppImage, RPM and pure Wayland GTK/Qt/Chromium application receipts. GNOME
+Xorg/Wayland, KDE Wayland and Xfce X11 fixtures establish desktop compatibility,
+not physical GPU certification or support for every application. Exact-tag
+release qualification must pass on native amd64 and arm64. See
+[CONTRIBUTING.md](CONTRIBUTING.md) for the contracts and evidence boundaries.
+Existing Xpra instances retain their original component and resource snapshot;
+there is no automatic backend retry or conversion of a running application.
+
 ## Offline delivery
 
 Hosts that supply another reviewed archive catalog can use the public
@@ -261,9 +298,9 @@ The host needs an executable writable state filesystem, a compatible Linux
 kernel, `/bin/sh` and basic shell utilities, ordinary process/Unix socket
 permissions, and access to the catalog's HTTPS publishers (or an offline ZIP).
 A physical monitor, desktop session, GPU, and system Xpra installation are not
-required. X11 applications are the target; native Wayland-only applications,
-GPU/DRM capture, and arbitrary third-party application compatibility are outside
-this SDK's guarantee. SELinux, AppArmor, and other host policies remain in force;
+required. The Xpra recipe supports X11; the combined desktop recipe supports
+Wayland and Xwayland in one private application session. GPU/DRM capture and
+arbitrary third-party application compatibility are outside this SDK's guarantee. SELinux, AppArmor, and other host policies remain in force;
 a denied operation fails without changing policy or escalating privileges.
 
 ### Qualification evidence

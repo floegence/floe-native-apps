@@ -334,6 +334,13 @@ application profiles. These jobs are necessary release gates; desktop environmen
 AppImage, RPM and classic Snap claims still require their corresponding actual
 application evidence. They are never inferred from these suites.
 
+The Flatpak GTK fixture observes the private IBus daemon's real focused,
+synchronous context before its initial click/text burst. A painted window alone
+does not prove an editable context. It also waits for the exact completed GNOME
+draft before Save As, excluding GIO temporary files: GNOME rejects Save As during
+autosave. These are read-only fixture observations, not production delays or
+text retries. Actual Save As bytes, document grants and normal exit remain required.
+
 The internal `DesktopHelper` composes the native channel/window registry, bounded
 capture, decoded-frame gate, ordered input and authenticated endpoint on one event
 loop. The persistent launch owner supplies its prepared sockets. It starts sharing only after
@@ -487,7 +494,7 @@ persistent-session fixtures deny broad host/home filesystem access, verify exact
 remote Save As bytes, and remove only their own two document grants. The installed
 component/public launch API and complete platform matrix remain prerequisites.
 
-### Unpublished combined-display qualification
+### Combined-display qualification
 
 Copy native fixtures with
 `python3 qualification/desktop_compatibility/snapshot_sources.py /absolute/new-snapshot.tar`.
@@ -502,7 +509,7 @@ PNG decoding and pixel checks precede frame acknowledgement, so geometry changes
 during inspection cannot authorize input using a retired frame. These are native
 application receipts, not evidence for a product viewer or a real client IME.
 
-The same unpublished helper transports the native clipboard as bounded UTF-8
+The persistent helper transports the native clipboard as bounded UTF-8
 selection data, independently of confirmed-text input. Publication enters the
 existing input scheduler so subsequent Paste keys cannot precede selection
 ownership. Publication acknowledges ownership only: a toolkit's asynchronous
@@ -551,8 +558,7 @@ sandbox libraries. The candidates run through the private component loader; no
 host library path or input module installation is involved. A builder image alone
 does not establish application compatibility. Native amd64/arm64 GTK and
 Chromium/Xwayland tests, strict Snap Firefox and Flatpak GTK/Qt save receipts are
-separate acceptance evidence. Pure Wayland Chromium has no qualified confirmed-text
-adapter in the published distribution yet. The development helper admits one
+separate acceptance evidence. The combined helper admits one
 text-input-v3 resource for the actual focused surface and live application peer.
 Its existing input scheduler brackets native commit dispatch with callback
 barriers. The compositor alone selects and validates the editable context when
@@ -561,8 +567,9 @@ ordered focus changes or authorize another resource. Revoked connection, window,
 surface and resource identities cannot receive late text or advance a new
 transaction. Native rejection is final; no alternate adapter or replay follows.
 Only actual application receipts establish document content and order.
-These artifacts are not an activated catalog or a published support
-claim; prepared helper resources, distribution and the full matrix remain required.
+Native binaries and adapters enter the combined catalog through the verified
+distribution manifest. Each release still requires installed-helper application
+receipts and the complete native qualification matrix.
 
 `DesktopServices` owns support-process resource preparation. Its input component
 must already be verified by the distribution owner, and its instance directory
@@ -596,8 +603,8 @@ The service environment cannot inherit host theme, loader or input-module paths.
 Flatpak identity lookup links to its real private runtime records without copying
 them. Failed preparation removes only newly created resources and never removes
 populated or pre-existing Flatpak records. Starting commands and confirming actual
-service owners remain launch responsibilities; this source preparer is not a
-completed durable helper or installed capability.
+service owners remain `DesktopSession` responsibilities; preparing these files
+alone does not establish application readiness.
 
 `Dockerfile.qt-native` selects an explicitly pinned native `TARGET_ARCH` and
 `QT_MAJOR`, then verifies Debian's signed 20250224 snapshot. Qt 5 uses the 5.15.2 /
@@ -608,7 +615,8 @@ and module digest. It installs no host or sandbox libraries. The qualification-o
 library closure through a private loader. Its document and runtime receipts prove
 the library versions actually executing; they are not inferred from linker flags.
 The same adapter is also tested with the normal distribution and Flatpak runtimes.
-These candidates remain outside the activated catalog until full qualification.
+The combined catalog binds these adapters and their build provenance; baseline
+receipts supplement the installed-component release qualification.
 
 ## Component compatibility qualification
 
@@ -749,7 +757,7 @@ buffer scale must never enlarge CSS geometry. Explicit `hide` and `reset` retain
 distinct hidden/default semantics and invalidate unfinished decodes. Xpra has only
 a packet/window-list adapter around this owner.
 
-The unpublished combined backend observes the native pointer's cursor and focus
+The combined backend observes the native pointer's cursor and focus
 signals. It copies the current image only after the renderer's frame signal;
 copying at surface commit can pair new geometry with an old renderer buffer.
 The shell applies the surface's buffer transform once, preserves pixel density,
