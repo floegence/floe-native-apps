@@ -323,6 +323,13 @@ def main():
             from clipboard_fixture import exercise
             expected = exercise(client, target, receipt, wait, result)
         input({'kind': 'key', 'code': 29, 'pressed': True})
+        assert client.response(client.request('release_input', **target))['result'] == 'released'
+        input({'kind': 'key', 'code': 48, 'pressed': True})
+        assert 'error' not in client.response(input({'kind': 'key', 'code': 48, 'pressed': False}))
+        expected += 'b'
+        wait(lambda: json.loads(receipt.read_text()) == [expected, ''], 'Explicit release retained a modifier or lost the painted target')
+        result['target_release_without_reconnect'] = True
+        input({'kind': 'key', 'code': 29, 'pressed': True})
         old_connection = client.generation
         client.close()
         assert process.poll() is None and identity(process.pid)[1] == started

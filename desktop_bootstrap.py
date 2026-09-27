@@ -109,7 +109,7 @@ class LaunchReceipt:
         else:
             allowed = {'state', 'phase', 'error_code', 'helper_pid', 'helper_start_ticks',
                        'socket', 'service', 'exit_code', 'launchers', 'termination_requested'}
-            if (set(event) - allowed or event.get('state') not in ('starting', 'prepared', 'failed', 'exited') or
+            if (set(event) - allowed or event.get('state') not in ('starting', 'prepared', 'terminating', 'failed', 'exited') or
                     not isinstance(event.get('phase'), str) or not re.fullmatch(r'[a-z_]{1,64}', event['phase']) or
                     'error_code' in event and not re.fullmatch(r'[A-Z_]{1,128}', event['error_code']) or
                     len(self.value['transitions']) >= 32):

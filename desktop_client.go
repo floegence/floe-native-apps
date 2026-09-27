@@ -136,6 +136,8 @@ type DesktopEvent struct {
 // the installed session signals its own supervisor. It takes no PID, signal or
 // target and remains available after capture failure. Closing this connection
 // never invokes it; the subsequent process receipt establishes the real exit.
+// release_input cancels pending input and releases held keys/buttons only for
+// the named, already-painted target. It preserves that frame's input authority.
 type DesktopRequest struct {
 	Method     string          `json:"method"`
 	Connection uint64          `json:"connection,omitempty"`
@@ -158,6 +160,8 @@ func (r DesktopRequest) valid(connection uint64) bool {
 	case "input":
 		return r.Connection == connection && desktopID(r.Window) && desktopID(r.Generation) && r.Frame == 0 &&
 			len(r.Operation) > 0 && utf8.Valid(r.Operation) && json.Valid(r.Operation)
+	case "release_input":
+		return r.Connection == connection && desktopID(r.Window) && desktopID(r.Generation) && r.Frame == 0 && len(r.Operation) == 0
 	default:
 		return false
 	}

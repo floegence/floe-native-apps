@@ -406,6 +406,10 @@ class DesktopSession:
         process = self.processes.get('application')
         if self.closed or process is None or process is not self.application:
             raise ValueError('Owned application supervisor is unavailable')
+        if self.stage == 'terminating':
+            return
+        self.stage = 'terminating'
+        self.record({'state': 'terminating', 'phase': 'application'})
         # GSubprocess retains this exact child generation and owns its wait.
         # Its existing supervisor handles descendant termination with pidfds;
         # never signal the helper, compositor, process group or an arbitrary PID.
@@ -413,7 +417,7 @@ class DesktopSession:
         process.send_signal(signal.SIGTERM)
 
     def fail(self, code, **details):
-        if self.closed or self.failed:
+        if self.closed or self.failed or self.stage == 'terminating':
             return
         self.failed = True
         self.record({'state': 'failed', 'phase': self.stage, 'error_code': code, **details})

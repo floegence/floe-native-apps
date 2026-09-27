@@ -143,6 +143,17 @@ class NativeTests(unittest.TestCase):
         self.assertEqual(self.sent, before)
         self.assertIn(1, self.native.windows)
 
+    def test_input_release_does_not_cancel_current_capture(self):
+        target = self.native.target
+        self.native.release(1)
+        self.assertEqual(self.sent[-1], 'release 1\n')
+        self.assertIs(self.native.target, target)
+        self.assertEqual(self.frames.cancelled, 0)
+        self.native.release(2)
+        self.assertEqual(self.sent.count('release 1\n'), 1)
+        self.native.unbind(1)
+        self.assertEqual(self.frames.cancelled, 1)
+
     def test_x11_resource_binding_belongs_to_one_native_window_instance(self):
         self.native.observe('window-instance 2')
         self.native.observe('window-state 2 0 x11 -1 1000 700 0')

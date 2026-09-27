@@ -151,6 +151,29 @@ class AttachmentTests(unittest.TestCase):
         self.request('terminate_application')
         self.assertEqual(self.owner.messages[-1]['error'], 'APPLICATION_UNAVAILABLE')
 
+    def test_target_release_cancels_queued_input_but_retains_painted_authority(self):
+        self.ready()
+        target = self.native.target
+        self.input('text', text='fixture')
+        self.input('key', code=28, pressed=True)
+        self.request('release_input', connection=self.attachment.epoch, window=target.window,
+                     generation=target.generation)
+        self.assertEqual(self.owner.messages[-1]['result'], 'released')
+        self.assertIs(self.attachment.ready, target)
+        self.native.commits[0][2](None)
+        self.assertEqual(self.native.input, [])
+        self.input('key', code=30, pressed=True)
+        self.assertEqual(self.native.input[-1][2]['code'], 30)
+
+    def test_stale_release_cannot_cancel_current_target(self):
+        self.ready()
+        target = self.native.target
+        self.request('release_input', connection=self.attachment.epoch - 1, window=target.window,
+                     generation=target.generation)
+        self.assertEqual(self.owner.messages[-1]['error'], 'INPUT_TARGET_UNAVAILABLE')
+        self.assertEqual(self.native.released, [])
+        self.assertIs(self.attachment.ready, target)
+
     def test_explicit_termination_cancels_pending_text_before_lifecycle_dispatch(self):
         self.ready()
         self.input('text', text='fixture')

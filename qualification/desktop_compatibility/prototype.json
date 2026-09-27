@@ -408,6 +408,12 @@
       "result": "Installed public session API passes actual running/windowless force quit and observation-only reattachment after capture/private-bus loss. Supervisor receipts confirm explicit intent, actual child exit, endpoint removal and no surviving owned support processes. Pending input is cancelled and old attachments cannot request termination. The supervisor ignores late termination after its final wait so a completed receipt survives interpreter shutdown.",
       "source_archive_sha256": "8a75b3c07a86d9cc3abde9d0898d40dac5d9418e263874b0793f2ebe8c800086",
       "limits": "Modified source at 36f403e; exact-tag qualification and consumer integration remain required. GTK applications can choose to terminate themselves on D-Bus loss; the fixture explicitly retains its bus connection to isolate host lifecycle behavior."
+    },
+    {
+      "case": "Painted-target input release and concurrent capture disposal on native amd64/arm64",
+      "result": "The actual GTK4 document accepts a plain b after releasing a held Control key without reconnect or another frame grant. Explicit termination of running/windowless applications and reattachment after capture/bus loss all pass on both architectures. The existing session stage records terminating before capture revocation, so intentional capture disposal cannot become a false lifecycle failure.",
+      "source_archive_sha256": "41402908efd0d8d258d04a7573cb48b93771914548bb5d90c78050d9020faee9",
+      "limits": "Auditable modified source at 6823758; immutable-tag qualification and released consumer acceptance remain required."
     }
   ],
   "rejected_assumptions": [

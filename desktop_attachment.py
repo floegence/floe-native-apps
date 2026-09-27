@@ -88,6 +88,14 @@ class DesktopAttachment:
             self.reply(owner, request, 'requested')
         elif method == 'input':
             self.enqueue_input(owner, request, message)
+        elif method == 'release_input':
+            if set(message) != {'id', 'method', 'connection', 'window', 'generation'}:
+                self.reply(owner, request, error='REQUEST_INVALID')
+            elif not self.matches_target(owner, message):
+                self.reply(owner, request, error='INPUT_TARGET_UNAVAILABLE')
+            else:
+                self.cancel_input()
+                self.reply(owner, request, 'released')
         elif method in ('select_window', 'close_window'):
             window = message.get('window')
             if type(window) is not int or not 1 <= window <= 9007199254740991:
@@ -108,12 +116,15 @@ class DesktopAttachment:
         else:
             self.reply(owner, request, error='METHOD_UNSUPPORTED')
 
-    def enqueue_input(self, owner, request, message):
+    def matches_target(self, owner, message):
         target = self.ready
-        if (not self.available(owner) or target is None or self.native.target is not target or
-                any(type(message.get(key)) is not int for key in ('connection', 'window', 'generation')) or
-                message.get('connection') != self.epoch or message.get('window') != target.window or
-                message.get('generation') != target.generation):
+        return (self.available(owner) and target is not None and self.native.target is target and
+                all(type(message.get(key)) is int for key in ('connection', 'window', 'generation')) and
+                message.get('connection') == self.epoch and message.get('window') == target.window and
+                message.get('generation') == target.generation)
+
+    def enqueue_input(self, owner, request, message):
+        if not self.matches_target(owner, message):
             self.reply(owner, request, error='INPUT_TARGET_UNAVAILABLE')
             return
         try:
@@ -124,7 +135,7 @@ class DesktopAttachment:
         except (TypeError, KeyError, ValueError):
             self.input_result(owner, request, 'INPUT_OPERATION_INVALID')
             return
-        self.order.enqueue(owner, (target, request, operation))
+        self.order.enqueue(owner, (self.ready, request, operation))
 
     def admit(self, owner, operation):
         target, request, value = operation
@@ -162,6 +173,9 @@ class DesktopAttachment:
 
     def retire_input(self):
         self.ready, self.awaiting = None, None
+        self.cancel_input()
+
+    def cancel_input(self):
         if self.owner:
             owner = self.owner
             pending, queued = self.order.invalidate(owner)

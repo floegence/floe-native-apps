@@ -428,7 +428,6 @@ class NativeDesktop:
     def release(self, epoch):
         if not self.closed and epoch == self.epoch:
             self.send(f'release {epoch}\n')
-        self.frames.cancel()
 
     def unbind(self, epoch):
         if not self.closed and epoch == self.epoch:

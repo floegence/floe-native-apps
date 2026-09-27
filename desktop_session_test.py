@@ -28,6 +28,7 @@ class SessionTests(unittest.TestCase):
     def test_explicit_termination_signals_only_the_owned_supervisor(self):
         session = self.module.DesktopSession.__new__(self.module.DesktopSession)
         session.closed, session.failed = False, True
+        session.stage, session.record = 'application', Mock()
         session.application = Mock()
         session.helper = Mock()
         other = Mock()
@@ -36,10 +37,21 @@ class SessionTests(unittest.TestCase):
         session.helper.native.lost.assert_called_once_with()
         session.application.send_signal.assert_called_once_with(self.module.signal.SIGTERM)
         other.send_signal.assert_not_called()
+        session.terminate_application()
+        session.record.assert_called_once_with({'state': 'terminating', 'phase': 'application'})
+        session.application.send_signal.assert_called_once()
         session.processes.pop('application')
         with self.assertRaises(ValueError):
             session.terminate_application()
         session.application.send_signal.assert_called_once()
+
+    def test_intentional_termination_does_not_reclassify_capture_disposal_as_failure(self):
+        session = self.module.DesktopSession.__new__(self.module.DesktopSession)
+        session.closed, session.failed = False, False
+        session.stage, session.record = 'terminating', Mock()
+        session.fail('DESKTOP_SERVICE_EXITED', service='capture', exit_code=0)
+        self.assertFalse(session.failed)
+        session.record.assert_not_called()
 
     def test_preserve_authoritative_launch_failure(self):
         for code in ('APPLICATION_HOST_SERVICE_UNAVAILABLE', 'PACKAGE_LAUNCHER_UNSUPPORTED',

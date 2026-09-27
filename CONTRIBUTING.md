@@ -275,6 +275,15 @@ Applications may choose to exit themselves when their private bus fails; the
 host reports their actual exit. The bus-loss fixture explicitly retains its GTK
 connection to distinguish that toolkit policy from host-initiated termination.
 
+`release_input` binds connection, window and geometry like ordinary input. It
+cancels pending input and releases held native keys/buttons while retaining the
+already-painted target. Stale callbacks cannot release a replacement target.
+The keyboard controller may use it on blur; cancelling only a pointer gesture
+still sends individual button releases without interrupting composition.
+The helper records explicit termination before revoking capture. Support
+disposal during that stage cannot overwrite the supervisor's actual exit with
+a capture failure; failures already observed before termination remain recorded.
+
 Confirmed text has one 30-second native completion deadline shared by Xpra and
 the combined backend. A long edit may keep a real editor's event loop busy for
 more than three seconds. Following input stays queued until the actual native

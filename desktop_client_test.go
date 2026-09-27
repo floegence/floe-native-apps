@@ -257,6 +257,10 @@ func TestDesktopClientInvalidTargetAndOversizedInputSendNothing(t *testing.T) {
 		{Method: "terminate_application", Generation: 81},
 		{Method: "terminate_application", Frame: 1},
 		{Method: "terminate_application", Operation: json.RawMessage(`{"pid":123}`)},
+		{Method: "release_input", Connection: 6, Window: 12, Generation: 81},
+		{Method: "release_input", Connection: 7, Generation: 81},
+		{Method: "release_input", Connection: 7, Window: 12},
+		{Method: "release_input", Connection: 7, Window: 12, Generation: 81, Operation: json.RawMessage(`{}`)},
 	} {
 		if _, err := client.Send(t.Context(), request); !errors.Is(err, ErrInvalid) {
 			t.Fatalf("invalid request accepted: %s: %v", request.Method, err)
