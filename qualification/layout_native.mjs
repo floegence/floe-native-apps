@@ -38,14 +38,18 @@ try {
   await page.goto(viewerAddress+'/?port='+new URL(address).port+'&path=/&password='+encodeURIComponent(password)+'&floating_menu=false&encoding=png&clipboard=false&offscreen='+offscreen);
   await page.waitForFunction(()=>window.floeXpraClient?.connected&&Object.values(floeXpraClient.id_to_window).some(win=>floeXpraClient.floePointer.targetForWindow(win)),null,{timeout:25000});
   await page.evaluate(()=>{
-   const c=floeXpraClient;window.layoutEvents=[];window.remoteSizes=[];window.paintEvents=[];
-   // Retain one original PNG to distinguish native capture from viewer paint
+   const c=floeXpraClient;window.layoutEvents=[];window.remoteSizes=[];window.paintEvents=[];window.nativePaintPackets=[];
+   // Retain one original still image to distinguish native capture from viewer paint
    // failures. These are task-owned fixture pixels, never user application data.
    const draw=c.packet_handlers.draw;
    c.packet_handlers.draw=function(packet){
-    if(Utilities.s(packet[6])==='png')window.lastNativePNG={geometry:packet.slice(1,6),sequence:packet[8],bytes:Array.from(packet[7])};
+    const coding=Utilities.s(packet[6]);
+    const record={geometry:packet.slice(1,6),sequence:packet[8],coding,options:packet[10]};
+    nativePaintPackets.push(record);if(nativePaintPackets.length>40)nativePaintPackets.shift();
+    if(['png','png/P','png/L','jpeg','webp','avif'].includes(coding))window.lastNativeImage={...record,bytes:packet[7].slice()};
     return draw.call(this,packet);
    };
+   for(const key in c.packet_handlers)if(c.packet_handlers[key]===draw)c.packet_handlers[key]=c.packet_handlers.draw;
    const damage=c.do_send_damage_sequence;c.do_send_damage_sequence=function(...args){paintEvents.push(args);return damage.apply(this,args)};
    const send=c.send;c.send=function(packet){if(['configure-display','configure-window'].includes(packet[0]))layoutEvents.push(JSON.parse(JSON.stringify(packet)));return send.call(this,packet)};
    const fit=win=>{
@@ -131,8 +135,12 @@ try {
    const paintWait=Date.now()-paintStarted;
    if(content<8) {
     await writeFile(receipt+'.png',screenshot);
-    const sourcePNG=await page.evaluate(()=>window.lastNativePNG);
-    if(sourcePNG)await writeFile(receipt+'.source.png',Buffer.from(sourcePNG.bytes));
+    const nativeImage=await page.evaluate(()=>window.lastNativeImage&&({...lastNativeImage,bytes:Array.from(lastNativeImage.bytes)}));
+    if(nativeImage){
+     const {bytes,...metadata}=nativeImage;
+     await writeFile(receipt+'.source.json',JSON.stringify(metadata,null,2));
+     await writeFile(receipt+'.source.'+nativeImage.coding.split('/')[0],Buffer.from(bytes));
+    }
     const diagnostics=await page.evaluate(()=>{
      const canvas=primary.canvas,copy=document.createElement('canvas');
      copy.width=copy.height=4;copy.getContext('2d').drawImage(canvas,0,0,4,4);
@@ -143,7 +151,7 @@ try {
      });
      return {canvas:[canvas.width,canvas.height],elements,connected:floeXpraClient.connected,
       covering:document.elementsFromPoint(160,180).map(element=>({tag:element.tagName,id:element.id,classes:element.className})),
-      raw:[...copy.getContext('2d').getImageData(0,0,4,4).data],paintEvents:paintEvents.slice(-40),layoutEvents,remoteSizes};
+      raw:[...copy.getContext('2d').getImageData(0,0,4,4).data],paintEvents:paintEvents.slice(-40),nativePaintPackets,layoutEvents,remoteSizes};
     });
     await writeFile(receipt+'.diagnostics.json',JSON.stringify(diagnostics,null,2));
     await page.screenshot({path:receipt+'.full.png'});

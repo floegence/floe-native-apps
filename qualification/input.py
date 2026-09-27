@@ -204,7 +204,13 @@ for(const editor of editors)editor.addEventListener('input',()=>{const body=JSON
         if evidence:
             target = Path(evidence) / ('density-' + str(config['density'])) / kind
             target.mkdir(parents=True, exist_ok=True)
-            for name in ('process.json', 'application.json', 'input-trace.jsonl', 'received.json', 'received.txt', 'received.unicode.json', 'received.density.json', 'received.json.png', 'received.json.source.png', 'received.json.full.png', 'received.json.diagnostics.json', 'received.diagnostics.json', 'received.focus.json', 'received.ready', 'received.hover', 'received.clicked', 'received.pointer.json', 'received.layout.json', 'received.layout-native.json', 'received.windows.json', 'server.log'):
+            for extension in ('json', 'png', 'jpeg', 'webp', 'avif'):
+                image = directory / ('received.json.source.' + extension)
+                if image.exists():
+                    shutil.copy2(image, target / image.name)
+                elif (target / image.name).exists():
+                    (target / image.name).unlink()
+            for name in ('process.json', 'application.json', 'input-trace.jsonl', 'received.json', 'received.txt', 'received.unicode.json', 'received.density.json', 'received.json.png', 'received.json.full.png', 'received.json.diagnostics.json', 'received.diagnostics.json', 'received.focus.json', 'received.ready', 'received.hover', 'received.clicked', 'received.pointer.json', 'received.layout.json', 'received.layout-native.json', 'received.windows.json', 'server.log'):
                 if (directory / name).exists():
                     shutil.copy2(directory / name, target / name)
                 elif (target / name).exists():
