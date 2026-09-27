@@ -169,7 +169,8 @@ class ControlClient:
         self.client.sendall(encode_message({'id': self.request_id, 'method': method, **values}))
         return self.request_id
 
-    def paint(self, stage, expected=None, marker=None, required=(), absent=(), accept_bounds=None):
+    def paint(self, stage, expected=None, marker=None, required=(), absent=(), accept_bounds=None,
+              sample_point=(200, 240)):
         from PIL import Image
         import hashlib
         recorded = []
@@ -198,7 +199,8 @@ class ControlClient:
                     record['marker_bounds'] = [x0, y0, x1, y1]
                     matches = not accept_bounds or accept_bounds(record['marker_bounds'])
             if expected is not None:
-                sample = image.getpixel((200, 240))
+                sample = image.getpixel(sample_point)
+                record['selected_window_sample_point'] = sample_point
                 record['selected_window_pixel'] = sample
                 other = (155, 49, 19) if expected == (19, 87, 155) else (19, 87, 155)
                 record['inactive_window_pixels'] = colors.get(other, 0)

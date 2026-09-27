@@ -64,9 +64,9 @@
   ],
   "unproven_release_requirements": [
     "Complete durable helper entrypoint and public preparation/launch APIs: one production launch plan and supervisor, prepared graphics/input/portal resources, authoritative native readiness and Runtime-independent lifetime",
-    "Migrate remaining standalone sandbox fixture orchestration to the same installed helper; qualify cancellation, startup failures, service loss, stale callbacks, concurrent instances and reconnect with actual applications",
-    "Pure Wayland Chromium confirmed-text delivery and ordering with actual document receipts; native Chromium/Xwayland does not qualify text-input-v3, and serial/socket flush alone is not consumption evidence",
-    "Native cursor and clipboard transport, complete window/popup operations and the approved display/input regression matrix",
+    "Run remaining sandbox and lifecycle qualification through the installed helper; existing persistent Snap and Flatpak prototypes are not installation evidence",
+    "Complete both native architectures and published installed-helper qualification of the Wayland text-input-v3 adapter; actual arm64 Chromium document/frame receipts are available, serial or socket flush alone is not consumption evidence",
+    "Complete both native architectures, toolkit coverage and installed-helper qualification of cursor, clipboard, window/popup and display/input behavior; current clipboard receipts cover GTK3/GTK4/Qt5/Qt6 Wayland/Xwayland and Chromium Wayland on arm64",
     "The remaining DEB/RPM, AppImage, classic Snap, GNOME Xorg/Wayland, KDE Wayland, Xfce X11 and no-desktop combinations with dedicated actual systems and package identities",
     "Pinned new production component identities, original source/license obligations, native amd64/arm64 artifact builds, install/cancellation/recovery/security checks and exact-tag release qualification",
     "Formal upstream release, Go proxy/checksum/artifact readback and only then Redeven integration, targeted acceptance, deployment, local merge and task resource cleanup"
@@ -328,6 +328,11 @@
       "case": "Persistent Flatpak GNOME Text Editor and KWrite on native arm64",
       "result": "The same session prepares the official IBus portal, trusted file portal and restricted host-document facade. Both real sandboxes exclude broad host/home filesystem access; authenticated frame/input IPC, 65 Unicode/Enter commits including 14000 bytes, detach/reconnect, remote Save As and exact matching bytes pass. Official initial-file and new-file grants are observed; normal close exits all children and fixture-only grants are removed.",
       "limits": "Qt still receives its private module in an explicitly task-owned sandbox directory. General package resource realization/installation, pure Wayland Chromium and full desktop/package qualification remain unfinished."
+    },
+    {
+      "case": "Bounded native clipboard on arm64 GTK3/GTK4/Qt5/Qt6 Wayland/Xwayland and Chromium Wayland",
+      "result": "One compositor selection owner and the existing ordered input scheduler publish before Paste. Actual 11,400-byte Unicode paste, Copy, Cut, re-paste, oversized application offer rejection, decoded final frames, detach/reconnect and normal process cleanup pass. Source tests reject stale target/connection reads, incomplete UTF-8, late publication and withdrawn offers.",
+      "limits": "Selection publication does not acknowledge asynchronous application Paste consumption; an immediate following Enter can precede pasted bytes. Native amd64, product clipboard permissions, installed activation and the full desktop/package matrix remain required."
     }
   ],
   "rejected_assumptions": [

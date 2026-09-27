@@ -8,6 +8,7 @@ import (
 	"io"
 	"math"
 	"net"
+	"strings"
 	"time"
 	"unicode/utf8"
 )
@@ -97,22 +98,34 @@ type DesktopCursor struct {
 	YHot          float64 `json:"yhot,omitempty"`
 }
 
+// DesktopClipboard is the private application's current UTF-8 selection.
+// Text may be empty; Error instead reports an unavailable or unsupported offer.
+// It is independent of confirmed-text input and never authorizes a target.
+type DesktopClipboard struct {
+	Connection uint64  `json:"connection"`
+	Window     uint64  `json:"window"`
+	Generation uint64  `json:"generation"`
+	Text       *string `json:"text,omitempty"`
+	Error      string  `json:"error,omitempty"`
+}
+
 // DesktopEvent contains one complete helper event or request result. A frame
 // event includes its bounded PNG payload. The caller owns those returned bytes.
 // Result and Error preserve helper semantics: submitted is not a widget receipt.
 type DesktopEvent struct {
-	Event      string          `json:"event,omitempty"`
-	ID         uint64          `json:"id,omitempty"`
-	Version    int             `json:"version,omitempty"`
-	Connection uint64          `json:"connection,omitempty"`
-	State      *DesktopState   `json:"state,omitempty"`
-	Frame      *DesktopFrame   `json:"frame,omitempty"`
-	Cursor     *DesktopCursor  `json:"cursor,omitempty"`
-	Bytes      int             `json:"bytes,omitempty"`
-	Code       string          `json:"code,omitempty"`
-	Error      string          `json:"error,omitempty"`
-	Result     json.RawMessage `json:"result,omitempty"`
-	Pixels     []byte          `json:"-"`
+	Event      string            `json:"event,omitempty"`
+	ID         uint64            `json:"id,omitempty"`
+	Version    int               `json:"version,omitempty"`
+	Connection uint64            `json:"connection,omitempty"`
+	State      *DesktopState     `json:"state,omitempty"`
+	Frame      *DesktopFrame     `json:"frame,omitempty"`
+	Cursor     *DesktopCursor    `json:"cursor,omitempty"`
+	Clipboard  *DesktopClipboard `json:"clipboard,omitempty"`
+	Bytes      int               `json:"bytes,omitempty"`
+	Code       string            `json:"code,omitempty"`
+	Error      string            `json:"error,omitempty"`
+	Result     json.RawMessage   `json:"result,omitempty"`
+	Pixels     []byte            `json:"-"`
 }
 
 // DesktopRequest names a version-1 helper operation. Operation is the native
@@ -224,6 +237,9 @@ func (c *DesktopConnection) read() (DesktopEvent, error) {
 	if event.Event != "cursor" && event.Cursor != nil {
 		return DesktopEvent{}, ErrDesktopProtocol
 	}
+	if event.Event != "clipboard" && event.Clipboard != nil {
+		return DesktopEvent{}, ErrDesktopProtocol
+	}
 	if event.Event == "" {
 		if !desktopID(event.ID) || (event.Error == "") == (len(event.Result) == 0) || event.Frame != nil || event.Bytes != 0 {
 			return DesktopEvent{}, ErrDesktopProtocol
@@ -234,6 +250,20 @@ func (c *DesktopConnection) read() (DesktopEvent, error) {
 		return DesktopEvent{}, ErrDesktopProtocol
 	}
 	switch event.Event {
+	case "clipboard":
+		clipboard := event.Clipboard
+		if clipboard == nil || clipboard.Connection != c.connection || !desktopID(clipboard.Window) ||
+			!desktopID(clipboard.Generation) || event.Frame != nil || event.State != nil || event.Bytes != 0 ||
+			(clipboard.Text == nil) == (clipboard.Error == "") {
+			return DesktopEvent{}, ErrDesktopProtocol
+		}
+		if clipboard.Text != nil {
+			if !utf8.ValidString(*clipboard.Text) || len(*clipboard.Text) > 16000 || strings.ContainsRune(*clipboard.Text, 0) {
+				return DesktopEvent{}, ErrDesktopProtocol
+			}
+		} else if clipboard.Error != "CLIPBOARD_UNAVAILABLE" {
+			return DesktopEvent{}, ErrDesktopProtocol
+		}
 	case "attached":
 		if c.connection != 0 || event.Version != 1 || !desktopID(event.Connection) || event.State == nil || event.Frame != nil || event.Bytes != 0 {
 			return DesktopEvent{}, ErrDesktopProtocol

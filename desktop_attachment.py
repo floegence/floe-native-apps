@@ -61,8 +61,11 @@ class DesktopAttachment:
                     self.native.target is not frame[1]):
                 self.reply(owner, request, error='FRAME_TARGET_UNAVAILABLE')
                 return
+            first = self.ready is not frame[1]
             self.ready, self.awaiting = frame[1], None
             self.reply(owner, request, 'painted')
+            if first:
+                self.native.sync_clipboard(self.epoch, self.ready)
             self.pump()
         elif method == 'refresh':
             self.damage()
@@ -124,6 +127,8 @@ class DesktopAttachment:
                     return None
                 adapter, token = context
                 return request, adapter, token, value['text']
+            if value['kind'] == 'clipboard':
+                return request, self.native.clipboard, self.native.clipboard.token(target), value['text']
             self.native.deliver(self.epoch, target, value)
             # A native transport submission is not an application text receipt.
             self.reply(owner, request, 'submitted')
@@ -178,6 +183,18 @@ class DesktopAttachment:
         if self.owner is owner:
             self.cursor_changed()
             self.pump()
+
+    def clipboard_changed(self, selection):
+        target, epoch, text = selection
+        if (not self.owner or self.failed or epoch != self.epoch or self.ready is not target or
+                self.native.target is not target):
+            return
+        value = {'connection': epoch, 'window': target.window, 'generation': target.generation}
+        if text is None:
+            value['error'] = 'CLIPBOARD_UNAVAILABLE'
+        else:
+            value['text'] = text
+        self.owner.send({'event': 'clipboard', 'clipboard': value})
 
     def pump(self):
         if (not self.owner or self.native.target is None or not self.dirty or self.capture or

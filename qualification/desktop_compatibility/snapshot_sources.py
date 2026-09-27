@@ -16,7 +16,7 @@ def main():
     if not output.is_absolute():
         raise ValueError('Qualification source archive requires an absolute path')
     paths = [*repository.glob('*.py'), *source.glob('*.py'), *source.glob('*.sh'),
-             *source.glob('*.c'), *source.glob('*.cpp'), *source.glob('Dockerfile*'),
+             *source.glob('*.c'), *source.glob('*.h'), *source.glob('*.cpp'), *source.glob('Dockerfile*'),
              repository / 'qualification/input_fixture.py', *repository.glob('native/qt_native.*')]
     files, payloads = {}, {}
     for path in sorted(paths):

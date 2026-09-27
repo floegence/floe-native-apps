@@ -42,7 +42,7 @@ record = {'architecture': platform.machine(), 'builder_image': os.environ['FLOE_
     'signed_builder_archives': Path('/builder-apks.sha256').read_text().splitlines(),
     'packages': subprocess.check_output(['apk', 'info', '-vv'], text=True).splitlines(),
     'source': {name: hashlib.sha256((source / name).read_bytes()).hexdigest() for name in
-               ('probe_shell.c', 'frame_probe.c', 'build_portable_probe.sh', 'Dockerfile.desktop-native')},
+               ('probe_shell.c', 'clipboard_native.h', 'frame_probe.c', 'build_portable_probe.sh', 'Dockerfile.desktop-native')},
     'artifacts': {name: {'sha256': hashlib.sha256((output / name).read_bytes()).hexdigest(),
         'elf': subprocess.check_output(['readelf', '-hld', str(output / name)], text=True)}
         for name in ('probe-shell.so', 'frame-probe')},

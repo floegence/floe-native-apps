@@ -305,6 +305,29 @@ PNG decoding and pixel checks precede frame acknowledgement, so geometry changes
 during inspection cannot authorize input using a retired frame. These are native
 application receipts, not evidence for a product viewer or a real client IME.
 
+The same unpublished helper transports the native clipboard as bounded UTF-8
+selection data, independently of confirmed-text input. Publication enters the
+existing input scheduler so subsequent Paste keys cannot precede selection
+ownership. Publication acknowledges ownership only: a toolkit's asynchronous
+Paste can still finish after a following key. Actual widget receipts, not the
+publication reply, establish pasted document bytes. The compositor uses standard
+Wayland data sources and the existing Xwayland selection bridge; it never turns
+clipboard data into a text-input transaction. Reads and writes are nonblocking,
+bounded to 16,000 bytes with transfer timeouts, and keep only the current revision.
+Unavailable, oversized or invalid UTF-8 offers produce an explicit clipboard
+error. Viewer-originated publications are not echoed as application Copy events.
+Only a painted target may publish or receive a snapshot; detach/target retirement
+discards in-flight snapshots while retaining the application's native selection.
+
+`session_probe.py` modes `clipboard`, `clipboard-x11` and `clipboard-chromium`
+exercise GTK3/GTK4/Qt5/Qt6 Wayland/Xwayland and pure Wayland Chromium Copy/Cut/Paste,
+oversized source rejection, 11,400-byte Unicode selection transfer, actual
+document bytes, decoded final frames and detach/reconnect. The GTK fixture samples
+the empty second editor because the long pasted document occupies the original
+sample pixel. Select a toolkit with `FLOE_PROBE_TOOLKIT`; Qt records the exact modules in
+`FLOE_PROBE_QT_PLUGINS`. Native arm64 results do not qualify amd64,
+product clipboard permission handling or the complete distribution.
+
 The `chromium-v3` context probe isolates native text-input-v3 state progression.
 An empty `done` acknowledges each client commit; it does not acknowledge text
 consumption. Chromium otherwise withholds its next state update. Actual document

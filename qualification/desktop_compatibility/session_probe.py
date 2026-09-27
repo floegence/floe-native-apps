@@ -20,6 +20,13 @@ from application_processes import identity
 from source_proof import record_sources
 
 
+def fixture_toolkit():
+    value = os.environ.get('FLOE_PROBE_TOOLKIT', 'gtk4')
+    if value not in ('gtk', 'gtk4', 'qt5', 'qt6'):
+        raise ValueError('Unknown native session fixture toolkit')
+    return value
+
+
 def helper(root, runtime, evidence, token, mode):
     from gi.repository import Gio, GLib
     from desktop_graphics import DesktopGraphics
@@ -30,9 +37,18 @@ def helper(root, runtime, evidence, token, mode):
     environment = {**os.environ, 'XDG_RUNTIME_DIR': str(runtime), 'WAYLAND_DISPLAY': 'wayland-0',
         'DBUS_SESSION_BUS_ADDRESS': 'unix:path=' + str(runtime / 'bus'), 'GDK_BACKEND': 'wayland',
         'FLOE_TEST_WINDOW_COLOR': '13579b'}
+    if mode == 'clipboard-x11':
+        environment['GDK_BACKEND'] = 'x11'
     for name in ('DISPLAY', 'XAUTHORITY', 'FLOE_NATIVE_APPLICATION_ENV', 'FLOE_NATIVE_INPUT_GTK_PATH',
-                 'GTK_IM_MODULE', 'GTK_IM_MODULE_FILE', 'GTK_PATH', 'GIO_EXTRA_MODULES'):
+                 'GTK_IM_MODULE', 'GTK_IM_MODULE_FILE', 'GTK_PATH', 'GIO_EXTRA_MODULES',
+                 'QT_IM_MODULE', 'QT_PLUGIN_PATH', 'QT_QPA_PLATFORM'):
         environment.pop(name, None)
+    if fixture_toolkit().startswith('qt'):
+        # Qualification supplies already-built native adapters. Installation
+        # must eventually realize this same module directory from its catalog.
+        plugins = Path(os.environ['FLOE_PROBE_QT_PLUGINS']).resolve(strict=True)
+        environment.update(QT_IM_MODULE='floe-client-native', QT_PLUGIN_PATH=str(plugins),
+            QT_QPA_PLATFORM='xcb' if mode == 'clipboard-x11' else 'wayland')
     for key, name in (('XDG_CONFIG_HOME', 'config'), ('XDG_CACHE_HOME', 'cache'), ('XDG_DATA_HOME', 'data')):
         path = runtime / name
         path.mkdir(mode=0o700)
@@ -124,7 +140,7 @@ def main():
         helper(root, Path(sys.argv[3]), Path(sys.argv[4]), sys.stdin.readline().strip(), sys.argv[5])
         return
     mode = sys.argv[2] if len(sys.argv) > 2 else 'normal'
-    assert mode in ('normal', 'chromium', 'slow-window', 'launcher-failure', 'support-failure', 'capture-loss', 'bus-loss', 'runtime-noexec')
+    assert mode in ('normal', 'chromium', 'clipboard', 'clipboard-x11', 'clipboard-chromium', 'slow-window', 'launcher-failure', 'support-failure', 'capture-loss', 'bus-loss', 'runtime-noexec')
     from control_probe import ControlClient
     evidence = Path(tempfile.mkdtemp(prefix='persistent-session-', dir=root))
     runtime = Path(tempfile.mkdtemp(prefix='floe-session-', dir=f'/run/user/{os.getuid()}'))
@@ -133,7 +149,7 @@ def main():
     desktop = evidence / 'fixture.desktop'
     executable = evidence / 'launch.py'
     browser = None
-    if mode == 'chromium':
+    if mode in ('chromium', 'clipboard-chromium'):
         from chromium_context_probe import ChromiumPage
         browser = ChromiumPage(evidence, receipt, 'wayland')
     prefix = 'import sys, time, runpy\n'
@@ -142,12 +158,17 @@ def main():
     elif mode == 'launcher-failure':
         prefix += 'sys.exit(46)\n'
     executable.write_text(('import os\n' + f'command = {browser.command!r}\nos.execv(command[0], command)\n') if browser else
-        prefix + f'sys.argv = {[str(root / "input_fixture.py"), "gtk4", str(receipt)]!r}\n' +
+        prefix + f'sys.argv = {[str(root / "input_fixture.py"), fixture_toolkit(), str(receipt)]!r}\n' +
         f'runpy.run_path({str(root / "input_fixture.py")!r}, run_name="__main__")\n')
     desktop.write_text('[Desktop Entry]\nType=Application\nName=Floe persistent test\nExec=' +
         f'"{sys.executable}" "{executable}"\n')
     result = {'passed': False, 'mode': mode, 'evidence': str(evidence), 'sources': record_sources(root),
               'runtime': str(runtime), 'runtime_noexec': bool(os.statvfs(runtime).f_flag & os.ST_NOEXEC)}
+    if not browser:
+        result['toolkit'] = fixture_toolkit()
+        if fixture_toolkit().startswith('qt'):
+            result['qt_modules_sha256'] = {path.name: hashlib.sha256(path.read_bytes()).hexdigest()
+                for path in Path(os.environ['FLOE_PROBE_QT_PLUGINS']).glob('platforminputcontexts/*.so')}
     process, client, started = None, None, None
     mounted = None
     logs = (evidence / 'helper.log').open('w')
@@ -217,6 +238,10 @@ def main():
         assert client.response(denied)['error'] == 'INPUT_TARGET_UNAVAILABLE'
         def paint(stage, values=None):
             options = {'marker': browser.commit_marker(values) if values else (59, 117, 159)} if browser else {'expected': (19, 87, 155)}
+            if mode in ('clipboard', 'clipboard-x11'):
+                # Long pasted text occupies the first editor. The empty second
+                # editor retains the same distinctive application background.
+                options['sample_point'] = (600, 240)
             return client.paint(stage, **options)
         frame = paint('first-frame')[-1]
         result['frames'] = [frame]
@@ -239,6 +264,9 @@ def main():
         wait(lambda: json.loads(receipt.read_text()) == [expected, ''], 'Actual Unicode/Enter order differs')
         result['document_sha256'] = hashlib.sha256(expected.encode()).hexdigest()
         result['unicode_transactions'] = 32
+        if mode in ('clipboard', 'clipboard-x11', 'clipboard-chromium'):
+            from clipboard_fixture import exercise
+            expected = exercise(client, target, receipt, wait, result)
         input({'kind': 'key', 'code': 29, 'pressed': True})
         old_connection = client.generation
         client.close()

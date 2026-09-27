@@ -14,6 +14,7 @@
 #include <math.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <signal.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -82,6 +83,7 @@ struct probe {
     int32_t wheel_detents[2];
     struct weston_desktop_client *barrier_client;
     uint64_t barrier_sequence, barrier_window, barrier_connection;
+    struct native_clipboard *clipboard;
 };
 struct probe_window {
     struct wl_list link;
@@ -138,6 +140,7 @@ struct text_context {
 };
 
 static void release_input(struct probe *p);
+static void clipboard_pause(struct native_clipboard *clipboard);
 static void schedule_cursor(struct probe *p);
 static void end_window_grab(struct weston_pointer_grab *base);
 static void control_lost(struct probe *p) {
@@ -149,6 +152,7 @@ static void control_lost(struct probe *p) {
     close(descriptor);
     p->output_start = p->output_end = p->used = 0;
     p->connection = 0;
+    if (p->clipboard) clipboard_pause(p->clipboard);
     p->capture_pid = 0;
     free(p->cursor_pixels);
     p->cursor_pixels = NULL;
@@ -1117,6 +1121,8 @@ static bool submit_text(struct probe *p, char *text, bool encoded, uint64_t iden
     return true;
 }
 
+#include "clipboard_native.h"
+
 static void command(struct probe *p, char *line) {
     if (!strcmp(line, "display-query")) {
         /* The main compositor initializes Xwayland before dispatching control
@@ -1150,6 +1156,10 @@ static void command(struct probe *p, char *line) {
         read_cursor(p, identity, cursor_offset);
         return;
     }
+    if (sscanf(line, "clipboard-read %" SCNu64 " %zu", &identity, &cursor_offset) == 2) {
+        clipboard_read_chunk(p->clipboard, identity, cursor_offset);
+        return;
+    }
     if (sscanf(line, "connection %" SCNu64, &connection) == 1) {
         if (connection > p->last_connection) {
             release_input(p);
@@ -1162,6 +1172,7 @@ static void command(struct probe *p, char *line) {
     }
     if (sscanf(line, "detach %" SCNu64, &connection) == 1) {
         if (connection == p->connection) {
+            clipboard_pause(p->clipboard);
             release_input(p);
             p->connection = 0;
             free(p->cursor_pixels);
@@ -1208,7 +1219,18 @@ static void command(struct probe *p, char *line) {
         if (strncmp(line, "key ", 4) && strncmp(line, "button ", 7) &&
             strncmp(line, "motion ", 7) && strncmp(line, "scroll ", 7) &&
             strncmp(line, "text ", 5) && strncmp(line, "text-commit ", 12) &&
+            strncmp(line, "clipboard-set ", 14) && strcmp(line, "clipboard-sync") &&
             strncmp(line, "client-barrier ", 15) && strcmp(line, "close")) return;
+    }
+    if (!strcmp(line, "clipboard-sync")) {
+        clipboard_capture(p->clipboard);
+        return;
+    }
+    int clipboard_prefix = 0;
+    if (sscanf(line, "clipboard-set %" SCNu64 " %n", &identity, &clipboard_prefix) == 1 && clipboard_prefix > 0) {
+        bool published = p->connection && input_window(p) && clipboard_publish(p->clipboard, line + clipboard_prefix);
+        emit(p, "clipboard-%s %" PRIu64 "\n", published ? "published" : "rejected", identity);
+        return;
     }
     if (sscanf(line, "client-barrier %" SCNu64, &identity) == 1 && identity) {
         struct probe_window *window = window_for_surface(p, p->current);
@@ -1305,6 +1327,8 @@ static void destroy_probe(struct wl_listener *listener, void *data) {
     (void)data;
     struct probe *p = wl_container_of(listener, p, destroy);
     control_lost(p);
+    clipboard_destroy_native(p->clipboard);
+    p->clipboard = NULL;
     wl_list_remove(&p->destroy.link);
     wl_list_remove(&p->capture_authority.link);
     wl_list_remove(&p->focus.link);
@@ -1360,6 +1384,13 @@ WL_EXPORT int wet_shell_init(struct weston_compositor *compositor, int *argc, ch
     struct weston_output *output;
     wl_list_for_each(output, &compositor->output_list, link) output_created(&p->output_created, output);
     weston_seat_init(&p->seat, compositor, "floe-prototype");
+    /* A clipboard receiver may close its pipe at any point. Only this private
+     * compositor process treats that as EPIPE instead of losing the session. */
+    struct sigaction pipe_action = { .sa_handler = SIG_IGN };
+    sigemptyset(&pipe_action.sa_mask);
+    if (sigaction(SIGPIPE, &pipe_action, NULL) < 0) return -1;
+    p->clipboard = clipboard_create_native(p);
+    if (!p->clipboard) return -1;
     weston_seat_init_pointer(&p->seat);
     p->cursor_changed.notify = cursor_changed;
     p->pointer_focus.notify = pointer_focus_changed;

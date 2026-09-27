@@ -35,6 +35,7 @@ class Native:
         self.input, self.released, self.captures, self.commits, self.closed = [], [], [], [], []
         self.context = (self, 'context')
         self.cursor = SimpleNamespace(current=None, revision=0)
+        self.clipboard_syncs = []
 
     def bind(self, epoch):
         self.epoch = epoch
@@ -59,6 +60,9 @@ class Native:
 
     def context_for(self, target):
         return self.context
+
+    def sync_clipboard(self, epoch, target):
+        self.clipboard_syncs.append((epoch, target))
 
     def commit(self, token, text, completed):
         self.commits.append((token, text, completed))
@@ -135,6 +139,42 @@ class AttachmentTests(unittest.TestCase):
         self.acknowledge()
         self.input()
         self.assertEqual(len(self.native.input), 1)
+
+    def test_clipboard_requires_a_painted_target_and_syncs_once_per_generation(self):
+        target = self.native.target
+        def clipboard():
+            return [message for message in self.owner.messages if message.get('event') == 'clipboard']
+        self.attachment.clipboard_changed((target, 1, 'not painted'))
+        self.assertEqual(clipboard(), [])
+        self.assertEqual(self.native.clipboard_syncs, [])
+        self.ready()
+        self.assertEqual(self.native.clipboard_syncs, [(1, target)])
+        self.attachment.clipboard_changed((target, 1, 'visible'))
+        self.assertEqual(clipboard()[-1]['clipboard']['text'], 'visible')
+        self.attachment.damage()
+        self.ready()
+        self.assertEqual(self.native.clipboard_syncs, [(1, target)])
+        self.native.target = SimpleNamespace(window=1, generation=2)
+        self.attachment.scene_changed()
+        self.attachment.clipboard_changed((target, 1, 'retired'))
+        self.assertEqual(len(clipboard()), 1)
+        self.ready()
+        self.assertEqual(self.native.clipboard_syncs[-1], (1, self.native.target))
+
+    def test_clipboard_takeover_cannot_expose_old_connection_or_target(self):
+        self.ready()
+        target, previous = self.native.target, self.owner
+        self.owner = Owner(self.attachment)
+        self.attachment.attach(self.owner)
+        self.attachment.clipboard_changed((target, 1, 'old'))
+        self.attachment.clipboard_changed((target, 2, 'before paint'))
+        self.ready()
+        self.attachment.clipboard_changed((target, 1, 'late'))
+        self.attachment.clipboard_changed((target, 2, ''))
+        current = [message for message in self.owner.messages if message.get('event') == 'clipboard']
+        self.assertEqual(current, [{'event': 'clipboard', 'clipboard': {
+            'connection': 2, 'window': 1, 'generation': 1, 'text': ''}}])
+        self.assertFalse(any(message.get('event') == 'clipboard' for message in previous.messages))
 
     def test_metadata_update_does_not_cancel_text_or_require_another_frame(self):
         self.ready()

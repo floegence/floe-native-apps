@@ -9,6 +9,7 @@ window metadata alone never selects an input method or proves application exit.
 from dataclasses import dataclass
 import math
 from desktop_cursor import NativeCursor
+from desktop_clipboard import NativeClipboard
 
 
 MAX_BUFFER = 128 * 1024
@@ -148,6 +149,7 @@ class NativeDesktop:
         self.text_contexts, self.last_text_context = {}, 0
         self.text_request, self.last_text_request = None, 0
         self.cursor = NativeCursor(send, lambda: self.target if self.epoch else None, self.cursor_changed, lambda: self.epoch)
+        self.clipboard = NativeClipboard(self, self.clipboard_changed)
 
     def observe(self, line):
         if self.closed:
@@ -160,6 +162,10 @@ class NativeDesktop:
             if fields != ['native-version', '1'] or self.version is not None:
                 raise ValueError('Unsupported native version')
             self.version = 1
+        elif kind in ('clipboard-state', 'clipboard-data', 'clipboard-published', 'clipboard-rejected'):
+            if self.version != 1:
+                raise ValueError('Native clipboard is unavailable')
+            self.clipboard.observe(fields)
         elif kind in ('cursor-state', 'cursor-data'):
             if self.version != 1:
                 raise ValueError('Native cursor is unavailable')
@@ -356,8 +362,13 @@ class NativeDesktop:
         if self.attachment:
             self.attachment.cursor_changed()
 
+    def clipboard_changed(self, selection):
+        if self.attachment:
+            self.attachment.clipboard_changed(selection)
+
     def changed(self):
         self.cursor.invalidate()
+        self.clipboard.invalidate()
         if self.attachment:
             self.attachment.scene_changed()
 
@@ -367,6 +378,7 @@ class NativeDesktop:
         self.closed, self.target, self.focus, self.epoch = True, None, None, 0
         self.text_contexts.clear()
         self.cursor.close()
+        self.clipboard.close()
         request, self.text_request = self.text_request, None
         if request:
             request[4]('INPUT_TARGET_UNAVAILABLE')
@@ -420,6 +432,7 @@ class NativeDesktop:
             self.send(f'detach {epoch}\n')
             self.epoch = 0
             self.cursor.invalidate()
+            self.clipboard.invalidate()
         self.frames.cancel()
 
     def capture(self, target, completed):
@@ -444,7 +457,7 @@ class NativeDesktop:
             raise ValueError('Invalid native input')
         fields = {'key': {'code', 'pressed'}, 'move': {'x', 'y'},
                   'button': {'x', 'y', 'button', 'pressed'}, 'scroll': {'x', 'y', 'dx', 'dy'},
-                  'text': {'text'}}
+                  'text': {'text'}, 'clipboard': {'text'}}
         kind = operation.get('kind')
         if not isinstance(kind, str) or kind not in fields or set(operation) != fields[kind] | {'kind'}:
             raise ValueError('Invalid native input')
@@ -494,6 +507,9 @@ class NativeDesktop:
             if token:
                 return self.contexts, token
         return None
+
+    def sync_clipboard(self, epoch, target):
+        self.submit(epoch, target, ['clipboard-sync'])
 
     def text_operation(self, epoch, target, kind, completed, *, context=None, text=None):
         if self.text_request is not None or kind not in ('barrier', 'text'):

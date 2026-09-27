@@ -11,6 +11,7 @@ import (
 	"image/png"
 	"io"
 	"net"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -57,6 +58,49 @@ func desktopTestFrame(size int) DesktopEvent {
 	return DesktopEvent{Event: "frame", Bytes: size, Frame: &DesktopFrame{
 		Encoding: "png", Width: 3, Height: 2, Sequence: 42, Connection: 7, Window: 12, Generation: 81,
 	}}
+}
+
+func TestDesktopClientClipboardSelection(t *testing.T) {
+	for _, name := range []string{"text", "empty", "unavailable", "wrong_connection", "both", "missing", "oversized", "nul", "wrong_event"} {
+		t.Run(name, func(t *testing.T) {
+			client, peer := desktopTestConnection(t)
+			text := "你好 e\u0301 👨‍👩‍👧‍👦"
+			selection := &DesktopClipboard{Connection: 7, Window: 1, Generation: 2, Text: &text}
+			event := DesktopEvent{Event: "clipboard", Clipboard: selection}
+			switch name {
+			case "empty":
+				text = ""
+			case "unavailable":
+				selection.Text = nil
+				selection.Error = "CLIPBOARD_UNAVAILABLE"
+			case "wrong_connection":
+				selection.Connection = 6
+			case "both":
+				selection.Error = "CLIPBOARD_UNAVAILABLE"
+			case "missing":
+				selection.Text = nil
+			case "oversized":
+				text = strings.Repeat("x", 16001)
+			case "nul":
+				text = "\x00"
+			case "wrong_event":
+				event.Event = "capture_unavailable"
+				event.Code = "CAPTURE_UNAVAILABLE"
+			}
+			go func() { _, _ = peer.Write(desktopTestJSON(event)) }()
+			ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+			defer cancel()
+			got, err := client.Read(ctx)
+			if name == "text" || name == "empty" || name == "unavailable" {
+				if err != nil || got.Clipboard == nil || got.Clipboard.Error != selection.Error ||
+					selection.Text != nil && (got.Clipboard.Text == nil || *got.Clipboard.Text != text) {
+					t.Fatalf("selection framing changed: %v", err)
+				}
+			} else if !errors.Is(err, ErrDesktopProtocol) {
+				t.Fatalf("invalid selection accepted: %v", err)
+			}
+		})
+	}
 }
 
 func TestDesktopClientFrameAndReplyRemainDistinct(t *testing.T) {
