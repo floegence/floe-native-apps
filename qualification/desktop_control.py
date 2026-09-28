@@ -16,6 +16,12 @@ from desktop_native import NativeDesktop
 
 
 class Frames:
+    def configure(self, mode):
+        pass
+
+    def refine(self):
+        pass
+
     def cancel(self):
         pass
 
