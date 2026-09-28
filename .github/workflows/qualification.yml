@@ -347,7 +347,7 @@ jobs:
     name: Release gate
     if: always()
     needs: [source, vulnerabilities, native, desktop]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 1
     steps:
       - env:
