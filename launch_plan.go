@@ -31,7 +31,12 @@ type ApplicationPlanOptions struct {
 	Python      string
 	Environment []string
 	DesktopFile string
-	Backends    []BackendCapability
+	// BrowserProfileDirectory opts supported native browsers into a persistent,
+	// private profile. The host chooses its owner/application-scoped location.
+	// Existing explicit profile arguments and sandboxed packages retain their
+	// own launch contract; no personal profile is read, copied, or unlocked.
+	BrowserProfileDirectory string
+	Backends                []BackendCapability
 }
 
 // LaunchUnavailable is safe for production diagnostics. It contains no child
@@ -113,7 +118,7 @@ func PlanApplication(ctx context.Context, options ApplicationPlanOptions) (Appli
 		return ApplicationLaunchPlan{}, ErrInvalid
 	}
 	return runApplicationPlanner(ctx, options, map[string]any{"operation": "prepare",
-		"desktop": options.DesktopFile, "backends": options.Backends})
+		"desktop": options.DesktopFile, "backends": options.Backends, "browser_profile": options.BrowserProfileDirectory})
 }
 
 // Revalidate rereads the same desktop entry, executable and package revision.

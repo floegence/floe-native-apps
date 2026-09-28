@@ -348,12 +348,22 @@ def inspect_application(path, environment):
     if file_identity(path, 1 << 20) != desktop:
         raise StalePlan()
     result = {'desktop': desktop, 'executable': target, 'package': package, 'services': services}
+    if package['kind'] in ('native', 'deb', 'rpm'):
+        names = {'google-chrome': 'chromium', 'google-chrome-stable': 'chromium',
+                 'chromium': 'chromium', 'chromium-browser': 'chromium',
+                 'firefox': 'firefox', 'firefox-esr': 'firefox'}
+        family = names.get(Path(executable).name)
+        # An explicit application profile is already its launch authority.
+        profile_flags = ('--user-data-dir', '--profile-directory', '--profile', '-profile', '-P')
+        if family and not any(value == flag or value.startswith(flag + '=')
+                              for value in tokens[1:] for flag in profile_flags):
+            result['browser_family'] = family
     if backend_hint is not None:
         result['backend_hint'] = backend_hint
     return result
 
 
-def prepare(path, environment, backends, *, inspect=inspect_application):
+def prepare(path, environment, backends, *, inspect=inspect_application, browser_profile=None):
     observed = inspect(path, environment)
     hint = observed.get('backend_hint')
     if hint is not None and hint not in ('xpra', 'wayland'):
@@ -371,6 +381,12 @@ def prepare(path, environment, backends, *, inspect=inspect_application):
         raise Unavailable('HOST_SERVICE_UNAVAILABLE')
     value = {'version': 1, 'observation': observed, 'backend': copy.deepcopy(backend),
              'environment_sha256': digest(resolution_environment(environment))}
+    if browser_profile and observed.get('browser_family'):
+        profile = Path(browser_profile)
+        if (not profile.is_absolute() or any(char in str(profile) for char in ('\0', '\n', '\r')) or
+                str(profile.resolve()) != str(profile)):
+            raise Unavailable('APPLICATION_PROFILE_UNAVAILABLE', 'planning')
+        value['browser_profile'] = str(profile)
     return {**value, 'sha256': digest(value)}
 
 
@@ -380,7 +396,7 @@ def revalidate(plan, environment, backends, *, inspect=inspect_application):
             plan.get('sha256') != digest({key: value for key, value in plan.items() if key != 'sha256'})):
         raise StalePlan()
     try:
-        current = prepare(plan['observation']['desktop']['path'], environment, backends, inspect=inspect)
+        current = prepare(plan['observation']['desktop']['path'], environment, backends, inspect=inspect, browser_profile=plan.get('browser_profile'))
     except (KeyError, Unavailable):
         raise StalePlan() from None
     if current != plan:
@@ -394,7 +410,7 @@ def main():
         request = json.loads(sys.stdin.buffer.read((2 << 20) + 1))
         environment = restored_environment(os.environ)
         if request['operation'] == 'prepare':
-            result = prepare(request['desktop'], environment, request['backends'])
+            result = prepare(request['desktop'], environment, request['backends'], browser_profile=request.get('browser_profile'))
         elif request['operation'] == 'revalidate':
             result = revalidate(request['plan'], environment, request['backends'])
         else:

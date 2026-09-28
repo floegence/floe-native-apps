@@ -101,7 +101,7 @@ def main():
         data = (json.dumps(manifest, indent=2, sort_keys=True) + '\n').encode()
         (target / 'manifest.json').write_bytes(data)
         candidate = json.loads((args.candidates / f'{architecture}.json').read_text())
-        candidate['id'] = f'alpine-3.23-desktop-14.0.2-{architecture}-r1'
+        candidate['id'] = f'alpine-3.23-desktop-14.0.2-{architecture}-r2'
         candidate['preparation'] = {'contract': 'wayland-xwayland-private-v1',
             'native_sha256': hashlib.sha256(data).hexdigest()}
         catalogs.append(candidate)

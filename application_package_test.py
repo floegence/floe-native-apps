@@ -55,5 +55,41 @@ class PackageCommandTests(unittest.TestCase):
                                             self.plan, self.environment, self.glib)
 
 
+class BrowserProfileTests(unittest.TestCase):
+    def test_private_profile_preserves_original_args_and_precedes_option_terminator(self):
+        from application_package import private_browser_command
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            profile = str(root / 'persistent % profile')
+            binary = root / 'chrome'
+            binary.write_text('#!/bin/sh\nexit 0\n'); binary.chmod(0o700)
+            plan = {'browser_profile': profile, 'observation': {'browser_family': 'chromium',
+                    'executable': {'path': str(binary)}}}
+            prefix = '/usr/bin/env HINT="a b" ' + str(binary)
+            suffix = ' --new-window -- %U'
+            app = SimpleNamespace(get_string=lambda key: prefix + suffix if key == 'Exec' else str(root))
+            glib = SimpleNamespace(shell_parse_argv=lambda text: (True, shlex.split(text)))
+            environment = {'PATH': str(root)}
+            result = private_browser_command(app, plan, environment, glib)
+            self.assertTrue(result.startswith(prefix + ' "--user-data-dir='))
+            self.assertTrue(result.endswith(suffix))
+            self.assertIn('persistent %% profile', result)
+            self.assertEqual(Path(profile).stat().st_mode & 0o777, 0o700)
+            (Path(profile) / 'user-data').write_text('keep')
+            private_browser_command(app, plan, environment, glib)
+            self.assertEqual((Path(profile) / 'user-data').read_text(), 'keep')
+
+    def test_profile_never_follows_a_symlink_or_changes_other_applications(self):
+        from application_package import private_browser_command
+        app = SimpleNamespace(get_string=lambda _: '/usr/bin/editor %F')
+        self.assertIsNone(private_browser_command(app, {}, {}, None))
+        with tempfile.TemporaryDirectory() as directory:
+            profile = Path(directory) / 'link'
+            profile.symlink_to(directory)
+            with self.assertRaises(Unavailable):
+                private_browser_command(app, {'browser_profile': str(profile),
+                    'observation': {'browser_family': 'chromium'}}, {}, None)
+
+
 if __name__ == '__main__':
     unittest.main()

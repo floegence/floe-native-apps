@@ -19,12 +19,13 @@ func (t DesktopTools) Environment(base []string) []string {
 }
 
 // DesktopBackend returns the installed combined display capability. A surviving
-// Xpra selection remains Xpra until preparation explicitly activates its update.
+// selection remains usable by surviving sessions; new launches require the
+// current private capture ABI after preparation explicitly activates its update.
 func (m *Manager) DesktopBackend() (BackendCapability, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	item, ok := m.installation(m.op.Installed)
-	if m.closed || !ok || item.Contract != desktopContract {
+	if m.closed || !ok || item.Contract != desktopContract || item.Digest != m.pkg.Digest() {
 		return BackendCapability{}, ErrUnsupported
 	}
 	if _, err := m.installedDirectory(item.Digest); err != nil {
@@ -102,8 +103,9 @@ func (m *Manager) PrepareDesktopSession(ctx context.Context, options DesktopSess
 	m.mu.Lock()
 	item, ok := m.installation(description.Backend.Component)
 	closed := m.closed
+	current := m.pkg.Digest()
 	m.mu.Unlock()
-	if closed || !ok || item.Contract != desktopContract || description.Backend.ID != "wayland" {
+	if closed || !ok || item.Contract != desktopContract || item.Digest != current || description.Backend.ID != "wayland" {
 		return PreparedDesktopSession{}, ErrInvalid
 	}
 	root, err := m.DirectoryFor(item.Digest)

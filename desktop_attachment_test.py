@@ -37,6 +37,8 @@ class Native:
         self.context = (self, 'context')
         self.cursor = SimpleNamespace(current=None, revision=0)
         self.clipboard_syncs = []
+        self.configure_stream = Mock()
+        self.refine = Mock()
 
     def bind(self, epoch):
         self.epoch = epoch
@@ -111,6 +113,51 @@ class AttachmentTests(unittest.TestCase):
     def ready(self):
         self.captured()
         self.acknowledge()
+
+    def test_capture_error_retires_unpainted_pipeline_before_recovery(self):
+        self.request('configure_stream', mode='auto')
+        self.captured()
+        self.native.captures[-1][1](None, None, 'CAPTURE_UNAVAILABLE')
+        self.assertEqual(len(self.attachment.awaiting), 0)
+        self.assertIsNone(self.attachment.ready)
+        self.native.refine.assert_called_once()
+        self.attachment.damage()
+        self.captured()
+        self.acknowledge()
+        self.input()
+        self.assertEqual(len(self.native.input), 1)
+
+    def test_lossy_idle_frame_refines_once_and_keeps_input_live(self):
+        self.request('configure_stream', mode='smooth')
+        self.native.captures[0][1]({'encoding': 'jpeg', 'width': 100, 'height': 80}, b'pixels', None)
+        self.acknowledge()
+        # Configuration damage is consumed by the second capture.
+        timer = self.attachment.refinement
+        self.attachment.damage()
+        self.native.captures[-1][1](None, None, None)
+        self.assertEqual(timer, self.attachment.refinement)
+        self.assertIsNotNone(timer)
+        self.timers.pop(timer)()
+        self.native.refine.assert_called_once()
+        self.input()
+        self.assertEqual(len(self.native.input), 1)
+        self.captured()
+        self.assertIsNone(self.attachment.refinement)
+
+    def test_data_mode_coalesces_damage_and_mode_change_releases_cadence(self):
+        self.request('configure_stream', mode='data')
+        self.captured()
+        self.acknowledge()
+        for _ in range(100):
+            self.attachment.damage()
+        self.assertEqual(len(self.native.captures), 1)
+        timer = self.attachment.cadence
+        self.timers.pop(timer)()
+        self.assertEqual(len(self.native.captures), 2)
+        self.captured()
+        self.request('configure_stream', mode='auto')
+        self.assertIsNone(self.attachment.cadence)
+        self.assertEqual(len(self.native.captures), 3)
 
     def test_termination_uses_only_the_authenticated_application_owner(self):
         terminate = Mock()
@@ -359,6 +406,28 @@ class AttachmentTests(unittest.TestCase):
         self.assertEqual(len(self.native.input), 1)
         self.acknowledge()
         self.assertEqual(len(self.native.captures), 3)
+
+    def test_stream_configuration_allows_two_frames_without_granting_unpainted_input(self):
+        self.native.configure_stream = Mock()
+        self.request('configure_stream', mode='smooth')
+        self.assertNotIn('error', self.owner.messages[-1])
+        self.captured()
+        self.attachment.damage()
+        self.assertEqual(len(self.native.captures), 2)
+        self.captured()
+        self.input(code=30, pressed=True)
+        self.assertEqual(self.native.input, [])
+        self.attachment.damage()
+        self.assertEqual(len(self.native.captures), 2)
+        self.request('frame_ack', frame=self.owner.frames[0][0]['sequence'])
+        self.input(code=30, pressed=True)
+        self.assertEqual(len(self.native.input), 1)
+
+    def test_stream_configuration_rejects_unknown_modes_without_changing_stream(self):
+        self.native.configure_stream = Mock()
+        self.request('configure_stream', mode='unbounded')
+        self.assertEqual(self.owner.messages[-1]['error'], 'REQUEST_INVALID')
+        self.native.configure_stream.assert_not_called()
 
     def test_capture_failure_has_no_timer_retry_and_does_not_end_application(self):
         self.native.captures[0][1](None, None, 'CAPTURE_UNAVAILABLE')

@@ -7,8 +7,12 @@
 #include <drm_fourcc.h>
 #include <errno.h>
 #include <stdint.h>
+#include <stdbool.h>
 #include <png.h>
 #include <stdio.h>
+#include <jpeglib.h>
+#include <webp/encode.h>
+#include <setjmp.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
@@ -30,10 +34,16 @@ struct capture {
     int result;
     unsigned char *encoded;
     size_t encoded_size, encoded_capacity;
+    unsigned char *previous;
+    size_t previous_size;
+    int x, y, region_width, region_height;
+    uint32_t encoding;
 };
 
 #define MAX_FRAME_BYTES (4096u * 4096u * 4u)
 #define FRAME_PNG 0x20474e50u
+#define FRAME_JPEG 0x4745504au
+#define FRAME_WEBP 0x50424557u
 
 static void png_failed(png_structp png, png_const_charp message) {
     (void)message;
@@ -56,7 +66,7 @@ static void png_append(png_structp png, png_bytep bytes, png_size_t length) {
     c->encoded_size += length;
 }
 static void png_flush_ignored(png_structp png) { (void)png; }
-static int encode_frame(struct capture *c) {
+static int encode_png(struct capture *c) {
     c->encoded_size = 0;
     png_structp png = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL, png_failed, png_warning_ignored);
     if (!png) return -1;
@@ -67,21 +77,146 @@ static int encode_frame(struct capture *c) {
         return -1;
     }
     png_set_write_fn(png, c, png_append, png_flush_ignored);
-    png_set_IHDR(png, info, c->buffer_width, c->buffer_height, 8, PNG_COLOR_TYPE_RGB,
+    png_set_IHDR(png, info, c->region_width, c->region_height, 8, PNG_COLOR_TYPE_RGB,
                  PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_BASE, PNG_FILTER_TYPE_BASE);
     png_set_compression_level(png, 1);
-    png_set_filter(png, PNG_FILTER_TYPE_BASE, PNG_FILTER_NONE);
+    png_set_filter(png, PNG_FILTER_TYPE_BASE, PNG_FILTER_SUB);
     png_write_info(png, info);
     /* The compositor paints an opaque session background. Drop the framebuffer
      * padding/alpha byte; libpng owns conversion and lossless encoding. Native
      * qualified amd64/arm64 framebuffers both use little-endian BGRX/BGRA. */
     png_set_bgr(png);
     png_set_filler(png, 0, PNG_FILLER_AFTER);
-    for (int row = 0; row < c->buffer_height; row++)
-        png_write_row(png, (png_bytep)c->pixels + (size_t)row * c->buffer_width * 4);
+    for (int row = c->y; row < c->y + c->region_height; row++)
+        png_write_row(png, (png_bytep)c->pixels + ((size_t)row * c->buffer_width + c->x) * 4);
     png_write_end(png, info);
     png_destroy_write_struct(&png, &info);
     return 0;
+}
+
+struct jpeg_failure { struct jpeg_error_mgr error; jmp_buf jump; };
+static void jpeg_failed(j_common_ptr jpeg) {
+    struct jpeg_failure *error = (struct jpeg_failure *)jpeg->err;
+    longjmp(error->jump, 1);
+}
+static int encode_jpeg(struct capture *c, int quality) {
+    struct jpeg_compress_struct jpeg = {0};
+    struct jpeg_failure error;
+    unsigned char *bytes = NULL;
+    unsigned long length = 0;
+    jpeg.err = jpeg_std_error(&error.error);
+    error.error.error_exit = jpeg_failed;
+    if (setjmp(error.jump)) {
+        jpeg_destroy_compress(&jpeg);
+        free(bytes);
+        return -1;
+    }
+    jpeg_create_compress(&jpeg);
+    jpeg_mem_dest(&jpeg, &bytes, &length);
+    jpeg.image_width = c->region_width; jpeg.image_height = c->region_height;
+    jpeg.input_components = 4; jpeg.in_color_space = JCS_EXT_BGRX;
+    jpeg_set_defaults(&jpeg);
+    /* Preserve colored text edges; motion efficiency comes from native SIMD
+     * compression and damage regions, not chroma smearing. */
+    for (int i = 0; i < 3; i++) jpeg.comp_info[i].h_samp_factor = jpeg.comp_info[i].v_samp_factor = 1;
+    jpeg_set_quality(&jpeg, quality, TRUE);
+    jpeg.dct_method = JDCT_FASTEST;
+    jpeg_start_compress(&jpeg, TRUE);
+    while (jpeg.next_scanline < jpeg.image_height) {
+        JSAMPROW row = (unsigned char *)c->pixels +
+            ((size_t)(c->y + jpeg.next_scanline) * c->buffer_width + c->x) * 4;
+        jpeg_write_scanlines(&jpeg, &row, 1);
+    }
+    jpeg_finish_compress(&jpeg);
+    jpeg_destroy_compress(&jpeg);
+    if (!length || length > MAX_FRAME_BYTES) { free(bytes); return -1; }
+    free(c->encoded);
+    c->encoded = bytes; c->encoded_size = c->encoded_capacity = length;
+    return 0;
+}
+/* Lossless WebP retains text exactly and reuses repeated glyphs across a
+ * region. The low effort preset bounds encoding latency for desktop updates. */
+static int webp_append(const uint8_t *bytes, size_t length, const WebPPicture *picture) {
+    struct capture *c = picture->custom_ptr;
+    if (length > MAX_FRAME_BYTES - c->encoded_size) return 0;
+    size_t needed = c->encoded_size + length;
+    if (needed > c->encoded_capacity) {
+        size_t capacity = c->encoded_capacity ? c->encoded_capacity : 65536;
+        while (capacity < needed) capacity *= 2;
+        if (capacity > MAX_FRAME_BYTES) capacity = MAX_FRAME_BYTES;
+        unsigned char *next = realloc(c->encoded, capacity);
+        if (!next) return 0;
+        c->encoded = next; c->encoded_capacity = capacity;
+    }
+    memcpy(c->encoded + c->encoded_size, bytes, length);
+    c->encoded_size += length;
+    return 1;
+}
+static int encode_webp(struct capture *c, int effort) {
+    WebPConfig config;
+    WebPPicture picture;
+    if (!WebPConfigInit(&config) || !WebPPictureInit(&picture)) return -1;
+    config.lossless = 1; config.method = effort; config.quality = 80;
+    picture.use_argb = 1;
+    picture.width = c->region_width; picture.height = c->region_height;
+    picture.writer = webp_append; picture.custom_ptr = c;
+    c->encoded_size = 0;
+    int ok = WebPPictureImportBGRX(&picture,
+        (uint8_t *)c->pixels + ((size_t)c->y * c->buffer_width + c->x) * 4,
+        c->buffer_width * 4) && WebPEncode(&config, &picture);
+    WebPPictureFree(&picture);
+    return ok ? 0 : -1;
+}
+/* The reference is the preceding ordered capture, never an input-authority
+ * receipt. A new attachment/scene or discarded capture forces a complete image. */
+static int encode_frame(struct capture *c, uint32_t mode, uint32_t flags) {
+    bool reset = flags || c->previous_size != c->size || !c->previous;
+    int left = c->buffer_width, top = c->buffer_height, right = 0, bottom = 0;
+    if (!reset && mode) {
+        for (int y = 0; y < c->buffer_height; y++) {
+            const uint32_t *row = (const uint32_t *)c->pixels + (size_t)y * c->buffer_width;
+            const uint32_t *previous = (const uint32_t *)c->previous + (size_t)y * c->buffer_width;
+            for (int x = 0; x < c->buffer_width; x++) {
+                if (((row[x] ^ previous[x]) & 0xffffffu) == 0) continue;
+                if (x < left) left = x;
+                if (x >= right) right = x + 1;
+                if (y < top) top = y;
+                bottom = y + 1;
+            }
+        }
+        if (right <= left) { c->encoded_size = 0; return 4; }
+    } else { left = top = 0; right = c->buffer_width; bottom = c->buffer_height; }
+    c->x = left; c->y = top; c->region_width = right-left; c->region_height = bottom-top;
+    size_t area = (size_t)c->region_width * c->region_height;
+    /* Small edits remain exact. WebP handles repeated text and flat desktop
+     * regions efficiently. Only dense imagery in latency-oriented modes tries
+     * JPEG; keep the smaller encoding and refine lossy pixels when idle. */
+    if (!mode || area <= 65536) {
+        c->encoding = FRAME_PNG;
+        if (encode_png(c) < 0) return 3;
+    } else {
+        c->encoding = FRAME_WEBP;
+        if (encode_webp(c, mode == 2 || mode == 4 ? 3 : mode == 3 ? 0 : 1) < 0) return 3;
+        if ((mode == 1 || mode == 3) && !(flags & 2) && c->encoded_size > area / 6) {
+            size_t lossless_size = c->encoded_size;
+            unsigned char *lossless = c->encoded;
+            c->encoded = NULL; c->encoded_capacity = c->encoded_size = 0;
+            if (encode_jpeg(c, mode == 3 ? 65 : 80) < 0) { free(lossless); return 3; }
+            if (c->encoded_size < lossless_size) {
+                c->encoding = FRAME_JPEG; free(lossless);
+            } else {
+                free(c->encoded); c->encoded = lossless;
+                c->encoded_size = c->encoded_capacity = lossless_size;
+            }
+        }
+    }
+    if (c->previous_size != c->size) {
+        unsigned char *next = realloc(c->previous, c->size);
+        if (!next) return 3;
+        c->previous = next; c->previous_size = c->size;
+    }
+    memcpy(c->previous, c->pixels, c->size);
+    return 1;
 }
 
 static void format(void *data, struct weston_capture_source_v1 *source, uint32_t value) {
@@ -183,10 +318,12 @@ int main(void) {
     c.source = weston_capture_v1_create(c.factory, c.output, WESTON_CAPTURE_V1_SOURCE_FRAMEBUFFER);
     weston_capture_source_v1_add_listener(c.source, &listener, &c);
     if (wl_display_roundtrip(c.display) < 0) goto done;
-    uint32_t previous = 0, sequence;
+    uint32_t previous = 0, request[3];
     /* Fixture ABI uses native-endian uint32 fields; it never crosses a host
      * boundary. Each request follows consumption of the previous full frame. */
-    while (receive(fd, &sequence, sizeof sequence) == 0) {
+    while (receive(fd, request, sizeof request) == 0) {
+        uint32_t sequence = request[0], mode = request[1], flags = request[2];
+        if (mode > 4 || flags > 3) goto done;
         /* Consume the output size announced before the helper's scene barrier
          * before allocating the next buffer. No cached-size retry loop. */
         if (wl_display_roundtrip(c.display) < 0) goto done;
@@ -196,9 +333,10 @@ int main(void) {
         weston_capture_source_v1_capture(c.source, c.buffer);
         while (!c.result)
             if (wl_display_dispatch(c.display) < 0) goto done;
-        if (c.result == 1 && encode_frame(&c) < 0) c.result = 3;
+        if (c.result == 1) c.result = encode_frame(&c, mode, flags);
         uint32_t header[] = {sequence, (uint32_t)c.result, (uint32_t)c.buffer_width,
-            (uint32_t)c.buffer_height, FRAME_PNG, c.result == 1 ? (uint32_t)c.encoded_size : 0};
+            (uint32_t)c.buffer_height, c.encoding, c.result == 1 ? (uint32_t)c.encoded_size : 0,
+            (uint32_t)c.x, (uint32_t)c.y, (uint32_t)c.region_width, (uint32_t)c.region_height};
         if (send_all(fd, header, sizeof header) < 0) break;
         if (c.result == 1 && send_all(fd, c.encoded, c.encoded_size) < 0) break;
     }
@@ -206,6 +344,7 @@ int main(void) {
 done:
     clear_buffer(&c);
     free(c.encoded);
+    free(c.previous);
     if (c.source) weston_capture_source_v1_destroy(c.source);
     if (c.factory) weston_capture_v1_destroy(c.factory);
     if (c.output) wl_output_destroy(c.output);

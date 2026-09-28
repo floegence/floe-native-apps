@@ -5,6 +5,7 @@ target objects are immutable instances replaced whenever native geometry or
 input permission changes. This class owns attachment/paint acknowledgement only;
 it never discovers, launches, retries, terminates or infers application lifetime.
 """
+from collections import deque
 from input_order import OrderedInput, valid_text
 
 
@@ -13,7 +14,12 @@ class DesktopAttachment:
         self.native = native
         self.terminate_application = terminate_application
         self.owner, self.epoch, self.last_request = None, 0, 0
-        self.ready, self.capture, self.awaiting = None, None, None
+        self.ready, self.capture, self.awaiting = None, None, deque()
+        self.mode, self.capacity = None, 1
+        self.timeout_add, self.timeout_remove = timeout_add, timeout_remove
+        self.refinement = None
+        self.cadence = None
+        self.lossy = False
         self.frame_sequence, self.dirty, self.failed = 0, False, False
         self.cursor_sent = None
         self.order = OrderedInput(self.available, self.admit, self.input_result,
@@ -26,19 +32,24 @@ class DesktopAttachment:
         if self.owner:
             self.detach(self.owner)
         self.owner, self.last_request = owner, 0
+        self.mode, self.capacity = None, 1
+        self.lossy = False
         self.cursor_sent = None
         self.epoch += 1
         self.failed = False
         self.native.bind(self.epoch)
         owner.send({'event': 'attached', 'version': 1, 'connection': self.epoch,
-                    'state': self.native.snapshot()})
+                    'state': self.native.snapshot(), 'stream_version': 2})
         self.cursor_changed()
         self.damage()
 
     def detach(self, owner):
         if self.owner is not owner:
             return
-        self.owner, self.ready, self.awaiting = None, None, None
+        self.owner, self.ready = None, None
+        self.awaiting.clear()
+        self.cancel_refinement()
+        self.cancel_cadence()
         self.order.invalidate(owner)
         self.native.unbind(self.epoch)
 
@@ -72,18 +83,32 @@ class DesktopAttachment:
         elif method == 'status':
             self.reply(owner, request, self.native.snapshot())
         elif method == 'frame_ack':
-            frame = self.awaiting
+            frame = self.awaiting[0] if self.awaiting else None
             if (frame is None or type(message.get('frame')) is not int or message['frame'] != frame[0] or
                     self.native.target is not frame[1]):
                 self.reply(owner, request, error='FRAME_TARGET_UNAVAILABLE')
                 return
             first = self.ready is not frame[1]
-            self.ready, self.awaiting = frame[1], None
+            self.ready = frame[1]
+            self.awaiting.popleft()
             self.reply(owner, request, 'painted')
             if first:
                 self.native.sync_clipboard(self.epoch, self.ready)
             self.pump()
+        elif method == 'configure_stream':
+            mode = message.get('mode')
+            if set(message) != {'id', 'method', 'mode'} or mode not in ('auto', 'clarity', 'smooth', 'data'):
+                self.reply(owner, request, error='REQUEST_INVALID')
+                return
+            if mode != self.mode:
+                self.cancel_cadence()
+                self.native.configure_stream(mode)
+                self.mode, self.capacity = mode, 2
+                self.damage()
+            self.reply(owner, request, {'mode': self.mode})
         elif method == 'refresh':
+            if self.mode:
+                self.native.refine()
             self.damage()
             self.reply(owner, request, 'requested')
         elif method == 'input':
@@ -172,7 +197,10 @@ class DesktopAttachment:
         self.reply(owner, request, 'completed', error)
 
     def retire_input(self):
-        self.ready, self.awaiting = None, None
+        self.ready = None
+        self.awaiting.clear()
+        self.cancel_refinement()
+        self.cancel_cadence()
         self.cancel_input()
 
     def cancel_input(self):
@@ -232,7 +260,7 @@ class DesktopAttachment:
 
     def pump(self):
         if (not self.owner or self.native.target is None or not self.dirty or self.capture or
-                self.awaiting or self.owner.frame_pending):
+                len(self.awaiting) >= self.capacity or self.owner.frame_pending or self.cadence is not None):
             return
         ticket = (self.owner, self.native.target)
         self.capture, self.dirty = ticket, False
@@ -249,22 +277,77 @@ class DesktopAttachment:
         self.capture = None
         owner, target = ticket
         if self.owner is not owner or self.native.target is not target:
+            if self.mode:
+                self.native.refine()
             self.damage()
             return
         if error:
             # The native boundary returns a stable code, never input, pixels or
             # library diagnostics. Recovery requires native damage or refresh.
+            self.retire_input()
+            if self.mode:
+                self.native.refine()
             owner.send({'event': 'capture_unavailable', 'code': 'CAPTURE_UNAVAILABLE'})
             return
+        if description is None:
+            # The compositor can commit without changing pixels. No network
+            # frame or paint receipt is needed for an identical source raster.
+            self.schedule_refinement(owner, target)
+            self.pump()
+            return
+        previous = self.frame_sequence
         self.frame_sequence += 1
         frame = {**description, 'sequence': self.frame_sequence, 'connection': self.epoch,
                  'window': target.window, 'generation': target.generation}
+        full = (description.get('x', 0) == 0 and description.get('y', 0) == 0 and
+                description.get('region_width', description['width']) == description['width'] and
+                description.get('region_height', description['height']) == description['height'])
+        frame['base'] = 0 if full else previous
         if owner.send_frame(frame, data):
-            self.awaiting = (self.frame_sequence, target)
+            self.awaiting.append((self.frame_sequence, target))
+            if description.get('encoding') == 'jpeg':
+                self.lossy = True
+            elif full:
+                self.lossy = False
+            self.schedule_refinement(owner, target, changed=True)
+            if self.mode == 'data':
+                def next_frame():
+                    self.cadence = None
+                    self.pump()
+                self.cadence = self.timeout_add(67, next_frame)
+            self.pump()
         else:
+            if self.mode:
+                self.native.refine()
             self.dirty = True
 
+    def schedule_refinement(self, owner, target, changed=False):
+        if self.refinement is not None and not changed:
+            return
+        self.cancel_refinement()
+        if not self.lossy:
+            return
+        def refine():
+            self.refinement = None
+            if self.owner is owner and self.native.target is target:
+                self.native.refine()
+                self.dirty = True
+                self.pump()
+        self.refinement = self.timeout_add(250, refine)
+
+    def cancel_refinement(self):
+        if self.refinement is not None:
+            self.timeout_remove(self.refinement)
+            self.refinement = None
+
+    def cancel_cadence(self):
+        if self.cadence is not None:
+            self.timeout_remove(self.cadence)
+            self.cadence = None
+
     def close(self):
+        self.cancel_cadence()
+        self.cancel_refinement()
         if self.owner:
             self.detach(self.owner)
         self.order.close()

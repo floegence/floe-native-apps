@@ -86,3 +86,30 @@ func TestDesktopSessionRejectsUnknownComponentWithoutChangingExistingDirectory(t
 		t.Fatal("cancelled preparation proceeded", err)
 	}
 }
+
+func TestDesktopRetainedRecipeRequiresUpdateOnlyForNewLaunches(t *testing.T) {
+	pkg, err := DesktopForPlatform("linux", "amd64")
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager, err := New(t.TempDir(), pkg, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer manager.Close()
+	previous := manager.installations[1]
+	manager.op.Installed = previous.Digest
+	if previous.ID != "alpine-3.23-desktop-14.0.2-amd64-r1" {
+		t.Fatal("lost retained desktop recipe")
+	}
+	if _, err := manager.DesktopBackend(); !errors.Is(err, ErrUnsupported) {
+		t.Fatal("mixed capture ABI", err)
+	}
+	plan := ApplicationLaunchPlan{snapshot: json.RawMessage(`{"backend":{"id":"wayland","component":"` + previous.Digest + `"}}`)}
+	if _, err := manager.PrepareDesktopSession(t.Context(), DesktopSessionOptions{Plan: plan}); !errors.Is(err, ErrInvalid) {
+		t.Fatal("prepared incompatible capture", err)
+	}
+	if _, ok := manager.installation(previous.Digest); !ok {
+		t.Fatal("retired live component")
+	}
+}

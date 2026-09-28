@@ -428,6 +428,7 @@ class NativeDesktop:
         if self.version != 1 or epoch <= self.last_epoch:
             raise ValueError('Native connection is unavailable')
         self.epoch, self.last_epoch = epoch, epoch
+        self.frames.configure(None)
         # An unavailable display remains observable and explicitly terminable.
         # It has no target or native input authority to restore on attachment.
         if not self.closed:
@@ -444,6 +445,12 @@ class NativeDesktop:
             self.cursor.invalidate()
             self.clipboard.invalidate()
         self.frames.cancel()
+
+    def configure_stream(self, mode):
+        self.frames.configure(mode)
+
+    def refine(self):
+        self.frames.refine()
 
     def capture(self, target, completed):
         if self.closed or self.target is not target:

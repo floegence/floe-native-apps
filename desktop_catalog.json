@@ -1,6 +1,6 @@
 [
   {
-    "id": "alpine-3.23-desktop-14.0.2-amd64-r1",
+    "id": "alpine-3.23-desktop-14.0.2-amd64-r2",
     "architecture": "amd64",
     "size_bytes": 140314715,
     "installed_bytes": 400224106,
@@ -1772,11 +1772,11 @@
     ],
     "preparation": {
       "contract": "wayland-xwayland-private-v1",
-      "native_sha256": "60bf9c4ce5138a08c2206a074693d6442b86c2bfba50415cd3cadfba48b7ebd7"
+      "native_sha256": "8988096089479aabbe836687c1fee10a2cc164e0597bb7cade2a2bbe3218269a"
     }
   },
   {
-    "id": "alpine-3.23-desktop-14.0.2-arm64-r1",
+    "id": "alpine-3.23-desktop-14.0.2-arm64-r2",
     "architecture": "arm64",
     "size_bytes": 135869817,
     "installed_bytes": 398225532,
@@ -3557,7 +3557,7 @@
     ],
     "preparation": {
       "contract": "wayland-xwayland-private-v1",
-      "native_sha256": "4928706753269cad605089f12dfd874d7814511d9f16cc4bd76787a0d672200e"
+      "native_sha256": "410a25764fecf54764e0309e5145643e29ad997ecd54452a6c0debc10ce8f039"
     }
   }
 ]

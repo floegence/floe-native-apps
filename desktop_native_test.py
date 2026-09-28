@@ -17,6 +17,9 @@ class Loop:
 
 
 class Frames:
+    def configure(self, mode):
+        self.mode = mode
+
     def __init__(self):
         self.cancelled = 0
 

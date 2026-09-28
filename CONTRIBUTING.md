@@ -258,7 +258,7 @@ authentication must not displace the current viewer.
 
 `DesktopConnection` has one reader and serializes concurrent writers. `Send`
 returns a request ID, not an application receipt; `Read` returns native events and
-correlated replies. Metadata and PNG payloads are bounded and read as one complete
+correlated replies. Metadata and encoded image payloads are bounded and read as one complete
 event. The consumer must decode and paint a frame before sending `frame_ack`.
 Input always names its original connection, window and geometry generation. Scene
 retirement returns an explicit error for every cancelled request on the current
@@ -269,6 +269,68 @@ queue, automatic acknowledgement, reconnect loop or replay. Cancellation during
 I/O closes the partial stream. `Close` detaches sharing and never terminates the
 helper or application. Waiting, unavailable capture and connection loss are not
 application-exit evidence.
+
+A helper advertising `stream_version: 2` accepts `configure_stream` with `auto`,
+`clarity`, `smooth`, or `data`. `DesktopConnection.StreamVersion()` preserves that
+capability for a host's authenticated transport. Do not send configuration to a
+retained session without the capability. An unconfigured attachment retains the
+whole-PNG, one-frame protocol. Configuration permits two ordered in-flight frames;
+only the oldest paint receipt is admitted, and input remains tied to painted
+native targets. This bounds latency without granting authority from received bytes.
+
+Negotiated frames contain a bounded `x`, `y`, `region_width`, `region_height`
+rectangle inside the full `width`/`height`. Partial frames name the preceding
+transmitted `sequence` as `base`; full images have base zero. PNG preserves small
+edits exactly. Lossless WebP compresses repeated desktop content; Auto and Smooth
+may use a smaller JPEG for dense imagery. Clarity always remains lossless. Data
+saver uses more compression effort and coalesces delivery to at most 15 FPS.
+Unchanged source pixels send no image. After 250 ms without actual pixel changes,
+lossy content receives a lossless full refinement. Compositor commits with
+identical pixels cannot postpone refinement. The picture mode changes neither
+application geometry nor process identity.
+
+`DesktopFramesClientSource()` supplies the ordered browser compositor. Hosts pass
+the current target validator and acknowledge only its `onPaint` callback. Retired
+decodes close their bitmaps without painting; at most one decoder and two current
+target packets exist. Capture failure retires outstanding receipts on both ends;
+recovery starts with a full image. Scene changes, rejected captures, refresh and
+attachment replacement invalidate the image reference independently of input.
+
+Recipe r2 changes the private capture ABI. Published r1 installations remain
+recognized for surviving application resources and attachments. New sessions
+require explicit activation of the current recipe; the SDK must never pair r2
+helper code with an r1 capture binary. Removing r1 resource recognition requires
+an explicit future compatibility release decision.
+
+### Browser launch isolation and performance evidence
+
+A trusted host may set `ApplicationPlanOptions.BrowserProfileDirectory` to a
+canonical absolute, persistent owner/application-scoped directory. Planning binds
+recognized native/deb/rpm Chromium and Firefox launchers; an explicit profile
+argument remains authoritative. The launcher creates or reuses only a private
+0700 directory owned by the current user. It preserves original Desktop Entry
+arguments and inserts profile flags before an option terminator. Personal profile
+contents and singleton locks are never read, copied or removed. Sandboxed package
+launch contracts are unchanged. If the observed process tree exits before its
+first native window, exit zero reports `APPLICATION_NO_WINDOW`; a live slow-starting
+process is still allowed to wait for its real window.
+
+`qualification/desktop_compatibility/stream_session_probe.py` creates a task-owned
+browser/profile/document and measures first frame, three seconds of idle, twenty
+keyboard-to-pixel changes, five seconds of motion, and settled refinement. It
+records payload bytes, FPS, median/p95 host input-to-decoded-pixels latency and
+errors. Run Chrome and Firefox sequentially on the same host and size. Compare a
+published baseline using `--baseline --mode legacy` and its own installed state,
+then run every negotiated mode using the candidate's public launch executable.
+Never compare overlapping workload runs or label a new encoder's legacy mode as
+the old release. The probe cleans up only its own supervisor tree.
+
+These are host pipeline measurements, not browser presentation or WAN latency.
+A consuming product must additionally measure its real viewer's paint callback,
+wire bytes, reconnects, keyboard/pointer continuity, decode queue bounds, and p95
+latency under recorded RTT/bandwidth conditions. Preserve exact commits, platform,
+resolution, mode, timings, and raw results. Do not claim video-codec parity or
+mainstream remote-desktop equivalence from a static-document fixture alone.
 
 `terminate_application` is reserved for explicit, authorized force-quit intent.
 It accepts no target, PID, signal or operation payload. The installed session

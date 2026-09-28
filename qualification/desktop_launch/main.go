@@ -16,14 +16,15 @@ import (
 
 func main() {
 	var input struct {
-		State       string            `json:"state"`
-		Desktop     string            `json:"desktop"`
-		Directory   string            `json:"directory"`
-		Runtime     string            `json:"runtime"`
-		Instance    string            `json:"instance"`
-		Environment map[string]string `json:"environment"`
-		HostBus     string            `json:"host_bus"`
-		Documents   []string          `json:"documents"`
+		State          string            `json:"state"`
+		Desktop        string            `json:"desktop"`
+		Directory      string            `json:"directory"`
+		Runtime        string            `json:"runtime"`
+		Instance       string            `json:"instance"`
+		Environment    map[string]string `json:"environment"`
+		HostBus        string            `json:"host_bus"`
+		BrowserProfile string            `json:"browser_profile"`
+		Documents      []string          `json:"documents"`
 	}
 	decoder := json.NewDecoder(io.LimitReader(os.Stdin, 1<<20))
 	decoder.DisallowUnknownFields()
@@ -48,7 +49,22 @@ func main() {
 	for key, value := range input.Environment {
 		environment = append(environment, key+"="+value)
 	}
-	plan, err := manager.PlanDesktop(ctx, input.Desktop, environment)
+	backend, err := manager.DesktopBackend()
+	if err != nil {
+		fail(err)
+	}
+	installed, err := manager.DirectoryFor(backend.Component)
+	if err != nil {
+		fail(err)
+	}
+	tools, err := nativeapps.ResolveDesktopTools(installed, runtime.GOARCH)
+	if err != nil {
+		fail(err)
+	}
+	plan, err := nativeapps.PlanApplication(ctx, nativeapps.ApplicationPlanOptions{
+		Python: tools.Python, Environment: tools.Environment(environment), DesktopFile: input.Desktop,
+		Backends: []nativeapps.BackendCapability{backend}, BrowserProfileDirectory: input.BrowserProfile,
+	})
 	if err != nil {
 		fail(err)
 	}

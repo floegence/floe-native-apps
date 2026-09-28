@@ -23,10 +23,16 @@ func compatibleInstallations(pkg Package) []Installation {
 	if pkg.Preparation != nil {
 		current.Contract = pkg.Preparation.Contract
 		result := []Installation{current}
+		previous := map[string]string{
+			"amd64": "ee42fb12933a2ef4d1d1efbd1cddd9e5860817155726d041395fa726810a4023",
+			"arm64": "9ec255e3234f2b587bbc4bf3eb9882791f3d847f8c0f1648080f6cfc52a256fb",
+		}
 		pinned, err := DesktopForPlatform("linux", pkg.Architecture)
 		if err != nil || pinned.Digest() != pkg.Digest() {
 			return result
 		}
+		result = append(result, Installation{ID: "alpine-3.23-desktop-14.0.2-" + pkg.Architecture + "-r1",
+			Digest: previous[pkg.Architecture], Architecture: pkg.Architecture, Contract: current.Contract})
 		xpra, err := ForPlatform("linux", pkg.Architecture)
 		if err != nil {
 			return result

@@ -98,6 +98,18 @@ class SessionTests(unittest.TestCase):
         session.application_exited(46)
         self.assertEqual(records[-1], value)
 
+    def test_successful_external_handoff_without_a_private_window_is_not_launch_success(self):
+        value = {'state': 'exited', 'phase': 'process_exit', 'exit_code': 0,
+                 'launchers': [{'pid': 4102, 'exit_code': 0}], 'termination_requested': False}
+        self.write(value)
+        records = []
+        session = self.module.DesktopSession.__new__(self.module.DesktopSession)
+        session.application_receipt, session.record = self.path, records.append
+        session.helper = SimpleNamespace(native=SimpleNamespace(last_window=0))
+        session.application_exited(0)
+        self.assertEqual(records[-1]['state'], 'failed')
+        self.assertEqual(records[-1]['error_code'], 'APPLICATION_NO_WINDOW')
+
     def test_native_launch_plan_does_not_require_document_portal_or_fuse(self):
         session = self.module.DesktopSession.__new__(self.module.DesktopSession)
         session.plan = {'observation': {'services': []}}

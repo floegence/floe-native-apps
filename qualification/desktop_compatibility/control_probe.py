@@ -272,7 +272,7 @@ class ControlProbe(ControlClient):
             original = self.attachment.captured
             def captured(ticket, description, data, error):
                 original(ticket, description, data, error)
-                if not error and self.attachment.awaiting is not None:
+                if not error and self.attachment.awaiting:
                     self.attachment.captured = original
                     ready.set()
             # Observe completion at its current owner, including a capture
@@ -281,8 +281,8 @@ class ControlProbe(ControlClient):
             self.attachment.captured = captured
             awaiting = self.attachment.awaiting
             self.attachment.damage()
-            return awaiting
-        if self.wire.invoke(block) is not None:
+            return bool(awaiting)
+        if self.wire.invoke(block):
             # A frame completed before the socket was constrained. Consume and
             # acknowledge it so the next capture actually meets backpressure.
             self.paint('before-blocked-frame')

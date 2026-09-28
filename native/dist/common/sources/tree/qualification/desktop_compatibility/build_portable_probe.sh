@@ -24,7 +24,7 @@ wayland-scanner client-header "$capture_protocol" "$output/weston-output-capture
 wayland-scanner private-code "$capture_protocol" "$output/weston-output-capture-code.c"
 cc -Wall -Wextra -Werror -O2 "$source_dir/frame_probe.c" \
   "$output/weston-output-capture-code.c" -I"$output" \
-  $(pkg-config --cflags --libs wayland-client libdrm libpng) -o "$output/frame-probe"
+  $(pkg-config --cflags --libs wayland-client libdrm libpng libjpeg libwebp) -o "$output/frame-probe"
 pkg-config --modversion libweston-14 wayland-server libpng > "$output/versions.txt"
 cc --version > "$output/compiler.txt"
 sha256sum "$source_dir/probe_shell.c" "$source_dir/frame_probe.c" "$protocol" \

@@ -216,10 +216,10 @@ class DesktopSession:
     def application_exited(self, code):
         try:
             result = read_application_result(self.application_receipt, code)
-            if (result['state'] == 'exited' and result['exit_code'] != 0 and
+            if (result['state'] == 'exited' and
                     not result['termination_requested'] and self.helper.native.last_window == 0):
                 result = {**result, 'state': 'failed', 'phase': 'application_start',
-                          'error_code': 'APPLICATION_LAUNCHER_EXITED'}
+                          'error_code': 'APPLICATION_LAUNCHER_EXITED' if result['exit_code'] else 'APPLICATION_NO_WINDOW'}
             self.record(result)
         except (OSError, ValueError):
             self.record({'state': 'failed', 'phase': 'application',

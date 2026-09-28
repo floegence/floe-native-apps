@@ -19,7 +19,7 @@ gi.require_version("Gio", "2.0")
 from gi.repository import Gio, GLib  # noqa: E402
 from launch_plan import Unavailable, revalidate, restored_environment  # noqa: E402
 from application_processes import LaunchChildren  # noqa: E402
-from application_package import private_flatpak_command  # noqa: E402
+from application_package import private_flatpak_command, private_browser_command  # noqa: E402
 
 
 def write_receipt(path, state, **details):
@@ -111,6 +111,11 @@ def launch(app, receipt, plan=None):
             except Exception:
                 raise Unavailable('APPLICATION_HOST_SERVICE_UNAVAILABLE', 'host_services') from None
         package_command = private_flatpak_command(app, plan, restored_environment(os.environ), GLib)
+        browser_command = private_browser_command(app, plan, restored_environment(os.environ), GLib)
+        if browser_command is not None:
+            if package_command is not None:
+                raise Unavailable('PACKAGE_LAUNCHER_UNSUPPORTED', 'package_resources')
+            package_command = browser_command
         if app.get_boolean("DBusActivatable") or package_command is not None:
             entry = GLib.KeyFile.new()
             entry.load_from_file(app.get_filename(), GLib.KeyFileFlags.NONE)

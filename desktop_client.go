@@ -1,16 +1,20 @@
 package nativeapps
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"image/jpeg"
 	"io"
 	"math"
 	"net"
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"golang.org/x/image/webp"
 )
 
 const (
@@ -38,10 +42,11 @@ type DesktopEndpoint struct {
 // One goroutine reads events while writers may send requests concurrently.
 // Native validation and ordering remain authoritative in the helper.
 type DesktopConnection struct {
-	conn       net.Conn
-	writeTurn  chan struct{}
-	sequence   uint64
-	connection uint64
+	conn          net.Conn
+	writeTurn     chan struct{}
+	sequence      uint64
+	connection    uint64
+	streamVersion int
 }
 
 // DesktopState is native observation, not application lifetime. In particular,
@@ -70,13 +75,18 @@ type DesktopWindow struct {
 // generation. Receiving or parsing it does not grant input permission: the
 // viewer must decode and paint it before sending frame_ack for Sequence.
 type DesktopFrame struct {
-	Encoding   string `json:"encoding"`
-	Width      int    `json:"width"`
-	Height     int    `json:"height"`
-	Sequence   uint64 `json:"sequence"`
-	Connection uint64 `json:"connection"`
-	Window     uint64 `json:"window"`
-	Generation uint64 `json:"generation"`
+	X            int    `json:"x,omitempty"`
+	Y            int    `json:"y,omitempty"`
+	RegionWidth  int    `json:"region_width,omitempty"`
+	RegionHeight int    `json:"region_height,omitempty"`
+	Base         uint64 `json:"base,omitempty"`
+	Encoding     string `json:"encoding"`
+	Width        int    `json:"width"`
+	Height       int    `json:"height"`
+	Sequence     uint64 `json:"sequence"`
+	Connection   uint64 `json:"connection"`
+	Window       uint64 `json:"window"`
+	Generation   uint64 `json:"generation"`
 }
 
 // DesktopCursor carries the current native pointer shape. Image dimensions
@@ -113,19 +123,20 @@ type DesktopClipboard struct {
 // event includes its bounded PNG payload. The caller owns those returned bytes.
 // Result and Error preserve helper semantics: submitted is not a widget receipt.
 type DesktopEvent struct {
-	Event      string            `json:"event,omitempty"`
-	ID         uint64            `json:"id,omitempty"`
-	Version    int               `json:"version,omitempty"`
-	Connection uint64            `json:"connection,omitempty"`
-	State      *DesktopState     `json:"state,omitempty"`
-	Frame      *DesktopFrame     `json:"frame,omitempty"`
-	Cursor     *DesktopCursor    `json:"cursor,omitempty"`
-	Clipboard  *DesktopClipboard `json:"clipboard,omitempty"`
-	Bytes      int               `json:"bytes,omitempty"`
-	Code       string            `json:"code,omitempty"`
-	Error      string            `json:"error,omitempty"`
-	Result     json.RawMessage   `json:"result,omitempty"`
-	Pixels     []byte            `json:"-"`
+	StreamVersion int               `json:"stream_version,omitempty"`
+	Event         string            `json:"event,omitempty"`
+	ID            uint64            `json:"id,omitempty"`
+	Version       int               `json:"version,omitempty"`
+	Connection    uint64            `json:"connection,omitempty"`
+	State         *DesktopState     `json:"state,omitempty"`
+	Frame         *DesktopFrame     `json:"frame,omitempty"`
+	Cursor        *DesktopCursor    `json:"cursor,omitempty"`
+	Clipboard     *DesktopClipboard `json:"clipboard,omitempty"`
+	Bytes         int               `json:"bytes,omitempty"`
+	Code          string            `json:"code,omitempty"`
+	Error         string            `json:"error,omitempty"`
+	Result        json.RawMessage   `json:"result,omitempty"`
+	Pixels        []byte            `json:"-"`
 }
 
 // DesktopRequest names a version-1 helper operation. Operation is the native
@@ -139,6 +150,7 @@ type DesktopEvent struct {
 // release_input cancels pending input and releases held keys/buttons only for
 // the named, already-painted target. It preserves that frame's input authority.
 type DesktopRequest struct {
+	Mode       string          `json:"mode,omitempty"`
 	Method     string          `json:"method"`
 	Connection uint64          `json:"connection,omitempty"`
 	Window     uint64          `json:"window,omitempty"`
@@ -150,7 +162,12 @@ type DesktopRequest struct {
 func desktopID(value uint64) bool { return value > 0 && value <= desktopMaxID }
 
 func (r DesktopRequest) valid(connection uint64) bool {
+	if r.Method != "configure_stream" && r.Mode != "" {
+		return false
+	}
 	switch r.Method {
+	case "configure_stream":
+		return (r.Mode == "auto" || r.Mode == "clarity" || r.Mode == "smooth" || r.Mode == "data") && r.Connection == 0 && r.Window == 0 && r.Generation == 0 && r.Frame == 0 && len(r.Operation) == 0
 	case "status", "refresh", "terminate_application":
 		return r.Connection == 0 && r.Window == 0 && r.Generation == 0 && r.Frame == 0 && len(r.Operation) == 0
 	case "frame_ack":
@@ -170,6 +187,10 @@ func (r DesktopRequest) valid(connection uint64) bool {
 // Connection returns the immutable attachment generation assigned by the
 // helper. Reattachment creates another DesktopConnection and another generation.
 func (c *DesktopConnection) Connection() uint64 { return c.connection }
+
+// StreamVersion is the negotiated helper capability. Zero denotes a surviving
+// legacy PNG session; hosts must not send configure_stream to that session.
+func (c *DesktopConnection) StreamVersion() int { return c.streamVersion }
 
 // Close revokes this sharing attachment. It never terminates the helper, display
 // or application. The helper releases input owned by the detached attachment.
@@ -273,7 +294,7 @@ func (c *DesktopConnection) read() (DesktopEvent, error) {
 			return DesktopEvent{}, ErrDesktopProtocol
 		}
 	case "attached":
-		if c.connection != 0 || event.Version != 1 || !desktopID(event.Connection) || event.State == nil || event.Frame != nil || event.Bytes != 0 {
+		if c.connection != 0 || event.Version != 1 || (event.StreamVersion != 0 && event.StreamVersion != 2) || !desktopID(event.Connection) || event.State == nil || event.Frame != nil || event.Bytes != 0 {
 			return DesktopEvent{}, ErrDesktopProtocol
 		}
 	case "state":
@@ -319,17 +340,37 @@ func (c *DesktopConnection) read() (DesktopEvent, error) {
 		event.Pixels = data
 	case "frame":
 		f := event.Frame
-		if f == nil || f.Encoding != "png" || f.Width < 1 || f.Width > 4096 || f.Height < 1 || f.Height > 4096 ||
+		if f == nil || (f.Encoding != "png" && f.Encoding != "jpeg" && f.Encoding != "webp") || f.Width < 1 || f.Width > 4096 || f.Height < 1 || f.Height > 4096 ||
 			!desktopID(f.Sequence) || f.Connection != c.connection || !desktopID(f.Window) || !desktopID(f.Generation) ||
-			event.Bytes < 45 || event.Bytes > desktopFrameLimit {
+			event.Bytes < 20 || event.Bytes > desktopFrameLimit {
+			return DesktopEvent{}, ErrDesktopProtocol
+		}
+		rw, rh := f.RegionWidth, f.RegionHeight
+		if rw == 0 && rh == 0 {
+			rw, rh = f.Width, f.Height
+		}
+		if rw < 1 || rh < 1 || rw > f.Width || rh > f.Height || f.X < 0 || f.Y < 0 || f.X > f.Width-rw || f.Y > f.Height-rh || f.Base >= f.Sequence || (f.X == 0 && f.Y == 0 && rw == f.Width && rh == f.Height && f.Base != 0) || ((f.X != 0 || f.Y != 0 || rw != f.Width || rh != f.Height) && !desktopID(f.Base)) {
 			return DesktopEvent{}, ErrDesktopProtocol
 		}
 		data, err := readDesktopPacket(c.conn, 2, event.Bytes)
 		if err != nil {
 			return DesktopEvent{}, err
 		}
-		if len(data) != event.Bytes || string(data[:16]) != "\x89PNG\r\n\x1a\n\x00\x00\x00\x0dIHDR" ||
-			binary.BigEndian.Uint32(data[16:20]) != uint32(f.Width) || binary.BigEndian.Uint32(data[20:24]) != uint32(f.Height) ||
+		if len(data) != event.Bytes {
+			return DesktopEvent{}, ErrDesktopProtocol
+		}
+		if f.Encoding == "jpeg" {
+			config, err := jpeg.DecodeConfig(bytes.NewReader(data))
+			if err != nil || config.Width != rw || config.Height != rh || !bytes.HasSuffix(data, []byte{0xff, 0xd9}) {
+				return DesktopEvent{}, ErrDesktopProtocol
+			}
+		} else if f.Encoding == "webp" {
+			config, err := webp.DecodeConfig(bytes.NewReader(data))
+			if err != nil || config.Width != rw || config.Height != rh {
+				return DesktopEvent{}, ErrDesktopProtocol
+			}
+		} else if len(data) < 45 || string(data[:16]) != "\x89PNG\r\n\x1a\n\x00\x00\x00\x0dIHDR" ||
+			binary.BigEndian.Uint32(data[16:20]) != uint32(rw) || binary.BigEndian.Uint32(data[20:24]) != uint32(rh) ||
 			string(data[24:29]) != "\x08\x02\x00\x00\x00" {
 			return DesktopEvent{}, ErrDesktopProtocol
 		}
@@ -398,5 +439,6 @@ func authenticateDesktop(ctx context.Context, conn net.Conn, endpoint DesktopEnd
 		return nil, DesktopState{}, err
 	}
 	c.connection = event.Connection
+	c.streamVersion = event.StreamVersion
 	return c, *event.State, nil
 }

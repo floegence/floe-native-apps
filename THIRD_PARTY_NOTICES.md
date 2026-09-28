@@ -7,6 +7,15 @@ Original runtime APKs are acquired from their publishers. The combined desktop
 recipe additionally distributes the explicitly identified source derivations
 below in `native/dist`, together with their corresponding source and notices.
 
+## Image codecs
+
+The native capture helper dynamically uses the catalog's original libpng,
+libjpeg-turbo, and libwebp packages. Their original BSD/zlib/libpng license and
+source metadata are retained in `desktop_catalog.json`; no third-party codec
+source is copied into the helper. The Go transport validates WebP headers using
+`golang.org/x/image/webp` under the Go project's BSD 3-Clause license, as pinned in
+`go.mod` and `go.sum`.
+
 ## Xpra HTML client fixtures and preparation
 
 `testdata/input/*.gz` contains unmodified source files from

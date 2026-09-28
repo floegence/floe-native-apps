@@ -4,13 +4,13 @@
     "artifacts/desktop-capture": {
       "common": false,
       "executable": true,
-      "sha256": "da1aa68c891faee9fc8b13f0b990d7acc651581806912dd8f6dc70ea5253e4f2",
+      "sha256": "e2e4f2cf122593fb69e575628bb3389965fd59c13ad8206f5adf7283645cb705",
       "size_bytes": 67528
     },
     "artifacts/desktop-shell.so": {
       "common": false,
       "executable": true,
-      "sha256": "0761934454b11209516eae2e3872bb28b5f17a7e2999e0f9a7ebd3421f3dca88",
+      "sha256": "74a564813d0be88b3332b3585b423f00dce0b5de272070ac2604aa488eb123e0",
       "size_bytes": 67336
     },
     "artifacts/headless-backend.so": {
@@ -88,8 +88,8 @@
     "provenance/native.json": {
       "common": false,
       "executable": false,
-      "sha256": "03101cac2dc3481cfca4f09a849f75e63dc1264959e68814d533f40488f9c2c1",
-      "size_bytes": 91014
+      "sha256": "90d756bf4c0ee0ca47fb860ed5e158f9770da6afeafdd7e99e2a89c62c668e39",
+      "size_bytes": 92426
     },
     "provenance/qt5.json": {
       "common": false,
@@ -172,8 +172,8 @@
     "sources/tree/qualification/desktop_compatibility/Dockerfile.desktop-native": {
       "common": true,
       "executable": false,
-      "sha256": "ebc81f865679eefd8b1ca63cb886258fd6d7ff14415b7e83ce69561249e0064e",
-      "size_bytes": 692
+      "sha256": "9d43583ab8f7c7c1d624cc5e9319a742d4356761722f264224f5260be6aaa09b",
+      "size_bytes": 722
     },
     "sources/tree/qualification/desktop_compatibility/Dockerfile.gtk-native": {
       "common": true,
@@ -208,8 +208,8 @@
     "sources/tree/qualification/desktop_compatibility/build_portable_probe.sh": {
       "common": true,
       "executable": false,
-      "sha256": "3d9b29531c5546d69829265eb83aa3d0439fe9cf695785cf73ba939bba19bfe7",
-      "size_bytes": 3100
+      "sha256": "d8aec7557bd50666fd0d14b43ba42925cec5eab8e0ff3024e5f637e7e231e525",
+      "size_bytes": 3116
     },
     "sources/tree/qualification/desktop_compatibility/build_qt_native.sh": {
       "common": true,
@@ -232,8 +232,8 @@
     "sources/tree/qualification/desktop_compatibility/frame_probe.c": {
       "common": true,
       "executable": false,
-      "sha256": "3a6f5057058a039c9337ab7b1b58254a44a8da758f71909dbc28574fab581cd6",
-      "size_bytes": 9485
+      "sha256": "de2c11c98329d0aa69170e6dd9319c7f64c751635c96bd68feed832848b003ee",
+      "size_bytes": 15918
     },
     "sources/tree/qualification/desktop_compatibility/probe_shell.c": {
       "common": true,

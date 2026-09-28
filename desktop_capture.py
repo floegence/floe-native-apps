@@ -12,8 +12,17 @@ class NativeFrames:
     def __init__(self, connection, loop, scene):
         self.socket, self.loop, self.scene = connection, loop, scene
         self.pending, self.sequence, self.closed = None, 0, False
+        self.mode, self.reset, self.refining, self.target = 0, True, False, None
         self.socket.setblocking(False)
         self.loop.watch(self.socket.fileno(), self.read)
+
+    def configure(self, mode):
+        value = {None: 0, 'auto': 1, 'clarity': 2, 'smooth': 3, 'data': 4}[mode]
+        if value != self.mode:
+            self.mode, self.reset = value, True
+
+    def refine(self):
+        self.refining = True
 
     def capture(self, target, completed):
         if self.pending:
@@ -48,7 +57,11 @@ class NativeFrames:
                 self.finish(ticket, ticket['description'], bytes(ticket['input']))
             else:
                 ticket['stage'] = 'header'
-                ticket['output'] = struct.pack('=I', ticket['sequence'])
+                reset = self.reset or self.target is not ticket['target']
+                flags = int(reset) | (2 if self.refining else 0)
+                ticket['output'] = struct.pack('=3I', ticket['sequence'], self.mode, flags)
+                self.reset = self.refining = False
+                self.target = ticket['target']
                 self.loop.watch(self.socket.fileno(), self.read, self.write)
         try:
             self.scene(observed)
@@ -85,7 +98,7 @@ class NativeFrames:
                 if self.socket.recv(1) is not None:
                     self.close('CAPTURE_PROTOCOL_INVALID')
                 return
-            total = 24 if ticket['stage'] == 'header' else ticket['length']
+            total = 40 if ticket['stage'] == 'header' else ticket['length']
             chunk = self.socket.recv(min(128 * 1024, total - len(ticket['input'])))
             if not chunk:
                 self.close()
@@ -94,31 +107,43 @@ class NativeFrames:
             if len(ticket['input']) != total:
                 return
             if ticket['stage'] == 'header':
-                sequence, status, width, height, fmt, length = struct.unpack('=6I', ticket['input'])
+                sequence, status, width, height, fmt, length, x, y, rw, rh = struct.unpack('=10I', ticket['input'])
                 ticket['input'].clear()
-                if sequence != ticket['sequence'] or status not in (1, 2, 3):
+                if sequence != ticket['sequence'] or status not in (1, 2, 3, 4):
                     self.close('CAPTURE_PROTOCOL_INVALID')
                     return
                 if status != 1:
                     if length != 0:
                         self.close('CAPTURE_PROTOCOL_INVALID')
+                    elif status == 4:
+                        ticket['description'] = None
+                        ticket['stage'] = 'end'
+                        self.barrier(ticket, True)
                     else:
                         self.finish(ticket, error='CAPTURE_SOURCE_CHANGED' if status == 2 else 'CAPTURE_UNAVAILABLE')
                     return
                 if (not 0 < width <= 4096 or not 0 < height <= 4096 or
-                        not 45 <= length <= 4096 * 4096 * 4 or fmt != 0x20474e50):
+                        not 20 <= length <= 4096 * 4096 * 4 or fmt not in (0x20474e50, 0x4745504a, 0x50424557) or
+                        not 0 < rw <= width or not 0 < rh <= height or x + rw > width or y + rh > height):
                     self.close('CAPTURE_PROTOCOL_INVALID')
                     return
-                ticket['description'] = {'encoding': 'png', 'width': width, 'height': height}
+                ticket['description'] = {'encoding': {0x20474e50: 'png', 0x4745504a: 'jpeg', 0x50424557: 'webp'}[fmt],
+                    'width': width, 'height': height, 'x': x, 'y': y, 'region_width': rw, 'region_height': rh}
                 ticket['length'], ticket['stage'] = length, 'pixels'
                 return
             if ticket['cancelled']:
                 self.finish(ticket, error='CAPTURE_CANCELLED')
             else:
                 pixels, description = ticket['input'], ticket['description']
-                if (pixels[:16] != b'\x89PNG\r\n\x1a\n\x00\x00\x00\x0dIHDR' or
-                        struct.unpack('!II', pixels[16:24]) != (description['width'], description['height']) or
+                if description['encoding'] == 'png' and (len(pixels) < 45 or pixels[:16] != b'\x89PNG\r\n\x1a\n\x00\x00\x00\x0dIHDR' or
+                        struct.unpack('!II', pixels[16:24]) != (description['region_width'], description['region_height']) or
                         pixels[24:29] != b'\x08\x02\x00\x00\x00'):
+                    self.close('CAPTURE_PROTOCOL_INVALID')
+                    return
+                if description['encoding'] == 'jpeg' and (pixels[:2] != b'\xff\xd8' or pixels[-2:] != b'\xff\xd9'):
+                    self.close('CAPTURE_PROTOCOL_INVALID')
+                    return
+                if description['encoding'] == 'webp' and (pixels[:4] != b'RIFF' or pixels[8:12] != b'WEBP'):
                     self.close('CAPTURE_PROTOCOL_INVALID')
                     return
                 ticket['stage'] = 'end'
@@ -132,12 +157,15 @@ class NativeFrames:
         if self.pending is not ticket:
             return
         self.pending = None
+        if error:
+            self.reset = True
         if ticket['timer'] is not None:
             self.loop.cancel(ticket['timer'])
         ticket['input'].clear()
         ticket['completed'](description, data, error)
 
     def cancel(self):
+        self.reset = True
         if self.pending:
             self.pending['cancelled'] = True
 

@@ -3,11 +3,13 @@ package nativeapps
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"image"
 	"image/color"
+	"image/jpeg"
 	"image/png"
 	"io"
 	"net"
@@ -361,7 +363,7 @@ func TestDesktopClientQueuedWriteCancellationPreservesActiveRequest(t *testing.T
 }
 
 func TestDesktopClientRequiresVersionedAuthenticationReply(t *testing.T) {
-	for _, name := range []string{"accepted", "missing_version", "future_version", "unsolicited_state"} {
+	for _, name := range []string{"accepted", "stream_v2", "stream_future", "missing_version", "future_version", "unsolicited_state"} {
 		t.Run(name, func(t *testing.T) {
 			connection, peer := desktopTestConnection(t)
 			endpoint := DesktopEndpoint{Instance: "private-instance", Token: string(bytes.Repeat([]byte{'a'}, 64))}
@@ -380,6 +382,10 @@ func TestDesktopClientRequiresVersionedAuthenticationReply(t *testing.T) {
 				}
 				reply := DesktopEvent{Event: "attached", Version: 1, Connection: 7, State: &DesktopState{State: "waiting"}}
 				switch name {
+				case "stream_v2":
+					reply.StreamVersion = 2
+				case "stream_future":
+					reply.StreamVersion = 3
 				case "missing_version":
 					reply.Version = 0
 				case "future_version":
@@ -391,9 +397,12 @@ func TestDesktopClientRequiresVersionedAuthenticationReply(t *testing.T) {
 				result <- err
 			}()
 			client, state, err := authenticateDesktop(t.Context(), connection.conn, endpoint)
-			if name == "accepted" {
+			if name == "accepted" || name == "stream_v2" {
 				if err != nil || client.Connection() != 7 || state.State != "waiting" {
 					t.Fatalf("valid handshake failed: %v", err)
+				}
+				if (name == "stream_v2") != (client.StreamVersion() == 2) {
+					t.Fatal("lost helper stream capability")
 				}
 			} else if !errors.Is(err, ErrDesktopProtocol) || client != nil {
 				t.Fatalf("invalid handshake accepted: %v", err)
@@ -459,5 +468,90 @@ func TestDesktopClientCursorRejectsMalformedImages(t *testing.T) {
 				t.Fatalf("invalid cursor admitted: %v", err)
 			}
 		})
+	}
+}
+
+func TestDesktopClientDamageFrames(t *testing.T) {
+	for _, encoding := range []string{"png", "jpeg"} {
+		for _, invalid := range []string{"", "outside", "no_base", "future_base", "wrong_size"} {
+			t.Run(encoding+"/"+invalid, func(t *testing.T) {
+				pixels := desktopTestPNG(t)
+				if encoding == "jpeg" {
+					var data bytes.Buffer
+					if err := jpeg.Encode(&data, image.NewRGBA(image.Rect(0, 0, 3, 2)), &jpeg.Options{Quality: 80}); err != nil {
+						t.Fatal(err)
+					}
+					pixels = data.Bytes()
+				}
+				event := desktopTestFrame(len(pixels))
+				f := event.Frame
+				f.Encoding = encoding
+				f.Width = 100
+				f.Height = 80
+				f.X = 12
+				f.Y = 14
+				f.RegionWidth = 3
+				f.RegionHeight = 2
+				f.Base = 41
+				switch invalid {
+				case "outside":
+					f.X = 99
+				case "no_base":
+					f.Base = 0
+				case "future_base":
+					f.Base = 42
+				case "wrong_size":
+					f.RegionWidth = 4
+				}
+				client, peer := desktopTestConnection(t)
+				go func() { _, _ = peer.Write(append(desktopTestJSON(event), desktopTestPacket(2, pixels)...)) }()
+				ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+				defer cancel()
+				got, err := client.Read(ctx)
+				if invalid != "" {
+					if !errors.Is(err, ErrDesktopProtocol) {
+						t.Fatalf("invalid region accepted: %v", err)
+					}
+					return
+				}
+				if err != nil || got.Frame.X != 12 || got.Frame.Base != 41 || !bytes.Equal(got.Pixels, pixels) {
+					t.Fatalf("region lost: %v", err)
+				}
+			})
+		}
+	}
+}
+
+func TestDesktopClientStreamConfiguration(t *testing.T) {
+	for _, mode := range []string{"auto", "clarity", "smooth", "data"} {
+		if !(DesktopRequest{Method: "configure_stream", Mode: mode}).valid(7) {
+			t.Fatal("valid mode rejected", mode)
+		}
+	}
+	for _, request := range []DesktopRequest{{Method: "configure_stream", Mode: "unknown"}, {Method: "configure_stream", Mode: "auto", Window: 1}, {Method: "refresh", Mode: "auto"}} {
+		if request.valid(7) {
+			t.Fatal("invalid stream request accepted")
+		}
+	}
+}
+
+func TestDesktopClientAcceptsSmallLosslessWebPAndRejectsDimensions(t *testing.T) {
+	pixels, err := base64.StdEncoding.DecodeString("UklGRhwAAABXRUJQVlA4TA8AAAAvAUAAAAcQ/Y/+ByKi/wEA")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, width := range []int{2, 3} {
+		client, peer := desktopTestConnection(t)
+		frame := DesktopFrame{Encoding: "webp", Width: width, Height: 2, Sequence: 1, Connection: 7, Window: 12, Generation: 81}
+		event := DesktopEvent{Event: "frame", Frame: &frame, Bytes: len(pixels)}
+		go func() { _, _ = peer.Write(append(desktopTestJSON(event), desktopTestPacket(2, pixels)...)) }()
+		result, err := client.Read(t.Context())
+		if width == 2 {
+			if err != nil || !bytes.Equal(result.Pixels, pixels) {
+				t.Fatal("valid small WebP rejected", err)
+			}
+		} else if !errors.Is(err, ErrDesktopProtocol) {
+			t.Fatal("wrong WebP dimensions accepted", err)
+		}
 	}
 }

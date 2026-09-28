@@ -84,6 +84,23 @@ class LaunchPlanTests(unittest.TestCase):
                                    [self.backend] if backends is None else backends,
                                    inspect=self.inspect)
 
+    def test_browser_profile_is_bound_and_revalidated_only_for_observed_browsers(self):
+        profile = str(self.root.resolve() / 'private-profile')
+        ordinary = launch_plan.prepare(str(self.desktop), {'PATH': str(self.root)},
+                     [self.backend], inspect=self.inspect, browser_profile=profile)
+        self.assertNotIn('browser_profile', ordinary)
+        def browser(path, environment):
+            return {**self.inspect(path, environment), 'browser_family': 'chromium'}
+        plan = launch_plan.prepare(str(self.desktop), {'PATH': str(self.root)},
+                   [self.backend], inspect=browser, browser_profile=profile)
+        self.assertEqual(plan['browser_profile'], profile)
+        launch_plan.revalidate(plan, {'PATH': str(self.root)}, [self.backend], inspect=browser)
+        with self.assertRaises(launch_plan.StalePlan):
+            launch_plan.revalidate(plan, {'PATH': str(self.root)}, [self.backend], inspect=self.inspect)
+        with self.assertRaises(launch_plan.Unavailable):
+            launch_plan.prepare(str(self.desktop), {'PATH': str(self.root)},
+                [self.backend], inspect=browser, browser_profile='relative-profile')
+
     def test_unknown_app_protocol_defaults_to_combined_display_before_execution(self):
         plan = self.plan()
         self.assertEqual(plan['version'], 1)

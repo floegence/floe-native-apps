@@ -39,6 +39,10 @@ class CaptureTests(unittest.TestCase):
         self.addCleanup(self.frames.close)
         self.addCleanup(self.remote.close)
 
+    def test_capture_socket_is_nonblocking_and_observed_before_first_request(self):
+        self.assertFalse(self.local.getblocking())
+        self.assertEqual(self.loop.watches[self.local.fileno()][0], self.frames.read)
+
     def start(self):
         self.frames.capture(self.target, lambda *args: self.results.append(args))
 
@@ -49,10 +53,10 @@ class CaptureTests(unittest.TestCase):
         self.start()
         self.scene()
         self.frames.write()
-        return struct.unpack('=I', self.remote.recv(4))[0]
+        return struct.unpack('=3I', self.remote.recv(12))[0]
 
     def pixels(self, sequence=1):
-        packet = struct.pack('=6I', sequence, 1, 2, 1, PNG_FORMAT, len(PNG)) + PNG
+        packet = struct.pack('=10I', sequence, 1, 2, 1, PNG_FORMAT, len(PNG), 0, 0, 2, 1) + PNG
         self.remote.sendall(packet)
         self.frames.read()
         self.frames.read()
@@ -62,7 +66,7 @@ class CaptureTests(unittest.TestCase):
         self.pixels()
         self.assertEqual(self.results, [])
         self.scene()
-        self.assertEqual(self.results, [({'encoding': 'png', 'width': 2, 'height': 1}, PNG, None)])
+        self.assertEqual(self.results, [({'encoding': 'png', 'width': 2, 'height': 1, 'x': 0, 'y': 0, 'region_width': 2, 'region_height': 1}, PNG, None)])
 
     def test_delayed_begin_barrier_never_captures_the_replacement_window(self):
         self.start()
@@ -91,7 +95,7 @@ class CaptureTests(unittest.TestCase):
 
     def test_partial_headers_and_payload_do_not_publish_incomplete_frames(self):
         sequence = self.request()
-        packet = struct.pack('=6I', sequence, 1, 2, 1, PNG_FORMAT, len(PNG)) + PNG
+        packet = struct.pack('=10I', sequence, 1, 2, 1, PNG_FORMAT, len(PNG), 0, 0, 2, 1) + PNG
         for byte in packet:
             self.remote.sendall(bytes((byte,)))
             self.frames.read()
@@ -101,14 +105,14 @@ class CaptureTests(unittest.TestCase):
 
     def test_malformed_header_closes_only_capture_transport_before_allocation(self):
         self.request()
-        self.remote.sendall(struct.pack('=6I', 1, 1, 0xffffffff, 1, PNG_FORMAT, 0xffffffff))
+        self.remote.sendall(struct.pack('=10I', 1, 1, 0xffffffff, 1, PNG_FORMAT, 0xffffffff, 0, 0, 2, 1))
         self.frames.read()
         self.assertEqual(self.results[0], (None, None, 'CAPTURE_PROTOCOL_INVALID'))
         self.assertEqual(self.local.fileno(), -1)
 
     def test_wrong_sequence_and_source_retry_are_not_silently_replayed(self):
         sequence = self.request()
-        self.remote.sendall(struct.pack('=6I', sequence, 2, 2, 1, PNG_FORMAT, 0))
+        self.remote.sendall(struct.pack('=10I', sequence, 2, 2, 1, PNG_FORMAT, 0, 0, 0, 2, 1))
         self.frames.read()
         self.assertEqual(self.results[0][2], 'CAPTURE_SOURCE_CHANGED')
         sequence = self.request()
@@ -144,14 +148,14 @@ class CaptureTests(unittest.TestCase):
 
     def test_png_dimensions_cannot_differ_from_the_native_frame(self):
         self.request()
-        self.remote.sendall(struct.pack('=6I', 1, 1, 3, 1, PNG_FORMAT, len(PNG)) + PNG)
+        self.remote.sendall(struct.pack('=10I', 1, 1, 3, 1, PNG_FORMAT, len(PNG), 0, 0, 3, 1) + PNG)
         self.frames.read()
         self.frames.read()
         self.assertEqual(self.results, [(None, None, 'CAPTURE_PROTOCOL_INVALID')])
 
     def test_obsolete_raw_pixels_are_rejected_without_a_second_decode_path(self):
         self.request()
-        self.remote.sendall(struct.pack('=6I', 1, 1, 2, 1, 0x34325258, 8) + b'abcdefgh')
+        self.remote.sendall(struct.pack('=10I', 1, 1, 2, 1, 0x34325258, 8, 0, 0, 2, 1) + b'abcdefgh')
         self.frames.read()
         self.assertEqual(self.results, [(None, None, 'CAPTURE_PROTOCOL_INVALID')])
 
@@ -168,7 +172,7 @@ class CaptureTests(unittest.TestCase):
                     sequence = struct.unpack('=I', remote.recv(4))[0]
                     malformed = bytearray(PNG)
                     malformed[offset] = value
-                    remote.sendall(struct.pack('=6I', sequence, 1, 2, 1, PNG_FORMAT, len(malformed)) + malformed)
+                    remote.sendall(struct.pack('=10I', sequence, 1, 2, 1, PNG_FORMAT, len(malformed), 0, 0, 2, 1) + malformed)
                     frames.read()
                     frames.read()
                     self.assertEqual(results, [(None, None, 'CAPTURE_PROTOCOL_INVALID')])
@@ -180,20 +184,52 @@ class CaptureTests(unittest.TestCase):
 
     def test_encoded_size_is_bounded_before_reading_or_allocating_the_payload(self):
         self.request()
-        self.remote.sendall(struct.pack('=6I', 1, 1, 4096, 4096, PNG_FORMAT, 64 * 1024 * 1024 + 1))
+        self.remote.sendall(struct.pack('=10I', 1, 1, 4096, 4096, PNG_FORMAT, 64 * 1024 * 1024 + 1, 0, 0, 4096, 4096))
         self.frames.read()
         self.assertEqual(self.results, [(None, None, 'CAPTURE_PROTOCOL_INVALID')])
         self.assertIsNone(self.frames.pending)
 
     def test_truncated_image_never_reaches_the_scene_or_viewer(self):
         self.request()
-        self.remote.sendall(struct.pack('=6I', 1, 1, 2, 1, PNG_FORMAT, len(PNG)) + PNG[:-1])
+        self.remote.sendall(struct.pack('=10I', 1, 1, 2, 1, PNG_FORMAT, len(PNG), 0, 0, 2, 1) + PNG[:-1])
         self.frames.read()
         self.frames.read()
         self.remote.shutdown(socket.SHUT_WR)
         self.frames.read()
         self.assertEqual(self.results, [(None, None, 'CAPTURE_UNAVAILABLE')])
         self.assertEqual(self.barriers, [])
+
+    def test_small_webp_observes_the_same_scene_barriers(self):
+        pixels = base64.b64decode('UklGRhwAAABXRUJQVlA4TA8AAAAvAUAAAAcQ/Y/+ByKi/wEA')
+        sequence = self.request()
+        self.remote.sendall(struct.pack('=10I', sequence, 1, 2, 2, 0x50424557, len(pixels), 0, 0, 2, 2) + pixels)
+        self.frames.read(); self.frames.read()
+        self.assertEqual(self.results, [])
+        self.scene()
+        description, actual, error = self.results[0]
+        self.assertEqual(description['encoding'], 'webp')
+        self.assertEqual(actual, pixels)
+        self.assertIsNone(error)
+
+    def test_unchanged_pixels_do_not_publish_an_empty_network_frame(self):
+        sequence = self.request()
+        self.remote.sendall(struct.pack('=10I', sequence, 4, 2, 1, PNG_FORMAT, 0, 0, 0, 2, 1))
+        self.frames.read()
+        self.assertEqual(self.results, [])
+        self.scene()
+        self.assertEqual(self.results, [(None, b'', None)])
+
+    def test_damage_rectangle_and_configuration_bind_the_native_request(self):
+        self.frames.configure('data')
+        self.start(); self.scene(); self.frames.write()
+        self.assertEqual(struct.unpack('=3I', self.remote.recv(12)), (1, 4, 1))
+        self.remote.sendall(struct.pack('=10I', 1, 1, 10, 8, PNG_FORMAT, len(PNG), 3, 4, 2, 1) + PNG)
+        self.frames.read(); self.frames.read(); self.scene()
+        self.assertEqual(self.results[0][0], {'encoding': 'png', 'width': 10, 'height': 8,
+            'x': 3, 'y': 4, 'region_width': 2, 'region_height': 1})
+        self.frames.refine()
+        self.start(); self.scene(); self.frames.write()
+        self.assertEqual(struct.unpack('=3I', self.remote.recv(12)), (2, 4, 2))
 
 
 if __name__ == '__main__':

@@ -7,7 +7,10 @@ tool (
 	golang.org/x/vuln/cmd/govulncheck
 )
 
-require golang.org/x/sys v0.48.0
+require (
+	golang.org/x/image v0.46.0
+	golang.org/x/sys v0.48.0
+)
 
 require (
 	github.com/bmatcuk/doublestar/v4 v4.10.0 // indirect

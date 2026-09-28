@@ -26,8 +26,9 @@ def capture(command, environment, start, control, wait_authorized, destination):
                     raise RuntimeError('Portable frame disconnected')
                 data.extend(chunk)
             return bytes(data)
-        parent.sendall(struct.pack('=I', 1))
-        sequence, status, width, height, fmt, size = struct.unpack('=6I', receive(24))
+        parent.sendall(struct.pack('=3I', 1, 0, 1))
+        sequence, status, width, height, fmt, size, x, y, rw, rh = struct.unpack('=10I', receive(40))
+        assert (x, y, rw, rh) == (0, 0, width, height)
         assert sequence == 1 and status == 1
         assert 0 < width <= 4096 and 0 < height <= 4096 and 45 <= size <= 4096 * 4096 * 4 and fmt == 0x20474e50
         pixels = receive(size)
