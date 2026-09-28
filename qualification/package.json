@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "devDependencies": {
-    "@floegence/floe-webapp-core": "0.77.3",
+    "@floegence/floe-webapp-core": "0.81.3",
     "jquery": "3.7.1",
     "jquery-ui-dist": "1.13.3",
     "playwright": "1.58.2",
