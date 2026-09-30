@@ -343,10 +343,59 @@ jobs:
             !${{ runner.temp }}/desktop-evidence/**/source/**
           retention-days: 30
           if-no-files-found: error
+  host-desktop:
+    name: Host desktop media (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    env:
+      GOWORK: 'off'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Qualify fresh media installation and isolated X11 interaction
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/host-desktop-evidence"
+          CGO_ENABLED=0 go build -trimpath -o "$RUNNER_TEMP/native-check" ./cmd/floe-native-apps
+          "$RUNNER_TEMP/native-check" -recipe host-desktop -state "$RUNNER_TEMP/host-desktop-state" \
+            2>&1 | tee "$RUNNER_TEMP/host-desktop-evidence/install.log"
+          root=$(tail -n 1 "$RUNNER_TEMP/host-desktop-evidence/install.log")
+          test -x "$root/floe/host-desktop/python3"
+          # The X server belongs only to this disposable qualification runner.
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends xvfb xauth fonts-dejavu-core
+          "$root/floe/host-desktop/python3" qualification/host_desktop_x11.py \
+            --helper "$root/floe/host-desktop" \
+            2>&1 | tee "$RUNNER_TEMP/host-desktop-evidence/x11.log"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: host-desktop-${{ matrix.arch }}
+          path: ${{ runner.temp }}/host-desktop-evidence/
+          retention-days: 30
+          if-no-files-found: error
+  macos-native:
+    name: macOS native library
+    runs-on: macos-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: swift test
   release-gate:
     name: Release gate
     if: always()
-    needs: [source, vulnerabilities, native, desktop]
+    needs: [source, vulnerabilities, native, desktop, host-desktop, macos-native]
     runs-on: ubuntu-24.04
     timeout-minutes: 1
     steps:
@@ -355,4 +404,6 @@ jobs:
           VULNERABILITIES: ${{ needs.vulnerabilities.result }}
           NATIVE: ${{ needs.native.result }}
           DESKTOP: ${{ needs.desktop.result }}
-        run: test "$SOURCE" = success && test "$VULNERABILITIES" = success && test "$NATIVE" = success && test "$DESKTOP" = success
+          HOST_DESKTOP: ${{ needs.host-desktop.result }}
+          MACOS_NATIVE: ${{ needs.macos-native.result }}
+        run: test "$SOURCE" = success && test "$VULNERABILITIES" = success && test "$NATIVE" = success && test "$DESKTOP" = success && test "$HOST_DESKTOP" = success && test "$MACOS_NATIVE" = success

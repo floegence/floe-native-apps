@@ -7,3 +7,5 @@ __pycache__/
 /input_modules/certificates/
 
 /input_modules/sources/
+/.build/
+/.swiftpm/

@@ -105,8 +105,13 @@ func New(root string, pkg Package, validate func(context.Context, string) error)
 	prepare := prepareTools
 	defaultValidation := SelfTest
 	if pkg.Preparation != nil {
-		prepare = prepareDesktopTools
-		defaultValidation = func(ctx context.Context, root string) error { return desktopSelfTest(ctx, root, pkg) }
+		if pkg.Preparation.Contract == hostDesktopContract {
+			prepare = prepareHostDesktopTools
+			defaultValidation = func(ctx context.Context, root string) error { return HostDesktopSelfTest(ctx, root, pkg.Architecture) }
+		} else {
+			prepare = prepareDesktopTools
+			defaultValidation = func(ctx context.Context, root string) error { return desktopSelfTest(ctx, root, pkg) }
+		}
 	}
 	if validate == nil {
 		validate = defaultValidation

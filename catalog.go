@@ -86,8 +86,17 @@ func (p Package) Validate() error {
 		return errors.New("invalid native package size")
 	}
 	if p.Preparation != nil {
-		_, digest, err := desktopManifest(p.Architecture)
-		if err != nil || p.Preparation.Contract != desktopContract || p.Preparation.NativeSHA256 != digest {
+		var digest string
+		var err error
+		switch p.Preparation.Contract {
+		case desktopContract:
+			_, digest, err = desktopManifest(p.Architecture)
+		case hostDesktopContract:
+			digest, err = hostDesktopSourceDigest(p.Architecture)
+		default:
+			return errors.New("unsupported native preparation contract")
+		}
+		if err != nil || p.Preparation.NativeSHA256 != digest {
 			return errors.New("unsupported native preparation contract")
 		}
 	}

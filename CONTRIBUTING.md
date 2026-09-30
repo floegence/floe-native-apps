@@ -1135,3 +1135,70 @@ the corresponding changed source, or replace library files in a running session.
 The LGPL source and modification/relinking permissions described in
 `THIRD_PARTY_NOTICES.md` apply independently of the reviewed-build integrity
 checks. Hashes identify the build; they do not replace license/source obligations.
+
+## Current-user desktop media
+
+The current-user host desktop is distinct from an application's private display.
+`HostDesktopForPlatform` supplies the Linux `host-desktop-media-v1` component through
+`Manager`; neither the catalog nor installation authorizes capture. Its original
+Alpine archives include GStreamer, PipeWire, Opus and H.264 encoders. The private
+wrapper scopes their loader, GIO, GStreamer and PipeWire paths to this helper only.
+It does not start a compositor, PipeWire server, session manager or system service.
+`ResolveHostDesktopTools` verifies the embedded helper snapshot; consumers must
+use the Manager's selected installation and must not rewrite that snapshot.
+
+The Linux helper selects the active local graphical login owned by the current
+user. Wayland uses the public RemoteDesktop/ScreenCast portal and its authorized
+PipeWire descriptor. X11 uses the selected login's authenticated local X display.
+An unavailable backend does not select another display. The caller supplies an
+existing private persistent `--state` directory and a separate inherited
+`--media-fd`. Commands on stdin and control responses on stdout have independent
+writers from media; all use a big-endian four-byte JSON-header length, the header,
+and its declared binary payload. `WriteHostDesktopCommand` and
+`ReadHostDesktopMessage` own this protocol. EOF revokes the attachment.
+
+Portal restore grants are private, consumed durably once, and replaced with the
+portal's new token only when unattended authorization was explicitly requested.
+The SDK never changes lock-screen policy. The current capability reports remote
+unlock as unavailable. Lock and login changes retire frame authority, held input,
+clipboard transfers and media. A native generation and an actually drawn frame are
+required before input or clipboard access. A consumer must additionally enforce
+its authenticated session owner and the single remote console controller. A
+client's paint acknowledgement is flow control and cannot replace those checks.
+
+macOS consumers build the exact published Swift package `FloeNativeDesktop` into
+their existing native helper. `NativeCaptureStream` supports application windows
+and physical displays in the same process. The default one-frame application
+contract remains available; desktop sessions use four credits and require H.264.
+Application process/window ownership checks remain consumer-owned and mandatory.
+`NativeDesktopSession` accepts an authoritative `mayControl` predicate and owns
+native permission checks, display generations and release of its own held keys.
+It does not authenticate a network client or create a second capture process.
+
+`HostDesktopClientResource` provides the WebCodecs player and AudioWorklet modules.
+Consumers own authenticated control/media channels, published remote-input and
+pointer controllers, clipboard consent/fallback UI, and all product controls.
+Reset the player on each native generation and bind input only after its painted
+callback. Hardware preference negotiation reports the selected preference; this
+is not proof that a browser used a particular hardware decoder. A slow client
+cannot grow the native frame pipeline, decoder queue or audio queue indefinitely.
+Encoded H.264 dependencies are retained until an explicit recovery generation;
+late PNG refinements cannot replace a newer video frame.
+
+Run the focused Python `host_desktop_*_test` modules, Go `TestHostDesktop` tests,
+`node --test host_desktop_player.test.mjs` and `swift test` during development.
+`HostDesktopSelfTest` proves synthetic video/audio encode-decode operation in an
+installed Linux component. It deliberately does not request screen authorization.
+`qualification/host_desktop_synthetic.py` measures the production encoder using a
+synthetic source; receipt FPS is not client-painted FPS. The macOS qualification
+executable's `probe` command is read-only; `session` uses the public native engine.
+Physical desktop, OS consent, input, reconnect and office-performance acceptance
+require dedicated real-host evidence. No synthetic test certifies those claims.
+
+To refresh the media catalog, run `scripts/host_desktop_catalog.py` with explicit
+private `--work` and candidate `--output` paths. Verify all acquired APK signatures
+against the publisher's architecture-specific keys before committing the candidate.
+Review its package identities, dependency closure, license/source metadata and
+sizes, then qualify fresh installations on both native architectures. A changed
+helper or wrapper is bound into the component preparation digest. Never mutate a
+published component, module version or tag to repair a changed implementation.

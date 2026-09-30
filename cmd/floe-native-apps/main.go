@@ -18,7 +18,7 @@ import (
 func main() {
 	state := flag.String("state", "", "absolute private preparation directory")
 	architecture := flag.String("arch", runtime.GOARCH, "Linux target architecture")
-	recipe := flag.String("recipe", "xpra", "qualification/acquisition recipe: xpra or desktop")
+	recipe := flag.String("recipe", "xpra", "qualification/acquisition recipe: xpra, desktop, or host-desktop")
 	bundle := flag.String("bundle", "", "write a verified offline ZIP for the target architecture")
 	check := flag.String("check", "", "self-check an installed native root")
 	input := flag.String("prepare-input", "", "prepare client input support in a new private directory")
@@ -32,7 +32,9 @@ func main() {
 	}
 	validate := func(ctx context.Context, root string) error {
 		var err error
-		if *recipe == "desktop" {
+		if *recipe == "host-desktop" {
+			err = nativeapps.HostDesktopSelfTest(ctx, root, *architecture)
+		} else if *recipe == "desktop" {
 			err = nativeapps.DesktopSelfTest(ctx, root, *architecture)
 		} else {
 			err = nativeapps.SelfTest(ctx, root)
@@ -66,7 +68,7 @@ func main() {
 		if err := validate(ctx, *check); err != nil {
 			fail(err)
 		}
-		fmt.Println("Native picture and input passed")
+		fmt.Println("Native recipe self-check passed")
 		return
 	}
 	if *bundle != "" {
@@ -127,6 +129,8 @@ func packageForRecipe(recipe, architecture string) (nativeapps.Package, error) {
 		return nativeapps.ForPlatform("linux", architecture)
 	case "desktop":
 		return nativeapps.DesktopForPlatform("linux", architecture)
+	case "host-desktop":
+		return nativeapps.HostDesktopForPlatform("linux", architecture)
 	default:
 		return nativeapps.Package{}, fmt.Errorf("unknown qualification recipe %q", recipe)
 	}

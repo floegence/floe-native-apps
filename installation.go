@@ -97,6 +97,10 @@ func (m *Manager) installedDirectory(digest string) (string, error) {
 		if _, err := ResolveDesktopTools(root, item.Architecture); err != nil {
 			return "", err
 		}
+	case hostDesktopContract:
+		if _, err := ResolveHostDesktopTools(root, item.Architecture); err != nil {
+			return "", err
+		}
 	default:
 		return "", ErrUnsupported
 	}
