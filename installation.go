@@ -16,6 +16,12 @@ type Installation struct {
 	Ready        bool   `json:"ready"`
 }
 
+// The r2 native artifacts are unchanged by the r3 image-decoder closure.
+var desktopR2Digests = map[string]string{
+	"amd64": "f8f29cf383166c4e7c6728b6c1f696ab015391875dc2a370f283d4d4ca457a90",
+	"arm64": "93a0210e630a54d176f9b8f6ff3fc21605a348d6f97c7c5c8127fa6cd7a484be",
+}
+
 // Published recipes remain supported until an explicit compatibility change.
 // Do not change Package's digest encoding when extending this metadata.
 func compatibleInstallations(pkg Package) []Installation {
@@ -31,6 +37,8 @@ func compatibleInstallations(pkg Package) []Installation {
 		if err != nil || pinned.Digest() != pkg.Digest() {
 			return result
 		}
+		result = append(result, Installation{ID: "alpine-3.23-desktop-14.0.2-" + pkg.Architecture + "-r2",
+			Digest: desktopR2Digests[pkg.Architecture], Architecture: pkg.Architecture, Contract: current.Contract})
 		result = append(result, Installation{ID: "alpine-3.23-desktop-14.0.2-" + pkg.Architecture + "-r1",
 			Digest: previous[pkg.Architecture], Architecture: pkg.Architecture, Contract: current.Contract})
 		xpra, err := ForPlatform("linux", pkg.Architecture)

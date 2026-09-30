@@ -45,6 +45,11 @@ func runDesktopSelfTest(parent context.Context, root string, pkg Package, retain
 	if err != nil {
 		return err
 	}
+	// Standalone support Python must decode images without a display, host
+	// modules or the per-session services cache masking missing dependencies.
+	if err := checkDesktopImages(ctx, tools); err != nil {
+		return err
+	}
 	state, err := os.MkdirTemp("", "floe-desktop-check-")
 	if err != nil {
 		return err

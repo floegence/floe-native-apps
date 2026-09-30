@@ -247,6 +247,22 @@ path and retains only fixture-owned pixel/document/exit receipts. A source-only
 test or a successful GTK installation fixture is not a Snap/Flatpak or desktop
 environment support claim.
 
+### Standalone image decoding
+
+Desktop recipe r3 adds the original signed Alpine librsvg and libdav1d archives
+on amd64 and arm64. Preparation queries the component's own GdkPixbuf loaders
+and writes a relocatable cache before activation. Standalone support Python
+always selects this cache and its private module/library directory; host loader
+overrides cannot substitute for missing component dependencies. The installation
+self-check decodes a known SVG, verifies pixels and round-trips PNG before opening
+the graphical fixture. This capability also applies outside a desktop session.
+
+The native binaries and their provenance are unchanged from r2. The exact r2
+recipe identities retain their original wrappers and need no cache rewrite.
+Surviving applications keep their installation; new launches require activation
+of the current recipe. Application inventory and theme selection remain owned by
+the consuming product.
+
 ### Attachment boundary
 
 `DialDesktop` attaches to an existing Linux helper through a private, versioned

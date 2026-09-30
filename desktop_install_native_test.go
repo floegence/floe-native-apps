@@ -99,6 +99,15 @@ func TestNativeDesktopInstallation(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			tools, err := ResolveDesktopTools(root, pkg.Architecture)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Recheck after staging was renamed: no absolute staging paths may
+			// survive in the standalone image-loader cache.
+			if err := checkDesktopImages(t.Context(), tools); err != nil {
+				t.Fatal(err)
+			}
 			backend, err := manager.DesktopBackend()
 			if err != nil {
 				t.Fatal(err)

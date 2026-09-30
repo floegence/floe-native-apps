@@ -99,7 +99,7 @@ func TestDesktopRetainedRecipeRequiresUpdateOnlyForNewLaunches(t *testing.T) {
 	defer manager.Close()
 	previous := manager.installations[1]
 	manager.op.Installed = previous.Digest
-	if previous.ID != "alpine-3.23-desktop-14.0.2-amd64-r1" {
+	if previous.ID != "alpine-3.23-desktop-14.0.2-amd64-r2" {
 		t.Fatal("lost retained desktop recipe")
 	}
 	if _, err := manager.DesktopBackend(); !errors.Is(err, ErrUnsupported) {

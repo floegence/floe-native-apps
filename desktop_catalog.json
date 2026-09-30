@@ -1,9 +1,9 @@
 [
   {
-    "id": "alpine-3.23-desktop-14.0.2-amd64-r2",
+    "id": "alpine-3.23-desktop-14.0.2-amd64-r3",
     "architecture": "amd64",
-    "size_bytes": 140314715,
-    "installed_bytes": 400224106,
+    "size_bytes": 142809656,
+    "installed_bytes": 406079944,
     "artifacts": [
       {
         "name": "abseil-cpp-raw-logging-internal-20250814.1-r0.apk",
@@ -555,6 +555,15 @@
         "source": "https://gitlab.alpinelinux.org/alpine/aports/-/tree/3.23-stable/main/openssl"
       },
       {
+        "name": "libdav1d-1.5.2-r0.apk",
+        "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/libdav1d-1.5.2-r0.apk",
+        "sha256": "b4cb4564cc13b2cf68a35d6f4bfe66848a675446438de6975d75354ca383f3aa",
+        "size_bytes": 727613,
+        "format": "apk",
+        "license": "BSD-2-Clause",
+        "source": "https://gitlab.alpinelinux.org/alpine/aports/-/tree/3.23-stable/main/dav1d"
+      },
+      {
         "name": "libdbusmenu-glib-16.04.0-r6.apk",
         "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/community/x86_64/libdbusmenu-glib-16.04.0-r6.apk",
         "sha256": "2e14ca5a8eb156838d0961127398435c52c0098776536b2dbd5cd4f790bc746f",
@@ -787,6 +796,15 @@
         "format": "apk",
         "license": "Libpng",
         "source": "https://gitlab.alpinelinux.org/alpine/aports/-/tree/3.23-stable/main/libpng"
+      },
+      {
+        "name": "librsvg-2.61.2-r0.apk",
+        "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/community/x86_64/librsvg-2.61.2-r0.apk",
+        "sha256": "2bcc4d2d3e7f964cde0c560cb7982173e5d8093a3d1d589c492cc31559154d1d",
+        "size_bytes": 1767328,
+        "format": "apk",
+        "license": "LGPL-2.1-or-later",
+        "source": "https://gitlab.alpinelinux.org/alpine/aports/-/tree/3.23-stable/community/librsvg"
       },
       {
         "name": "libseccomp-2.6.0-r1.apk",
@@ -1776,10 +1794,10 @@
     }
   },
   {
-    "id": "alpine-3.23-desktop-14.0.2-arm64-r2",
+    "id": "alpine-3.23-desktop-14.0.2-arm64-r3",
     "architecture": "arm64",
-    "size_bytes": 135869817,
-    "installed_bytes": 398225532,
+    "size_bytes": 137925135,
+    "installed_bytes": 402705143,
     "artifacts": [
       {
         "name": "abseil-cpp-raw-logging-internal-20250814.1-r0.apk",
@@ -2331,6 +2349,15 @@
         "source": "https://gitlab.alpinelinux.org/alpine/aports/-/tree/3.23-stable/main/openssl"
       },
       {
+        "name": "libdav1d-1.5.2-r0.apk",
+        "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/aarch64/libdav1d-1.5.2-r0.apk",
+        "sha256": "1d2dd251af8b14a58f408e1a53543384fabac13831e1bb6cb25e7eae074f2ce5",
+        "size_bytes": 389182,
+        "format": "apk",
+        "license": "BSD-2-Clause",
+        "source": "https://gitlab.alpinelinux.org/alpine/aports/-/tree/3.23-stable/main/dav1d"
+      },
+      {
         "name": "libdbusmenu-glib-16.04.0-r6.apk",
         "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/community/aarch64/libdbusmenu-glib-16.04.0-r6.apk",
         "sha256": "b06d7041d236e397d1eb3a225c6b46db736ae8b6d185589d5ea39d063c14934a",
@@ -2572,6 +2599,15 @@
         "format": "apk",
         "license": "Libpng",
         "source": "https://gitlab.alpinelinux.org/alpine/aports/-/tree/3.23-stable/main/libpng"
+      },
+      {
+        "name": "librsvg-2.61.2-r0.apk",
+        "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/community/aarch64/librsvg-2.61.2-r0.apk",
+        "sha256": "f5612bcf8a4d4c2f62597ae064cc003b67b000943bc4b72fd0bc1ef0fd0d947c",
+        "size_bytes": 1666136,
+        "format": "apk",
+        "license": "LGPL-2.1-or-later",
+        "source": "https://gitlab.alpinelinux.org/alpine/aports/-/tree/3.23-stable/community/librsvg"
       },
       {
         "name": "libseccomp-2.6.0-r1.apk",

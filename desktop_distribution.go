@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 )
@@ -160,7 +161,13 @@ func ResolveDesktopTools(root, architecture string) (DesktopTools, error) {
 	if err != nil {
 		return DesktopTools{}, err
 	}
-	for _, name := range desktopRequiredResources(architecture) {
+	marker, _ := os.ReadFile(filepath.Join(root, ".native-apps"))
+	retainedR2 := string(marker) == desktopR2Digests[architecture]
+	required := desktopRequiredResources(architecture)
+	if !retainedR2 {
+		required = append(required, "usr/lib/gdk-pixbuf-2.0/2.10.0/loaders/libpixbufloader_svg.so", "floe/desktop/pixbuf.loaders")
+	}
+	for _, name := range required {
 		path, err := containedDesktopFile(root, name)
 		if err != nil {
 			return DesktopTools{}, err
@@ -182,7 +189,11 @@ func ResolveDesktopTools(root, architecture string) (DesktopTools, error) {
 			return DesktopTools{}, err
 		}
 	}
-	for name, contents := range desktopWrappers(architecture) {
+	wrappers := desktopWrappers(architecture)
+	if retainedR2 {
+		wrappers = desktopWrappersR2(architecture)
+	}
+	for name, contents := range wrappers {
 		path, err := containedDesktopFile(root, filepath.Join("floe", "desktop", "bin", name))
 		if err != nil {
 			return DesktopTools{}, err
@@ -199,20 +210,34 @@ func ResolveDesktopTools(root, architecture string) (DesktopTools, error) {
 }
 
 func desktopWrappers(architecture string) map[string]string {
+	return desktopRecipeWrappers(architecture, true)
+}
+
+// Retained r2 installations must pass their original wrapper contract unchanged.
+func desktopWrappersR2(architecture string) map[string]string {
+	return desktopRecipeWrappers(architecture, false)
+}
+
+func desktopRecipeWrappers(architecture string, imageLoaders bool) map[string]string {
 	loader := map[string]string{"amd64": "x86_64", "arm64": "aarch64"}[architecture]
 	result := map[string]string{}
 	for _, name := range []string{"python3", "ibus-daemon", "ibus-portal", "gio-launch-desktop"} {
 		binary := "$ROOT/floe/desktop/artifacts/" + name
+		libraries := "$ROOT/floe/desktop/artifacts:$ROOT/lib:$ROOT/usr/lib"
 		prefix := "#!/bin/sh\nROOT=$(CDPATH= cd -- \"$(dirname -- \"$0\")/../../..\" && pwd) || exit 1\n"
 		if name == "python3" {
 			binary = "$ROOT/usr/bin/python3"
 			prefix += "export PYTHONHOME=\"$ROOT/usr\" PYTHONNOUSERSITE=1\nexport GI_TYPELIB_PATH=\"$ROOT/usr/lib/girepository-1.0\" GIO_MODULE_DIR=\"$ROOT/usr/lib/gio/modules\"\nexport GIO_LAUNCH_DESKTOP=\"$ROOT/floe/desktop/bin/gio-launch-desktop\"\n"
+			if imageLoaders {
+				prefix += "export GDK_PIXBUF_MODULE_FILE=\"$ROOT/floe/desktop/pixbuf.loaders\" GDK_PIXBUF_MODULEDIR=\"$ROOT/usr/lib/gdk-pixbuf-2.0/2.10.0/loaders\"\n"
+				libraries += ":$ROOT/usr/lib/gdk-pixbuf-2.0/2.10.0/loaders"
+			}
 		}
 		if name == "gio-launch-desktop" {
 			binary = "$ROOT/usr/libexec/gio-launch-desktop"
 		}
 		prefix += "unset PYTHONPATH GIO_EXTRA_MODULES GTK_PATH LD_PRELOAD LD_LIBRARY_PATH\n"
-		result[name] = prefix + "exec \"$ROOT/lib/ld-musl-" + loader + ".so.1\" --library-path \"$ROOT/floe/desktop/artifacts:$ROOT/lib:$ROOT/usr/lib\" \"" + binary + "\" \"$@\"\n"
+		result[name] = prefix + "exec \"$ROOT/lib/ld-musl-" + loader + ".so.1\" --library-path \"" + libraries + "\" \"" + binary + "\" \"$@\"\n"
 	}
 	return result
 }
@@ -270,9 +295,63 @@ func prepareDesktopTools(ctx context.Context, root, architecture string) error {
 			return err
 		}
 	}
+	if err := prepareDesktopImageLoaders(ctx, root, architecture); err != nil {
+		return err
+	}
 	if _, err := ResolveDesktopTools(root, architecture); err != nil {
 		return err
 	}
 	complete = true
+	return nil
+}
+
+func prepareDesktopImageLoaders(ctx context.Context, root, architecture string) error {
+	var err error
+	root, err = filepath.EvalSymlinks(root)
+	if err != nil {
+		return err
+	}
+	loader := map[string]string{"amd64": "x86_64", "arm64": "aarch64"}[architecture]
+	modules := filepath.Join(root, "usr/lib/gdk-pixbuf-2.0/2.10.0/loaders")
+	if _, err := containedDesktopFile(root, "usr/lib/gdk-pixbuf-2.0/2.10.0/loaders/libpixbufloader_svg.so"); err != nil {
+		return err
+	}
+	command := exec.CommandContext(ctx, filepath.Join(root, "lib/ld-musl-"+loader+".so.1"),
+		"--library-path", filepath.Join(root, "lib")+":"+filepath.Join(root, "usr/lib"), filepath.Join(root, "usr/bin/gdk-pixbuf-query-loaders"))
+	command.Env = append(supportToolEnvironment(os.Environ(), filepath.Join(root, "floe/desktop/bin")), "GDK_PIXBUF_MODULEDIR="+modules)
+	data, err := command.Output()
+	if err != nil {
+		return fmt.Errorf("desktop image loaders: %w", err)
+	}
+	if !strings.Contains(string(data), `"svg"`) || !strings.Contains(string(data), `libpixbufloader_svg.so"`) {
+		return errors.New("desktop SVG image loader unavailable")
+	}
+	// Basenames resolve through Python's private loader path after atomic rename.
+	cache := strings.ReplaceAll(string(data), modules+"/", "")
+	return os.WriteFile(filepath.Join(root, "floe/desktop/pixbuf.loaders"), []byte(cache), 0600)
+}
+
+func checkDesktopImages(ctx context.Context, tools DesktopTools) error {
+	const probe = `import gi
+gi.require_version("GdkPixbuf", "2.0")
+from gi.repository import GdkPixbuf
+loader = GdkPixbuf.PixbufLoader.new_with_type("svg")
+loader.write(b'<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"><rect width="16" height="16" fill="#13579b"/></svg>')
+loader.close()
+image = loader.get_pixbuf()
+assert image.get_width() == 16 and image.get_height() == 16
+assert bytes(image.get_pixels()[:3]) == bytes([19, 87, 155])
+success, data = image.save_to_bufferv("png", [], [])
+assert success
+png = GdkPixbuf.PixbufLoader.new_with_type("png")
+png.write(data)
+png.close()
+assert bytes(png.get_pixbuf().get_pixels()[:3]) == bytes([19, 87, 155])
+`
+	command := exec.CommandContext(ctx, tools.Python, "-B", "-c", probe)
+	command.Env = tools.Environment(os.Environ())
+	if output, err := command.CombinedOutput(); err != nil {
+		return fmt.Errorf("desktop SVG/PNG self-check: %w (%s)", err, output)
+	}
 	return nil
 }
