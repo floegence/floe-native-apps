@@ -125,6 +125,46 @@ test('decoder failure cancels pending pixels and their control-authorizing recei
   f.player.close();
 });
 
+test('a PNG resolving during recovery cannot restore retired paint authority', async () => {
+  const f = await playerFixture();
+  let resolveImage, closed = 0;
+  globalThis.createImageBitmap = () => new Promise(resolve => { resolveImage = resolve; });
+  f.player.recover = () => {};
+  try {
+    f.player.receive(packet({}));
+    f.player.fail('MEDIA_INVALID');
+    resolveImage({ id: 1, close: () => closed++ });
+    await new Promise(resolve => setImmediate(resolve));
+    f.tick(); f.tick();
+    assert.deepEqual(f.draws, []);
+    assert.deepEqual(f.acknowledgements, []);
+    assert.equal(closed, 1);
+  } finally { f.player.close(); delete globalThis.createImageBitmap; }
+});
+
+test('codec negotiation completing after reset cannot install a retired decoder', async () => {
+  const f = await playerFixture();
+  const original = globalThis.VideoDecoder;
+  let supported, created = 0;
+  globalThis.VideoDecoder = class {
+    static isConfigSupported(config) { return new Promise(resolve => { supported = () => resolve({ supported: true, config }); }); }
+    constructor() { created++; }
+    configure() {}
+    close() {}
+  };
+  try {
+    const negotiation = f.player.configure({ generation: 1, key: true, description: 'AQ==', profile: 'avc1.42e01e', width: 2, height: 2 });
+    f.player.reset(1);
+    supported();
+    await negotiation;
+    assert.equal(created, 0);
+    assert.equal(f.player.decoder, null);
+  } finally {
+    f.player.close();
+    if (original === undefined) delete globalThis.VideoDecoder; else globalThis.VideoDecoder = original;
+  }
+});
+
 test('a failed canvas draw cannot acknowledge pixels or retain decoded resources', async () => {
   const f = await playerFixture();
   const failures = [], closed = [];

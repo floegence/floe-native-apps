@@ -100,12 +100,13 @@ export class HostDesktopPlayer {
         try {
           if (header.codec === 'png') {
             const image = await createImageBitmap(new Blob([data], { type: 'image/png' }));
-            this.schedule(image, header);
+            if (epoch !== this.epoch) image.close();
+            else this.schedule(image, header);
             continue;
           }
           if (this.needsKey && !header.key) { this.fail('KEYFRAME_REQUIRED'); break; }
           if (!this.decoder) await this.configure(header);
-          if (header.generation !== this.order.generation || this.closed) continue;
+          if (epoch !== this.epoch || header.generation !== this.order.generation || this.closed || this.recovering) continue;
           if (!this.decoder || this.decoder.state !== 'configured' || this.frames.size >= 4 || this.decoder.decodeQueueSize >= 4) {
             this.fail('VIDEO_QUEUE_LIMIT'); break;
           }
@@ -135,19 +136,21 @@ export class HostDesktopPlayer {
     finally { this.processing = false; }
   }
   async configure(header) {
+    const epoch = this.epoch;
     if (!header.key || !header.description || !/^avc1\.[0-9a-f]{6}$/i.test(header.profile)) throw new Error('KEYFRAME_REQUIRED');
     const description = Uint8Array.from(atob(header.description), char => char.charCodeAt(0));
-    let configuration;
+    let configuration, decoderPath;
     for (const preference of ['prefer-hardware', 'no-preference', 'prefer-software']) {
       const candidate = { codec: header.profile, codedWidth: header.width, codedHeight: header.height,
         description, hardwareAcceleration: preference, optimizeForLatency: true };
       try {
         const supported = await VideoDecoder.isConfigSupported(candidate);
-        if (supported.supported) { configuration = supported.config; this.decoderPath = preference; break; }
+        if (supported.supported) { configuration = supported.config; decoderPath = preference; break; }
       } catch { /* A rejected configuration is never used for incoming media. */ }
     }
-    if (this.closed || header.generation !== this.order.generation) return;
+    if (epoch !== this.epoch || this.closed || this.recovering || header.generation !== this.order.generation) return;
     if (!configuration) throw new Error('VIDEO_CODEC_UNSUPPORTED');
+    this.decoderPath = decoderPath;
     const decoder = new VideoDecoder({
       output: image => {
         if (this.decoder !== decoder) { image.close(); return; }
@@ -162,7 +165,7 @@ export class HostDesktopPlayer {
     decoder.configure(configuration);
   }
   schedule(image, header) {
-    if (this.closed || !this.order.current(header) || this.pending.at(-1)?.header.frame_id >= header.frame_id) { image.close(); return; }
+    if (this.closed || this.recovering || !this.order.current(header) || this.pending.at(-1)?.header.frame_id >= header.frame_id) { image.close(); return; }
     // Keep at most one decoded frame beyond the next presentation. This absorbs
     // arrival jitter without discarding encoded dependencies or growing latency.
     this.pending.push({ image, header });
@@ -268,7 +271,7 @@ export class HostDesktopPlayer {
         const decoder = new AudioDecoder({
           output: frame => {
             try {
-              if (generation !== this.order.generation || this.closed || this.audioPending >= 6 || this.audio.state !== 'running') return;
+              if (this.audioDecoder !== decoder || generation !== this.order.generation || this.closed || this.recovering || this.audioPending >= 6 || this.audio.state !== 'running') return;
               const planes = [0,1].map(planeIndex => {
                 const plane = new Float32Array(frame.numberOfFrames);
                 frame.copyTo(plane, { planeIndex, format: 'f32-planar' });
