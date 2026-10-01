@@ -1150,6 +1150,9 @@ use the Manager's selected installation and must not rewrite that snapshot.
 The Linux helper selects the active local graphical login owned by the current
 user. Wayland uses the public RemoteDesktop/ScreenCast portal and its authorized
 PipeWire descriptor. X11 uses the selected login's authenticated local X display.
+Filter seatless SSH/service logins before reading their properties: their exit
+cannot interrupt the graphical login. Missing or invalid graphical-session
+properties still revoke authority instead of using a cached session.
 When GDM leaves logind's display field empty, the helper resolves display and
 private cookie-file location from same-user processes in that exact login scope.
 Conflicting credentials fail closed; SSH and private application display

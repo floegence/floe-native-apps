@@ -103,8 +103,10 @@ class HostIdentity:
     def current(self):
         sessions = self._call('/org/freedesktop/login1', 'org.freedesktop.login1.Manager', 'ListSessions')[0]
         records = []
-        for session, uid, _name, _seat, path in sessions:
-            if uid != os.getuid():
+        for session, uid, _name, seat, path in sessions:
+            # Seatless SSH/service sessions cannot supply the desktop. They may
+            # disappear before GetAll and must not invalidate a graphical login.
+            if uid != os.getuid() or not seat:
                 continue
             props = self._call(path, 'org.freedesktop.DBus.Properties', 'GetAll',
                 '(s)', ('org.freedesktop.login1.Session',))[0]

@@ -48,29 +48,37 @@ func TestHostDesktopRecipeCannotActivatePrivateApplicationTools(t *testing.T) {
 }
 
 func TestHostDesktopUpgradeAcceptsPublishedStateWithoutRewritingOldFiles(t *testing.T) {
-	root := t.TempDir()
-	previous := "335b0d09a552a81327e79f89c856c03abb6e3b7350dda69a45292612bbd1e988"
-	data, _ := json.Marshal(operation{Version: 2, Package: previous, Installed: previous, Status: Status{State: "ready"}})
-	state := filepath.Join(root, "operation.json")
-	if err := os.WriteFile(state, data, 0600); err != nil {
-		t.Fatal(err)
-	}
-	pkg, err := HostDesktopForPlatform("linux", "amd64")
+	releases, err := hostDesktopReleases()
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := New(root, pkg, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer m.Close()
-	status := m.Snapshot("owner")
-	if status.Installed == nil || status.Installed.Digest != previous || status.Installed.Ready || status.State != "available" {
-		t.Fatal("published identity was lost or missing files were trusted", status)
-	}
-	after, err := os.ReadFile(state)
-	if err != nil || !bytes.Equal(data, after) {
-		t.Fatal("opening an upgrade rewrote prior installation state", err)
+	for _, release := range releases {
+		t.Run(release.Version+"/"+release.Architecture, func(t *testing.T) {
+			root := t.TempDir()
+			previous := release.Digest
+			data, _ := json.Marshal(operation{Version: 2, Package: previous, Installed: previous, Status: Status{State: "ready"}})
+			state := filepath.Join(root, "operation.json")
+			if err := os.WriteFile(state, data, 0600); err != nil {
+				t.Fatal(err)
+			}
+			pkg, err := HostDesktopForPlatform("linux", release.Architecture)
+			if err != nil {
+				t.Fatal(err)
+			}
+			m, err := New(root, pkg, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer m.Close()
+			status := m.Snapshot("owner")
+			if status.Installed == nil || status.Installed.Digest != previous || status.Installed.Ready || status.State != "available" {
+				t.Fatal("published identity was lost or missing files were trusted", status)
+			}
+			after, err := os.ReadFile(state)
+			if err != nil || !bytes.Equal(data, after) {
+				t.Fatal("opening an upgrade rewrote prior installation state", err)
+			}
+		})
 	}
 }
 

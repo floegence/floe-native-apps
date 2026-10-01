@@ -2,6 +2,7 @@ import unittest
 import os
 from pathlib import Path
 import tempfile
+from unittest.mock import patch
 from host_desktop_contract import DesktopError
 from host_desktop_identity import select_session, HostIdentity, x11_credentials
 
@@ -22,6 +23,35 @@ class IdentityTests(unittest.TestCase):
     def test_ambiguous_desktops_require_explicit_resolution(self):
         with self.assertRaisesRegex(DesktopError, 'DESKTOP_SESSION_AMBIGUOUS'):
             select_session([self.record(), self.record(Type='x11')], 1000)
+
+    def test_disappearing_seatless_login_does_not_interrupt_the_graphical_desktop(self):
+        identity = HostIdentity.__new__(HostIdentity)
+        requested = []
+        def call(path, _interface, method, *_args):
+            requested.append((path, method))
+            if method == 'ListSessions':
+                return ([('desktop', 1000, 'fixture', 'seat0', '/desktop'),
+                         ('ssh', 1000, 'fixture', '', '/removed-ssh')],)
+            if path == '/removed-ssh':
+                raise RuntimeError('The unrelated SSH session disappeared')
+            return (self.record(Type='x11'),)
+        identity._call = call
+        with patch('host_desktop_identity.os.getuid', return_value=1000):
+            selected = identity.current()
+        self.assertEqual(selected['id'], 'desktop')
+        self.assertNotIn(('/removed-ssh', 'GetAll'), requested)
+
+    def test_missing_graphical_session_properties_fail_instead_of_using_cached_authority(self):
+        identity = HostIdentity.__new__(HostIdentity)
+        identity.selected = self.record(id='desktop')
+        def call(_path, _interface, method, *_args):
+            if method == 'ListSessions':
+                return ([('desktop', 1000, 'fixture', 'seat0', '/removed-desktop')],)
+            raise RuntimeError('The selected graphical session disappeared')
+        identity._call = call
+        with patch('host_desktop_identity.os.getuid', return_value=1000):
+            with self.assertRaisesRegex(RuntimeError, 'graphical session disappeared'):
+                identity.current()
 
     def test_lock_and_deactivation_signals_revoke_cached_input_immediately(self):
         identity = HostIdentity.__new__(HostIdentity)
