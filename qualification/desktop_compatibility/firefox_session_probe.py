@@ -27,6 +27,15 @@ from session_probe import cleanup_helper, launch_records, session_file, session_
 from source_proof import record_sources
 
 
+def fixture_point(receipt, frame):
+    geometry = receipt['save_target']
+    width, height = geometry['width'], geometry['height']
+    x, y = geometry['x'], geometry['y']
+    if not (0 < width <= 32768 and 0 < height <= 32768 and 0 <= x < width and 0 <= y < height):
+        raise ValueError('Invalid fixture button geometry')
+    return round(x * frame['width'] / width), round(y * frame['height'] / height)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('source', type=Path)
@@ -59,7 +68,10 @@ def main():
 <h1>Floe persistent Firefox input</h1><textarea autofocus></textarea><p><button id="save">Save test text</button></p>
 <div id="checkpoint" style="position:fixed;bottom:0;left:0;right:0;height:16px"></div><script>
 const field=document.querySelector('textarea'); let sequence=0,pending=Promise.resolve();
-const report=event=>{const body=JSON.stringify({sequence:++sequence,event,value:field.value});
+const report=event=>{const rect=document.querySelector('#save').getBoundingClientRect();
+ const save_target={x:(outerWidth-innerWidth)/2+rect.x+rect.width/2,
+ y:outerHeight-innerHeight+rect.y+rect.height/2,width:outerWidth,height:outerHeight};
+ const body=JSON.stringify({sequence:++sequence,event,value:field.value,save_target});
  pending=pending.then(()=>fetch('/receipt',{method:'POST',body}));};
 field.addEventListener('input',()=>{let hash=2166136261;
  for(const byte of new TextEncoder().encode(field.value))hash=Math.imul(hash^byte,16777619)>>>0;
@@ -185,7 +197,9 @@ report('loaded');</script>'''
         assert client.generation > old_generation
         target = paint('reattached', marker=marker)
         result['detach_retains_application'] = True
-        click(105, 585)
+        save_point = fixture_point(receipts[-1], result['frames'][-1])
+        result['save_point'] = save_point
+        click(*save_point)
         wait(lambda: any(x['event'] == 'save-click' for x in receipts), 'Save was not clicked')
         previous = target['window']
         def dialog():
