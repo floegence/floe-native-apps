@@ -1150,6 +1150,14 @@ use the Manager's selected installation and must not rewrite that snapshot.
 The Linux helper selects the active local graphical login owned by the current
 user. Wayland uses the public RemoteDesktop/ScreenCast portal and its authorized
 PipeWire descriptor. X11 uses the selected login's authenticated local X display.
+When GDM leaves logind's display field empty, the helper resolves display and
+private cookie-file location from same-user processes in that exact login scope.
+Conflicting credentials fail closed; SSH and private application display
+environments do not participate. X11 samples complete frames at the requested
+cadence and filters unchanged pixels itself. Compositor damage aggregation must
+not reduce scrolling capture to irregular updates. Clipboard wrappers are retired
+before their GDK display; qualification covers a headless interpreter disconnect
+and finalization as well as interaction inside a GTK fixture.
 An unavailable backend does not select another display. The caller supplies an
 existing private persistent `--state` directory and a separate inherited
 `--media-fd`. Commands on stdin and control responses on stdout have independent
@@ -1219,3 +1227,15 @@ Review its package identities, dependency closure, license/source metadata and
 sizes, then qualify fresh installations on both native architectures. A changed
 helper or wrapper is bound into the component preparation digest. Never mutate a
 published component, module version or tag to repair a changed implementation.
+`host_desktop_releases.json` retains reviewed helper hashes for published
+installation identities. An upgrade verifies the old installation without
+rewriting it and activates the new digest only after its own installed check.
+Public `ResolveHostDesktopTools` still accepts only the current helper contract;
+an older installation remains identifiable without becoming new session code.
+
+The isolated musl media stack can use only drivers compatible with that ABI.
+An NVIDIA device with a glibc-only CUDA driver is not evidence of a usable
+hardware encoder in this stack. Codec probing exercises each available factory
+and explicitly reports the selected software encoder when no hardware candidate
+works. Neither graphics hardware discovery nor synthetic codecs establish real
+desktop performance; record the actual capture backend, resolution and encoder.
