@@ -1203,7 +1203,9 @@ Run the focused Python `host_desktop_*_test` modules, Go `TestHostDesktop` tests
 `HostDesktopSelfTest` proves synthetic video/audio encode-decode operation and
 mandatory PipeWire client-module linkage in an installed Linux component. The
 private loader must resolve both module paths and their soname dependencies.
-The check deliberately does not request screen authorization.
+The check also starts the real helper with an invalid command and verifies
+clean signal shutdown while its command pipe remains open. It deliberately
+does not request screen authorization.
 `qualification/host_desktop_synthetic.py` measures the production encoder using a
 synthetic source; receipt FPS is not client-painted FPS. The macOS qualification
 executable's `probe` command is read-only; `session` uses the public native engine.

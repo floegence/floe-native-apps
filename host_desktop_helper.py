@@ -2,6 +2,7 @@
 import argparse
 import hashlib
 import math
+import os
 import signal
 import sys
 import threading
@@ -475,10 +476,13 @@ def main():
         GLib.unix_signal_add(GLib.PRIORITY_HIGH, signum, lambda: (failed('PROCESS_STOPPED'), False)[1])
     slots = threading.BoundedSemaphore(64)
     def read():
+        # SIGTERM may leave the command pipe open. A daemon must not hold the
+        # interpreter-owned stdin buffer lock during interpreter finalization.
+        source = os.fdopen(os.dup(0), 'rb')
         try:
             while True:
                 slots.acquire()
-                command = read_command(sys.stdin.buffer)
+                command = read_command(source)
                 if command is None:
                     break
                 def dispatch(value=command):
@@ -489,6 +493,7 @@ def main():
                 GLib.idle_add(dispatch)
         except (OSError, DesktopError):
             pass
+        source.close()
         failed('TRANSPORT_CLOSED')
     threading.Thread(target=read, name='floe-desktop-input', daemon=True).start()
     try:

@@ -1,6 +1,13 @@
 """Synthetic installed-stack proof. Never opens a display, microphone or portal."""
 import json
 import ctypes
+import os
+from pathlib import Path
+import select
+import signal
+import struct
+import subprocess
+import tempfile
 import gi
 
 gi.require_version('Gst', '1.0')
@@ -78,5 +85,35 @@ finally:
         GLib.source_remove(timeout)
 if errors or [codec for _, codec in frames] != ['h264', 'png'] or frames[0][0] >= frames[1][0]:
     raise RuntimeError('production scheduler failed: ' + repr((errors, frames)))
-print(json.dumps({'video': 'decoded', 'audio': 'decoded', 'encoder': encoder,
-                  'static_frame': 'h264_then_lossless_refinement'}))
+# A signal must revoke and exit even if a Runtime still holds stdin open.
+# An invalid command confirms startup without querying the user's desktop.
+with tempfile.TemporaryDirectory(prefix='floe-desktop-selfcheck-') as state:
+    reader, writer = os.pipe()
+    root = Path(__file__).resolve().parent
+    child = subprocess.Popen([str(root / 'python3'), str(root / 'host_desktop_helper.py'),
+        '--state', state, '--media-fd', str(writer)], stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, pass_fds=(writer,))
+    os.close(writer)
+    try:
+        data = json.dumps({'version': 1, 'id': 1, 'method': 'selfcheck_readiness'}).encode()
+        child.stdin.write(struct.pack('!I', len(data)) + data)
+        child.stdin.flush()
+        if not select.select([child.stdout], [], [], 10)[0]:
+            raise RuntimeError('helper startup timed out')
+        size = struct.unpack('!I', child.stdout.read(4))[0]
+        if not 0 < size < 4096:
+            raise RuntimeError('helper startup protocol failed')
+        reply = json.loads(child.stdout.read(size))
+        if reply.get('code') != 'INVALID_ARGUMENT':
+            raise RuntimeError('helper startup response failed')
+        child.send_signal(signal.SIGTERM)
+        child.wait(timeout=4)
+        if child.returncode != 0:
+            raise RuntimeError('helper signal shutdown failed')
+    finally:
+        if child.poll() is None:
+            child.kill()
+        child.communicate(timeout=4)
+        os.close(reader)
+print(json.dumps({'video' : 'decoded', 'audio': 'decoded', 'encoder': encoder,
+                  'static_frame': 'h264_then_lossless_refinement', 'signal_shutdown': 'clean'}))
