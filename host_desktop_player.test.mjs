@@ -79,6 +79,23 @@ test('reset retires an already drawn but not yet confirmed frame', async () => {
   f.player.close();
 });
 
+test('decoded arrival bursts preserve consecutive presentations with a two-frame limit', async () => {
+  const f = await playerFixture();
+  const closed = [];
+  const schedule = id => f.player.schedule({ id, close: () => closed.push(id) },
+    { generation: 1, frame_id: id, width: 2, height: 2 });
+  schedule(1); schedule(2); schedule(3);
+  assert.deepEqual(closed, [1]);
+  f.tick(); f.tick(); f.tick();
+  assert.deepEqual(f.draws, [2, 3]);
+  assert.deepEqual(f.acknowledgements, [[1, 2], [1, 3]]);
+  schedule(4); schedule(5);
+  f.player.reset(2); f.tick();
+  assert.deepEqual(closed, [1, 2, 3, 4, 5]);
+  assert.deepEqual(f.draws, [2, 3]);
+  f.player.close();
+});
+
 test('rejected PNG decode from a retired connection cannot fail its successor', async () => {
   const f = await playerFixture();
   let rejectImage;
@@ -105,6 +122,21 @@ test('decoder failure cancels pending pixels and their control-authorizing recei
   assert.deepEqual(f.draws, []);
   assert.deepEqual(f.acknowledgements, []);
   assert.deepEqual(failures, ['DECODE_FAILED']);
+  f.player.close();
+});
+
+test('a failed canvas draw cannot acknowledge pixels or retain decoded resources', async () => {
+  const f = await playerFixture();
+  const failures = [], closed = [];
+  f.player.recover = code => failures.push(code);
+  f.player.context.drawImage = () => { throw Error('canvas lost'); };
+  for (const id of [1, 2]) f.player.schedule({ id, close: () => closed.push(id) },
+    { generation: 1, frame_id: id, width: 2, height: 2 });
+  f.tick(); f.tick();
+  assert.deepEqual(f.acknowledgements, []);
+  assert.deepEqual(failures, ['RENDER_FAILED']);
+  assert.deepEqual(closed.sort(), [1, 2]);
+  assert.equal(f.player.recovering, true);
   f.player.close();
 });
 

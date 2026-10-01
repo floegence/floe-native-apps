@@ -10,6 +10,36 @@ from host_desktop_portal import PortalGrant, PortalSession
 
 
 class PortalGrantTests(unittest.TestCase):
+    def test_only_the_pending_start_owns_token_rotation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            first, second = PortalGrant(directory), PortalGrant(directory)
+            lease = first.acquire_start()
+            try:
+                first.save('first-restore')
+                self.assertEqual(first.consume(), 'first-restore')
+                with self.assertRaisesRegex(DesktopError, 'AUTHORIZATION_PENDING'):
+                    second.acquire_start()
+                first.save('rotated-restore')
+            finally:
+                os.close(lease)
+            successor = second.acquire_start()
+            try:
+                self.assertEqual(second.consume(), 'rotated-restore')
+                # The preceding PortalSession can keep its granted media open.
+                self.assertEqual(os.stat(Path(directory, 'portal-start.lock')).st_mode & 0o777, 0o600)
+            finally:
+                os.close(successor)
+
+    def test_failed_durable_consume_never_returns_a_restore_token(self):
+        with tempfile.TemporaryDirectory() as directory:
+            grant = PortalGrant(directory)
+            grant.save('not-yet-consumed')
+            original = Path(grant.path).read_bytes()
+            with patch.object(grant, '_save', side_effect=OSError('disk full')):
+                with self.assertRaisesRegex(DesktopError, 'RESTORE_TOKEN_STORAGE_FAILED'):
+                    grant.consume()
+            self.assertEqual(Path(grant.path).read_bytes(), original)
+
     def test_token_is_private_and_durably_consumed_once(self):
         with tempfile.TemporaryDirectory() as directory:
             grant = PortalGrant(directory)
@@ -81,6 +111,33 @@ class PortalClipboardTests(unittest.TestCase):
         finally:
             for descriptor in descriptors:
                 os.close(descriptor)
+
+
+class PortalStartTests(unittest.TestCase):
+    def test_cancelled_consent_releases_start_for_another_attachment(self):
+        with tempfile.TemporaryDirectory() as directory:
+            loop = SimpleNamespace(Error=RuntimeError, Variant=lambda signature, value: (signature, value))
+            gio = SimpleNamespace(DBusSignalFlags=SimpleNamespace(NONE=0))
+            bus = SimpleNamespace(signal_subscribe=lambda *_: 1, signal_unsubscribe=lambda _: None)
+            first = PortalSession(bus, gio, loop, PortalGrant(directory), lambda _: None)
+            second = PortalSession(bus, gio, loop, PortalGrant(directory), lambda _: None)
+            first.version = second.version = lambda _: 2
+            requests, results = [], []
+            first._request = second._request = lambda *args: requests.append(args[-1])
+            first.start(True, lambda streams, error: results.append(error))
+            second.start(True, lambda streams, error: results.append(error))
+            self.assertEqual(results, ['AUTHORIZATION_PENDING'])
+            self.assertEqual(len(requests), 1)
+            requests.pop()(None, 'PERMISSION_CANCELLED')
+            self.assertEqual(results, ['AUTHORIZATION_PENDING', 'PERMISSION_CANCELLED'])
+            second.start(True, lambda streams, error: results.append(error))
+            self.assertEqual(len(requests), 1)
+            first.close()
+            with self.assertRaisesRegex(DesktopError, 'AUTHORIZATION_PENDING'):
+                PortalGrant(directory).acquire_start()
+            second.close()
+            successor = PortalGrant(directory).acquire_start()
+            os.close(successor)
 
 
 if __name__ == '__main__':

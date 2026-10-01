@@ -227,7 +227,7 @@ class DesktopMedia:
         if self.closed:
             return False
         with self.lock:
-            latest, sequence = self.latest, self.sequence
+            latest, sequence, captured_at = self.latest, self.sequence, self.changed_at
         if (not latest or self.encoding_busy or sequence == self.encoded_sequence or
                 self.credit.pending >= self.credit.capacity):
             return False
@@ -244,7 +244,7 @@ class DesktopMedia:
             # period at every late callback systematically loses frame rate.
             self.next_encoded = max(now, self.next_encoded + 1 / self.picture['frame_rate'])
             self.encoded_sequence = sequence
-            self.submitted.append((frame, int(now * 1_000_000)))
+            self.submitted.append((frame, int(captured_at * 1_000_000)))
             buffer = self.Gst.Buffer.new()
             if not buffer.copy_into(captured, self.Gst.BufferCopyFlags.MEMORY, 0, captured.get_size()):
                 raise DesktopError('CAPTURE_LAYOUT_UNSUPPORTED')
@@ -325,7 +325,7 @@ class DesktopMedia:
         if self.closed:
             return False
         with self.lock:
-            latest, sequence = self.latest, self.sequence
+            latest, sequence, captured_at = self.latest, self.sequence, self.changed_at
             settled = time.monotonic() - self.changed_at >= 0.15
         if latest and settled and not self.credit.pending and not self.refining and self.refined_sequence != sequence:
             self.refining = True
@@ -360,7 +360,7 @@ class DesktopMedia:
                     self.refined_sequence = sequence
                     frame = self.credit.reserve()
                     self.emit({'type': 'frame', 'codec': 'png', 'key': True, 'generation': self.generation,
-                        'frame_id': frame, 'width': size[0], 'height': size[1], 'timestamp': time.monotonic_ns() // 1000}, pixels)
+                        'frame_id': frame, 'width': size[0], 'height': size[1], 'timestamp': int(captured_at * 1_000_000)}, pixels)
                     return False
                 self.GLib.idle_add(publish)
             threading.Thread(target=refine, name='floe-desktop-refine', daemon=True).start()

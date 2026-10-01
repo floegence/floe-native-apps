@@ -36,10 +36,16 @@ public final class NativeDesktopSession {
         self.mayControl = mayControl; self.output = output
     }
 
-    public static var readiness: String {
+    private static var consoleReadiness: String {
         guard let session = CGSessionCopyCurrentDictionary() as? [String: Any],
               session[kCGSessionOnConsoleKey as String] as? Bool == true else { return "session_unavailable" }
         if session["CGSSessionScreenIsLocked"] as? Bool == true { return "locked" }
+        return "ready"
+    }
+
+    public static var readiness: String {
+        let console = consoleReadiness
+        if console != "ready" { return console }
         if !CGPreflightScreenCaptureAccess() { return "screen_permission_required" }
         return "ready"
     }
@@ -243,7 +249,11 @@ public final class NativeDesktopSession {
                                 self.deliveryLock.lock(); self.pendingAudio -= 1; self.deliveryLock.unlock()
                             }
                         }
-                        guard !self.closed, self.generation == expected, Self.readiness == "ready" else { return }
+                        // ScreenCaptureKit owns authorization for the samples it
+                        // supplies and reports revocation through stream failure.
+                        // Check console identity here; input admission independently
+                        // checks current capture permission before posting events.
+                        guard !self.closed, self.generation == expected, Self.consoleReadiness == "ready" else { return }
                         var packet = message
                         packet["display_id"] = String(target)
                         if let frame = message["frame_id"] as? Int { self.sentFrames.insert(frame) }
@@ -363,7 +373,10 @@ public final class NativeDesktopSession {
             }
         }
         for event in events {
-            guard Self.readiness == "ready", mayControl() else { releaseInput(); throw failure("CONTROL_REVOKED") }
+            // Screen authorization is checked once when admitting this request.
+            // Recheck login, lock, input permission and ownership for every event,
+            // including a multi-event text commit, without repeating TCC capture IPC.
+            guard Self.consoleReadiness == "ready", AXIsProcessTrusted(), mayControl() else { releaseInput(); throw failure("CONTROL_REVOKED") }
             event.post(tap: .cghidEventTap)
         }
     }

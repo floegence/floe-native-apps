@@ -1,11 +1,8 @@
 """One authorized current-user desktop. Product session ownership stays in Go."""
 import argparse
-import fcntl
 import hashlib
 import math
-import os
 import signal
-import stat
 import sys
 import threading
 import time
@@ -460,14 +457,6 @@ def main():
     parser.add_argument('--media-fd', type=int, required=True)
     args = parser.parse_args()
     PortalGrant(args.state)  # Require a private, existing state directory.
-    lease = os.open(os.path.join(args.state, 'desktop-session.lock'), os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
-    info = os.fstat(lease)
-    if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
-        raise DesktopError('STATE_DIRECTORY_INVALID')
-    try:
-        fcntl.flock(lease, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except BlockingIOError:
-        raise DesktopError('DESKTOP_ALREADY_CONNECTED') from None
     import gi
     gi.require_version('Gst', '1.0')
     from gi.repository import Gst, Gio, GLib
@@ -508,7 +497,6 @@ def main():
         desktop.close()
         control.close()
         media.close()
-        os.close(lease)
 
 
 if __name__ == '__main__':

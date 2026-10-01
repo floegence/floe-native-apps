@@ -11,6 +11,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--helper', required=True)
 parser.add_argument('--state', required=True)
 parser.add_argument('--media-fd', type=int, required=True)
+parser.add_argument('--profile-stages', action='store_true', help='Enable intrusive Python pad probes for diagnosis, not performance acceptance')
 args = parser.parse_args()
 sys.path.insert(0, args.helper)
 from host_desktop_media import DesktopMedia, select_encoder
@@ -67,7 +68,7 @@ def emit_media(message, payload):
         now = time.monotonic()
         samples['sent'][message['frame_id']] = now
         samples['encode_ms'].append(now * 1000 - message['timestamp'] / 1000)
-        if message['codec'] == 'h264' and media.encoded_times:
+        if message['codec'] == 'h264' and getattr(media, 'encoded_times', None):
             samples['delivery_ms'].append(1000 * (now - media.encoded_times.popleft()))
         samples['frames'] += 1
     video.send(message, payload)
@@ -103,7 +104,8 @@ def dispatch(command):
         picture = command.get('picture', {'mode':'clarity','max_dimension':2560,'frame_rate':60,'audio':False})
         picture['audio'] = False
         width, height = picture['max_dimension'], picture['max_dimension'] * 9 // 16
-        media = TimedMedia(Gst, GLib, generation, picture, select_encoder(Gst), emit_media,
+        engine = TimedMedia if args.profile_stages else DesktopMedia
+        media = engine(Gst, GLib, generation, picture, select_encoder(Gst), emit_media,
             lambda code: control.send({'type':'error','code':code}))
         media.capture = media._pipeline(f'videotestsrc is-live=true pattern=smpte ! video/x-raw,format=BGRA,width={width},height={height},framerate=60/1 ! '
             'appsink name=frames max-buffers=1 drop=true emit-signals=true sync=false')

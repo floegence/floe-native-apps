@@ -116,7 +116,7 @@ public enum NativeDesktopInput {
             }
         }
 
-        guard let code = keyCodes[key] else { throw invalid("Unsupported key; use computer.type for text.") }
+        guard let code = keyCodes[key] else { throw invalid("Unsupported key; use committed text input.") }
         return try [true, false].map { down in
             guard let event = CGEvent(keyboardEventSource: nil, virtualKey: code, keyDown: down) else {
                 throw unavailable()

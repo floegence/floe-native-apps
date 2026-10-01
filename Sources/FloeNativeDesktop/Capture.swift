@@ -86,10 +86,11 @@ public final class NativeCaptureStream: NSObject, SCStreamOutput, SCStreamDelega
     private var sequence = 0
     private var sentSequence = 0
     private var inFlight: [Int: TimeInterval] = [:]
-    private var lastEncoded: TimeInterval = 0
+    private var nextEncoded: TimeInterval = 0
     private var changedAt: TimeInterval = 0
     private var refinedSequence = 0
     private var timer: DispatchSourceTimer?
+    private var pendingProduce: DispatchWorkItem?
     private var dimensions = CGSize.zero
     private var bitrate = 0
     private var adaptiveFactor = 1.0
@@ -206,7 +207,10 @@ public final class NativeCaptureStream: NSObject, SCStreamOutput, SCStreamDelega
     private func prepareEncoder() {
         guard settings.video else { return }
         var session: VTCompressionSession?
-        let specification = [kVTVideoEncoderSpecification_RequireHardwareAcceleratedVideoEncoder: true] as CFDictionary
+        let specification = [
+            kVTVideoEncoderSpecification_RequireHardwareAcceleratedVideoEncoder: true,
+            kVTVideoEncoderSpecification_EnableLowLatencyRateControl: true,
+        ] as CFDictionary
         guard VTCompressionSessionCreate(allocator: kCFAllocatorDefault, width: Int32(dimensions.width), height: Int32(dimensions.height), codecType: kCMVideoCodecType_H264, encoderSpecification: specification, imageBufferAttributes: nil, compressedDataAllocator: nil, outputCallback: nil, refcon: nil, compressionSessionOut: &session) == noErr, let session else { return }
         let pixels = dimensions.width * dimensions.height
         bitrate = Int(min(32_000_000, max(1_000_000, pixels * Double(settings.frameRate) * (settings.mode == "data" ? 0.06 : 0.12))))
@@ -228,6 +232,7 @@ public final class NativeCaptureStream: NSObject, SCStreamOutput, SCStreamDelega
         stopCallbacks.append(completion)
         queue.async {
             self.stopped = true; self.timer?.cancel(); self.timer = nil
+            self.pendingProduce?.cancel(); self.pendingProduce = nil
             if let encoder = self.encoder { VTCompressionSessionInvalidate(encoder) }
             self.encoder = nil; self.latest = nil
         }
@@ -284,9 +289,24 @@ public final class NativeCaptureStream: NSObject, SCStreamOutput, SCStreamDelega
             refineImage(buffer)
             return
         }
-        guard (sequence != sentSequence || forceKeyFrame), now - lastEncoded + 0.0005 >= 1.0 / Double(settings.frameRate) else { return }
-        sentSequence = sequence; lastEncoded = now; frameID += 1; inFlight[frameID] = -1
+        guard sequence != sentSequence || forceKeyFrame else { return }
+        if now + 0.0005 < nextEncoded {
+            if pendingProduce == nil {
+                let work = DispatchWorkItem { [weak self] in
+                    self?.pendingProduce = nil; self?.produce()
+                }
+                pendingProduce = work
+                queue.asyncAfter(deadline: .now() + (nextEncoded - now), execute: work)
+            }
+            return
+        }
+        pendingProduce?.cancel(); pendingProduce = nil
+        // Preserve the intended cadence across early/late capture callbacks;
+        // restarting the interval at a late callback compounds scheduler jitter.
+        nextEncoded = max(now, nextEncoded + 1.0 / Double(settings.frameRate))
+        sentSequence = sequence; frameID += 1; inFlight[frameID] = -1
         let id = frameID
+        let capturedAt = changedAt
         if let encoder {
             let properties = forceKeyFrame ? [kVTEncodeFrameOptionKey_ForceKeyFrame: true] as CFDictionary : nil
             forceKeyFrame = false
@@ -302,7 +322,7 @@ public final class NativeCaptureStream: NSObject, SCStreamOutput, SCStreamDelega
                     guard copied == noErr else { self.fallbackToImages(buffer, id: id); return }
                     let attachments = CMSampleBufferGetSampleAttachmentsArray(sample, createIfNecessary: false) as? [[CFString: Any]]
                     let key = attachments?.first?[kCMSampleAttachmentKey_NotSync] as? Bool != true
-                    var metadata: [String: Any] = ["codec": "h264", "key": key, "timestamp": Int(now * 1_000_000)]
+                    var metadata: [String: Any] = ["codec": "h264", "key": key, "timestamp": Int(capturedAt * 1_000_000)]
                     if key {
                         let extensions = CMFormatDescriptionGetExtensions(format) as NSDictionary?
                         guard let atoms = extensions?[kCMFormatDescriptionExtension_SampleDescriptionExtensionAtoms] as? NSDictionary,
@@ -320,6 +340,7 @@ public final class NativeCaptureStream: NSObject, SCStreamOutput, SCStreamDelega
         guard !refinementPending, inFlight.isEmpty else { return }
         refinementPending = true
         let sourceSequence = sequence
+        let capturedAt = changedAt
         refinementQueue.async { [weak self] in
             guard let self else { return }
             let image = CIImage(cvPixelBuffer: buffer)
@@ -339,7 +360,7 @@ public final class NativeCaptureStream: NSObject, SCStreamOutput, SCStreamDelega
                 guard !self.stopped, self.sequence == sourceSequence, self.inFlight.isEmpty, succeeded else { return }
                 self.refinedSequence = sourceSequence
                 self.frameID += 1; self.inFlight[self.frameID] = -1
-                self.output(bytes, id: self.frameID, metadata: ["codec": "png", "key": true])
+                self.output(bytes, id: self.frameID, metadata: ["codec": "png", "key": true, "timestamp": Int(capturedAt * 1_000_000)])
             }
         }
     }

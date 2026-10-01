@@ -1159,6 +1159,10 @@ and its declared binary payload. `WriteHostDesktopCommand` and
 
 Portal restore grants are private, consumed durably once, and replaced with the
 portal's new token only when unattended authorization was explicitly requested.
+Only one pending portal start may consume and rotate that token at a time; its
+lease ends on completion or cancellation. Established viewers keep independent
+portal sessions. A failed durable token write fails the connection explicitly.
+This native grant lease does not replace the consumer's remote control lease.
 The SDK never changes lock-screen policy. The current capability reports remote
 unlock as unavailable. Lock and login changes retire frame authority, held input,
 clipboard transfers and media. A native generation and an actually drawn frame are
@@ -1184,6 +1188,12 @@ is not proof that a browser used a particular hardware decoder. A slow client
 cannot grow the native frame pipeline, decoder queue or audio queue indefinitely.
 Encoded H.264 dependencies are retained until an explicit recovery generation;
 late PNG refinements cannot replace a newer video frame.
+At most two decoded images await presentation to absorb arrival jitter; reset
+closes both before a successor generation can draw. Video and refinement
+`timestamp` values identify the latest changed source pixels on the host's
+monotonic clock. They are telemetry, not a cross-host clock or decode ordering
+key. Qualification must distinguish canvas drawing from a later animation-frame
+receipt and must never report native input admission as painted response latency.
 
 Run the focused Python `host_desktop_*_test` modules, Go `TestHostDesktop` tests,
 `node --test host_desktop_player.test.mjs` and `swift test` during development.

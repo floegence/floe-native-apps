@@ -43,8 +43,11 @@ class PortalGrant:
             os.close(fd)
 
     def consume(self):
-        with self._locked():
-            return self._consume()
+        try:
+            with self._locked():
+                return self._consume()
+        except OSError as error:
+            raise DesktopError('RESTORE_TOKEN_STORAGE_FAILED') from error
 
     def _consume(self):
         try:
@@ -68,8 +71,35 @@ class PortalGrant:
         return record['token'] or None
 
     def save(self, token):
-        with self._locked():
-            self._save(token)
+        try:
+            with self._locked():
+                self._save(token)
+        except OSError as error:
+            raise DesktopError('RESTORE_TOKEN_STORAGE_FAILED') from error
+
+    def acquire_start(self):
+        # Serialize consent and single-use token rotation, not active viewers.
+        # The consumer owns the one remote controller across all attachments.
+        try:
+            fd = os.open(os.path.join(self.directory, 'portal-start.lock'),
+                os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+        except OSError as error:
+            raise DesktopError('STATE_DIRECTORY_INVALID') from error
+        try:
+            info = os.fstat(fd)
+            if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
+                raise DesktopError('STATE_DIRECTORY_INVALID')
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                raise DesktopError('AUTHORIZATION_PENDING') from None
+            return fd
+        except OSError as error:
+            os.close(fd)
+            raise DesktopError('STATE_DIRECTORY_INVALID') from error
+        except BaseException:
+            os.close(fd)
+            raise
 
     @staticmethod
     def _valid_token(token):
@@ -123,6 +153,7 @@ class PortalSession:
         self.closed = False
         self.streams = []
         self.fd = None
+        self.start_lease = None
         self.clipboard = False
         self.devices = 0
         self.clipboard_changed = clipboard_changed
@@ -208,6 +239,15 @@ class PortalSession:
         if unattended and version < 2:
             done(None, 'UNATTENDED_UNAVAILABLE')
             return
+        try:
+            self.start_lease = self.grant.acquire_start()
+        except DesktopError as error:
+            done(None, error.code)
+            return
+        completion = done
+        def done(streams, error):
+            self.release_start()
+            completion(streams, error)
         options = {'session_handle_token': self.GLib.Variant('s', 'floe_' + secrets.token_hex(12))}
 
         def created(result, error):
@@ -420,6 +460,11 @@ class PortalSession:
             self.GLib.idle_add(done)
         threading.Thread(target=write, name='floe-clipboard-write', daemon=True).start()
 
+    def release_start(self):
+        if self.start_lease is not None:
+            os.close(self.start_lease)
+            self.start_lease = None
+
     def close(self):
         if self.closed:
             return
@@ -445,3 +490,4 @@ class PortalSession:
         if self.fd is not None:
             os.close(self.fd)
             self.fd = None
+        self.release_start()

@@ -54,7 +54,7 @@ export class HostDesktopPlayer {
     this.gain = null; this.volume = 1; this.muted = false;
     this.audioStarting = null;
     this.audioPending = 0;
-    this.pending = null; this.animation = 0; this.confirmation = 0;
+    this.pending = []; this.animation = 0; this.confirmation = 0;
     this.idle = 0; this.flushing = false; this.needsKey = true;
     this.bytes = 0; this.draws = 0; this.lastStatistic = performance.now(); this.lastDraw = 0;
     this.intervals = []; this.decoderPath = 'unconfigured';
@@ -67,7 +67,8 @@ export class HostDesktopPlayer {
     clearTimeout(this.idle);
     cancelAnimationFrame(this.animation); cancelAnimationFrame(this.confirmation);
     this.animation = this.confirmation = 0;
-    this.pending?.image.close(); this.pending = null;
+    for (const pending of this.pending) pending.image.close();
+    this.pending = [];
     if (this.decoder && this.decoder.state !== 'closed') this.decoder.close();
     this.decoder = null;
     if (this.audioDecoder && this.audioDecoder.state !== 'closed') this.audioDecoder.close();
@@ -161,19 +162,29 @@ export class HostDesktopPlayer {
     decoder.configure(configuration);
   }
   schedule(image, header) {
-    if (this.closed || !this.order.current(header) || this.pending?.header.frame_id > header.frame_id) { image.close(); return; }
-    this.pending?.image.close(); this.pending = { image, header };
+    if (this.closed || !this.order.current(header) || this.pending.at(-1)?.header.frame_id >= header.frame_id) { image.close(); return; }
+    // Keep at most one decoded frame beyond the next presentation. This absorbs
+    // arrival jitter without discarding encoded dependencies or growing latency.
+    this.pending.push({ image, header });
+    if (this.pending.length > 2) this.pending.shift().image.close();
+    this.present();
+  }
+  present() {
     if (this.animation) return;
     this.animation = requestAnimationFrame(() => {
       this.animation = 0;
-      const pending = this.pending; this.pending = null;
+      const pending = this.pending.shift();
       if (!pending) return;
       const { image, header } = pending;
-      if (!this.order.current(header)) { image.close(); return; }
-      if (this.canvas.width !== header.width || this.canvas.height !== header.height) {
-        this.canvas.width = header.width; this.canvas.height = header.height;
-      }
-      this.context.drawImage(image, 0, 0, header.width, header.height); image.close();
+      if (!this.order.current(header)) { image.close(); if (this.pending.length) this.present(); return; }
+      try {
+        if (this.canvas.width !== header.width || this.canvas.height !== header.height) {
+          this.canvas.width = header.width; this.canvas.height = header.height;
+        }
+        this.context.drawImage(image, 0, 0, header.width, header.height);
+      } catch {
+        this.fail('RENDER_FAILED'); return;
+      } finally { image.close(); }
       if (!this.order.paint(header)) return;
       const now = performance.now();
       if (this.lastDraw) { this.intervals.push(now - this.lastDraw); this.draws++; }
@@ -189,6 +200,7 @@ export class HostDesktopPlayer {
       }
       this.lastPaintHeader = header;
       this.confirmPaint(header);
+      if (this.pending.length) this.present();
     });
   }
   confirmPaint(header) {
