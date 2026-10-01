@@ -341,7 +341,12 @@ class PortalSession:
         session, options = parameters.unpack()
         if session != self.session or self.closed:
             return
-        self.clipboard_types = options.get('mime_types', [])
+        types = options.get('mime_types', [])
+        # GNOME 46 wraps the advertised string array in a one-element tuple.
+        # Preserve the standard `as` value while accepting that observed `(as)`.
+        if isinstance(types, tuple) and len(types) == 1 and isinstance(types[0], list):
+            types = types[0]
+        self.clipboard_types = types if isinstance(types, list) and all(isinstance(item, str) for item in types) else []
         if self.clipboard_enabled and self.clipboard_sync and not options.get('session_is_owner', False):
             self.read_clipboard(lambda text, error: self.clipboard_changed(text) if error is None else None)
 

@@ -76,6 +76,18 @@ class PortalGrantTests(unittest.TestCase):
 
 
 class PortalClipboardTests(unittest.TestCase):
+    def test_selection_types_from_standard_and_gnome_46_portals(self):
+        loop = SimpleNamespace(Error=RuntimeError)
+        gio = SimpleNamespace(DBusSignalFlags=SimpleNamespace(NONE=0))
+        bus = SimpleNamespace(signal_subscribe=lambda *_: 1)
+        portal = PortalSession(bus, gio, loop, None, lambda _: None)
+        portal.session = '/fixture'
+        for formats in (['text/plain;charset=utf-8'], (['text/plain;charset=utf-8'],)):
+            with self.subTest(formats=formats):
+                parameters = SimpleNamespace(unpack=lambda: ('/fixture', {'mime_types': formats}))
+                portal._selection_changed(None, None, None, None, None, parameters)
+                self.assertEqual(portal.clipboard_types, ['text/plain;charset=utf-8'])
+
     def test_pending_reads_are_bounded_and_revocation_suppresses_completed_text(self):
         dispatched, workers, results, descriptors = [], [], [], []
         loop = SimpleNamespace(Error=RuntimeError, idle_add=dispatched.append)

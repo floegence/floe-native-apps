@@ -75,13 +75,23 @@ final class InteractionFixture: NSObject, NSTextViewDelegate {
         if !items.isEmpty { pasteboard.writeObjects(items) }
         clipboardSnapshot = nil
     }
+    func coverDesktop() {
+        guard let screen = window.screen ?? NSScreen.main else { return }
+        // A static qualification surface excludes unrelated windows and menu
+        // clocks without changing capture policy or the host display mode.
+        application.presentationOptions = [.hideDock, .hideMenuBar]
+        window.styleMask = [.borderless]
+        window.setFrame(screen.frame, display: true)
+        window.makeKeyAndOrderFront(nil)
+        application.activate(ignoringOtherApps: true)
+    }
     func animate(_ scene: String) {
         motion?.invalidate(); motion = nil
         if #available(macOS 14.0, *) { (displayLink as? CADisplayLink)?.invalidate() }
         displayLink = nil; advanceMotion = nil
         if scene == "freeze" { output(["type": "fixture_motion", "scene": scene, "timestamp": ProcessInfo.processInfo.systemUptime]); return }
         guard ["scroll", "window"].contains(scene), let screen = window.screen ?? NSScreen.main else { return }
-        let available = screen.visibleFrame
+        let available = window.styleMask.contains(.titled) ? screen.visibleFrame : screen.frame
         let frame = scene == "scroll" ? available : available.insetBy(dx: 120, dy: 120)
         window.setFrame(frame, display: true)
         let scroll = NSScrollView(frame: window.contentView!.bounds)
@@ -172,6 +182,7 @@ if CommandLine.arguments.dropFirst().first == "probe" {
                   let request = (try? JSONSerialization.jsonObject(with: bytes)) as? [String: Any] else { continue }
             DispatchQueue.main.async {
                 if let fixture, request["method"] as? String == "fixture_status" { output(fixture.status()) }
+                else if let fixture, request["method"] as? String == "fixture_cover" { fixture.coverDesktop() }
                 else if let fixture, request["method"] as? String == "fixture_clipboard" { fixture.clipboard(request) }
                 else if let fixture, request["method"] as? String == "fixture_animate", let scene = request["scene"] as? String { fixture.animate(scene) }
                 else if let fixture, request["method"] as? String == "fixture_focus" {

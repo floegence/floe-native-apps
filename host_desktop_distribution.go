@@ -72,7 +72,7 @@ func hostDesktopFiles(architecture string) (map[string][]byte, error) {
 		"export GST_PLUGIN_SYSTEM_PATH_1_0=\"$ROOT/usr/lib/gstreamer-1.0\" GST_REGISTRY=/dev/null GST_REGISTRY_FORK=no\n" +
 		"export PIPEWIRE_MODULE_DIR=\"$ROOT/usr/lib/pipewire-0.3\" SPA_PLUGIN_DIR=\"$ROOT/usr/lib/spa-0.2\" PIPEWIRE_CONFIG_DIR=\"$ROOT/usr/share/pipewire\"\n" +
 		"unset PYTHONPATH GIO_EXTRA_MODULES GTK_PATH LD_PRELOAD LD_LIBRARY_PATH GST_PLUGIN_PATH GST_PLUGIN_PATH_1_0 GST_PLUGIN_SYSTEM_PATH\n" +
-		"exec \"$ROOT/lib/ld-musl-" + loader + ".so.1\" --library-path \"$ROOT/lib:$ROOT/usr/lib:$ROOT/usr/lib/pulseaudio:$ROOT/usr/lib/libproxy\" \"$ROOT/usr/bin/python3\" \"$@\"\n")
+		"exec \"$ROOT/lib/ld-musl-" + loader + ".so.1\" --library-path \"$ROOT/lib:$ROOT/usr/lib:$ROOT/usr/lib/pipewire-0.3:$ROOT/usr/lib/pulseaudio:$ROOT/usr/lib/libproxy\" \"$ROOT/usr/bin/python3\" \"$@\"\n")
 	return files, nil
 }
 

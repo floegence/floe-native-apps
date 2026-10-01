@@ -1165,7 +1165,10 @@ portal sessions. A failed durable token write fails the connection explicitly.
 This native grant lease does not replace the consumer's remote control lease.
 The SDK never changes lock-screen policy. The current capability reports remote
 unlock as unavailable. Lock and login changes retire frame authority, held input,
-clipboard transfers and media. A native generation and an actually drawn frame are
+clipboard transfers and media. The GNOME 46 clipboard backend advertises MIME
+arrays in a one-element tuple; the client accepts this observed `(as)` form and
+the standard `as` form, without selecting a different clipboard backend.
+A native generation and an actually drawn frame are
 required before input or clipboard access. A consumer must additionally enforce
 its authenticated session owner and the single remote console controller. A
 client's paint acknowledgement is flow control and cannot replace those checks.
@@ -1197,8 +1200,10 @@ receipt and must never report native input admission as painted response latency
 
 Run the focused Python `host_desktop_*_test` modules, Go `TestHostDesktop` tests,
 `node --test host_desktop_player.test.mjs` and `swift test` during development.
-`HostDesktopSelfTest` proves synthetic video/audio encode-decode operation in an
-installed Linux component. It deliberately does not request screen authorization.
+`HostDesktopSelfTest` proves synthetic video/audio encode-decode operation and
+mandatory PipeWire client-module linkage in an installed Linux component. The
+private loader must resolve both module paths and their soname dependencies.
+The check deliberately does not request screen authorization.
 `qualification/host_desktop_synthetic.py` measures the production encoder using a
 synthetic source; receipt FPS is not client-painted FPS. The macOS qualification
 executable's `probe` command is read-only; `session` uses the public native engine.

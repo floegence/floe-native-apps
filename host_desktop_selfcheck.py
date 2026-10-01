@@ -1,10 +1,16 @@
 """Synthetic installed-stack proof. Never opens a display, microphone or portal."""
 import json
+import ctypes
 import gi
 
 gi.require_version('Gst', '1.0')
 from gi.repository import Gst, GLib
 from host_desktop_media import DesktopMedia, select_encoder
+
+# The client-node module depends on protocol-native by soname. Finding the
+# GStreamer element alone does not prove that the private loader can resolve
+# this mandatory dependency. Loading it needs no desktop or portal connection.
+ctypes.CDLL('libpipewire-module-client-node.so')
 
 Gst.init(None)
 for name in ('pipewiresrc', 'ximagesrc', 'pulsesrc', 'h264parse', 'pngenc', 'opusenc', 'opusdec', 'openh264dec'):
