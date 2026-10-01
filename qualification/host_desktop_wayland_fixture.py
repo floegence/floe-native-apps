@@ -1,6 +1,6 @@
 """Current-desktop interaction fixture; only its focused window accepts test input.
 
-Uses the installed native helper and the host's existing Wayland compositor.
+Uses the installed native helper and the host's selected graphical login.
 Never changes desktop policy or saves desktop pixels or original clipboard text.
 """
 import argparse
@@ -21,10 +21,23 @@ def main():
     parser.add_argument('--media-fd', type=int, required=True)
     args = parser.parse_args()
     sys.path.insert(0, str(Path(args.helper).resolve()))
-    os.environ['GDK_BACKEND'] = 'wayland'
     import gi
     gi.require_version('Gtk', '3.0')
-    from gi.repository import Gtk, Gdk, GLib
+    from gi.repository import Gio, GLib
+    from host_desktop_identity import HostIdentity, x11_credentials
+    identity = HostIdentity(Gio, GLib)
+    try:
+        if identity.state() != 'ready':
+            raise RuntimeError('The selected desktop is not unlocked')
+        os.environ['GDK_BACKEND'] = identity.backend
+        os.environ['XDG_RUNTIME_DIR'] = '/run/user/' + str(os.getuid())
+        os.environ['DBUS_SESSION_BUS_ADDRESS'] = 'unix:path=' + os.environ['XDG_RUNTIME_DIR'] + '/bus'
+        if identity.backend == 'x11':
+            name, authority = x11_credentials(identity.selected, os.getuid())
+            os.environ.update(DISPLAY=name, XAUTHORITY=authority)
+    finally:
+        identity.close()
+    from gi.repository import Gtk, Gdk
     from host_desktop_wire import Writer, read_command
     Gtk.init([])
     window = Gtk.Window(title='Floe task-owned remote desktop qualification')
@@ -126,7 +139,11 @@ def main():
         if method == 'fixture_status':
             status()
         elif method == 'fixture_focus':
-            window.present()
+            timestamp = Gdk.CURRENT_TIME
+            if os.environ['GDK_BACKEND'] == 'x11':
+                from gi.repository import GdkX11
+                timestamp = GdkX11.x11_get_server_time(window.get_window())
+            window.present_with_time(timestamp)
             entry.grab_focus()
             status()
         elif method == 'fixture_clipboard':

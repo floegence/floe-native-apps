@@ -129,7 +129,11 @@ class DesktopMedia:
         self._start_capture()
 
     def start_x11(self, display, rectangle):
-        self.capture = self._pipeline('ximagesrc name=desktop use-damage=true show-pointer=true ! videoconvert ! '
+        # Damage notifications on some compositors coalesce scroll updates and
+        # deliver a sub-60Hz source even while the desktop is visibly moving.
+        # Capture the selected authenticated display at its negotiated cadence;
+        # unchanged pixels are still removed by the bounded equality check.
+        self.capture = self._pipeline('ximagesrc name=desktop use-damage=false show-pointer=true ! videoconvert ! '
             f'video/x-raw,format=BGRA,framerate={self.picture["frame_rate"]}/1 ! '
             'appsink name=frames max-buffers=1 drop=true emit-signals=true sync=false')
         source = self.capture.get_by_name('desktop')

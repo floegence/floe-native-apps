@@ -1,6 +1,9 @@
 import unittest
+import os
+from pathlib import Path
+import tempfile
 from host_desktop_contract import DesktopError
-from host_desktop_identity import select_session, HostIdentity
+from host_desktop_identity import select_session, HostIdentity, x11_credentials
 
 
 class IdentityTests(unittest.TestCase):
@@ -36,6 +39,56 @@ class IdentityTests(unittest.TestCase):
         self.assertEqual(changes, ['locked'])
         identity.observed.update(Active=False, LockedHint=False)
         self.assertEqual(identity.state(), 'session_unavailable')
+
+
+class X11IdentityTests(unittest.TestCase):
+    def test_empty_logind_display_resolves_only_the_selected_session(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            authority = root / 'Xauthority'
+            authority.write_bytes(b'task-only cookie fixture')
+            authority.chmod(0o600)
+            session = {'Type': 'x11', 'Scope': 'session-1.scope', 'Display': ''}
+            def process(pid, scope, display):
+                entry = root / str(pid)
+                entry.mkdir()
+                (entry / 'cgroup').write_text('0::/user.slice/user-1000.slice/' + scope)
+                (entry / 'environ').write_bytes(('DISPLAY=' + display + '\0XAUTHORITY=' + str(authority) + '\0').encode())
+            process(100, 'session-private.scope', ':99')
+            with self.assertRaisesRegex(DesktopError, 'X11_SESSION_UNAVAILABLE'):
+                x11_credentials(session, os.getuid(), directory)
+            process(101, 'session-1.scope', ':0')
+            self.assertEqual(x11_credentials(session, os.getuid(), directory), (':0', str(authority)))
+            session['Display'] = ':1'
+            with self.assertRaisesRegex(DesktopError, 'X11_SESSION_UNAVAILABLE'):
+                x11_credentials(session, os.getuid(), directory)
+            session['Display'] = ''
+            process(102, 'session-1.scope', ':2')
+            with self.assertRaisesRegex(DesktopError, 'X11_SESSION_AMBIGUOUS'):
+                x11_credentials(session, os.getuid(), directory)
+
+    def test_authority_must_be_private_owned_and_regular(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            authority = root / 'Xauthority'
+            authority.write_bytes(b'task-only cookie fixture')
+            authority.chmod(0o600)
+            process = root / '101'
+            process.mkdir()
+            (process / 'cgroup').write_text('0::/session-1.scope')
+            (process / 'environ').write_bytes(('DISPLAY=:0\0XAUTHORITY=' + str(authority) + '\0').encode())
+            session = {'Type': 'x11', 'Scope': 'session-1.scope'}
+            self.assertEqual(x11_credentials(session, os.getuid(), directory)[0], ':0')
+            authority.chmod(0o644)
+            with self.assertRaisesRegex(DesktopError, 'X11_SESSION_UNAVAILABLE'):
+                x11_credentials(session, os.getuid(), directory)
+            authority.unlink()
+            authority.symlink_to(process / 'environ')
+            with self.assertRaisesRegex(DesktopError, 'X11_SESSION_UNAVAILABLE'):
+                x11_credentials(session, os.getuid(), directory)
+            session['Type'] = 'wayland'
+            with self.assertRaisesRegex(DesktopError, 'X11_SESSION_UNAVAILABLE'):
+                x11_credentials(session, os.getuid(), directory)
 
 
 if __name__ == '__main__':

@@ -1,6 +1,8 @@
 package nativeapps
 
 import (
+	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -20,13 +22,40 @@ func TestHostDesktopRecipeCannotActivatePrivateApplicationTools(t *testing.T) {
 			t.Fatal("physical and private desktops share a preparation identity")
 		}
 		installations := compatibleInstallations(pkg)
-		if len(installations) != 1 || installations[0].Contract != hostDesktopContract {
+		if len(installations) != 2 || installations[0].Contract != hostDesktopContract || installations[1].Contract != hostDesktopContract {
 			t.Fatal("host desktop adopted an unrelated private desktop")
 		}
 		pkg.Preparation.NativeSHA256 = private.Preparation.NativeSHA256
 		if pkg.Validate() == nil {
 			t.Fatal("wrong helper bytes passed preparation")
 		}
+	}
+}
+
+func TestHostDesktopUpgradeAcceptsPublishedStateWithoutRewritingOldFiles(t *testing.T) {
+	root := t.TempDir()
+	previous := "335b0d09a552a81327e79f89c856c03abb6e3b7350dda69a45292612bbd1e988"
+	data, _ := json.Marshal(operation{Version: 2, Package: previous, Installed: previous, Status: Status{State: "ready"}})
+	state := filepath.Join(root, "operation.json")
+	if err := os.WriteFile(state, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	pkg, err := HostDesktopForPlatform("linux", "amd64")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := New(root, pkg, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+	status := m.Snapshot("owner")
+	if status.Installed == nil || status.Installed.Digest != previous || status.Installed.Ready || status.State != "available" {
+		t.Fatal("published identity was lost or missing files were trusted", status)
+	}
+	after, err := os.ReadFile(state)
+	if err != nil || !bytes.Equal(data, after) {
+		t.Fatal("opening an upgrade rewrote prior installation state", err)
 	}
 }
 

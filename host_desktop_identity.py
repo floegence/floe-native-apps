@@ -1,5 +1,7 @@
 """Read-only selection of the current user's real graphical login session."""
 import os
+import pwd
+import re
 import stat
 
 from host_desktop_contract import DesktopError
@@ -13,6 +15,60 @@ def select_session(records, uid):
     if len(candidates) != 1:
         raise DesktopError('DESKTOP_SESSION_UNAVAILABLE' if not candidates else 'DESKTOP_SESSION_AMBIGUOUS')
     return candidates[0]
+
+
+def x11_credentials(session, uid, proc_root='/proc'):
+    """Resolve X11 before connection from processes in the selected login scope.
+
+    GDM can leave logind's Display property empty. The login's own process
+    environment supplies its display and cookie path; the Runtime's inherited
+    DISPLAY/XAUTHORITY may belong to SSH or an application-private desktop.
+    """
+    scope = session.get('Scope', '')
+    display = session.get('Display', '')
+    if session.get('Type') != 'x11' or not re.fullmatch(r'session-[A-Za-z0-9]+\.scope', scope):
+        raise DesktopError('X11_SESSION_UNAVAILABLE')
+    pairs = set()
+    def read_at(directory, name):
+        fd = os.open(name, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW, dir_fd=directory)
+        with os.fdopen(fd, 'rb') as source:
+            data = source.read((1 << 20) + 1)
+        if len(data) > 1 << 20:
+            raise ValueError('oversized session metadata')
+        return data
+    with os.scandir(proc_root) as entries:
+        for entry in entries:
+            if not entry.name.isdecimal():
+                continue
+            directory = None
+            try:
+                directory = os.open(entry.path, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC | os.O_NOFOLLOW)
+                if os.fstat(directory).st_uid != uid:
+                    continue
+                paths = [line.split(':', 2)[-1].split('/') for line in read_at(directory, 'cgroup').decode().splitlines()]
+                if not any(scope in path for path in paths):
+                    continue
+                environment = dict(item.split(b'=', 1) for item in read_at(directory, 'environ').split(b'\0') if b'=' in item)
+                name = environment.get(b'DISPLAY', b'').decode()
+                if not re.fullmatch(r':[0-9]+(?:\.[0-9]+)?', name) or display and name != display:
+                    continue
+                authority = environment.get(b'XAUTHORITY', b'').decode()
+                if not authority:
+                    authority = os.path.join(pwd.getpwuid(uid).pw_dir, '.Xauthority')
+                if not os.path.isabs(authority):
+                    continue
+                info = os.lstat(authority)
+                if not stat.S_ISREG(info.st_mode) or info.st_uid != uid or info.st_mode & 0o077:
+                    continue
+                pairs.add((name, authority))
+            except (OSError, UnicodeError, ValueError, KeyError):
+                continue
+            finally:
+                if directory is not None:
+                    os.close(directory)
+    if len(pairs) != 1:
+        raise DesktopError('X11_SESSION_AMBIGUOUS' if pairs else 'X11_SESSION_UNAVAILABLE')
+    return pairs.pop()
 
 
 class HostIdentity:

@@ -9,7 +9,7 @@ import threading
 import time
 
 from host_desktop_contract import DesktopAuthority, DesktopError, integer
-from host_desktop_identity import HostIdentity
+from host_desktop_identity import HostIdentity, x11_credentials
 from host_desktop_input import HeldInput, physical_key
 from host_desktop_media import DesktopMedia, select_encoder
 from host_desktop_portal import PortalGrant, PortalSession
@@ -260,7 +260,9 @@ class HostDesktop:
         else:
             from host_desktop_x11 import X11Desktop
             try:
-                self.backend = X11Desktop(self.identity.selected.get('Display'), self.GLib, self.clipboard_changed)
+                name, authority = x11_credentials(self.identity.selected, os.getuid())
+                os.environ['XAUTHORITY'] = authority
+                self.backend = X11Desktop(name, self.GLib, self.clipboard_changed)
                 self.displays = self.backend.displays()
                 self.finish_connect(command)
             except Exception:

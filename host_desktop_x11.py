@@ -95,6 +95,12 @@ class X11Desktop:
         self.clipboard.request_text(received, None)
 
     def close(self):
+        self.clipboard_enabled = self.clipboard_sync = False
+        self.clipboard_epoch += 1
         self.clipboard.disconnect(self.clipboard_signal)
+        # Gtk owns the clipboard through its display. Release the GI wrapper
+        # before GDK destroys that owner, including during interpreter shutdown.
+        self.clipboard = None
         self.connection.close()
         self.display.close()
+        self.display = None

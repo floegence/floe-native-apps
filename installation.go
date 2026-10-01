@@ -29,6 +29,18 @@ func compatibleInstallations(pkg Package) []Installation {
 	if pkg.Preparation != nil {
 		current.Contract = pkg.Preparation.Contract
 		result := []Installation{current}
+		if current.Contract == hostDesktopContract {
+			releases, err := hostDesktopReleases()
+			if err == nil {
+				for _, release := range releases {
+					if release.Architecture == pkg.Architecture && release.Digest != current.Digest {
+						result = append(result, Installation{ID: release.ID, Digest: release.Digest,
+							Architecture: release.Architecture, Contract: hostDesktopContract})
+					}
+				}
+			}
+			return result
+		}
 		previous := map[string]string{
 			"amd64": "ee42fb12933a2ef4d1d1efbd1cddd9e5860817155726d041395fa726810a4023",
 			"arm64": "9ec255e3234f2b587bbc4bf3eb9882791f3d847f8c0f1648080f6cfc52a256fb",
@@ -98,7 +110,7 @@ func (m *Manager) installedDirectory(digest string) (string, error) {
 			return "", err
 		}
 	case hostDesktopContract:
-		if _, err := ResolveHostDesktopTools(root, item.Architecture); err != nil {
+		if _, err := resolveHostDesktopInstallation(root, item); err != nil {
 			return "", err
 		}
 	default:

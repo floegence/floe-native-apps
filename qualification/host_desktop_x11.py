@@ -34,6 +34,20 @@ with tempfile.TemporaryDirectory(prefix='floe-host-x11-') as state:
         name = ':' + number
         subprocess.run(['xauth', '-f', authority, 'add', name, 'MIT-MAGIC-COOKIE-1', cookie], check=True)
         os.environ.update(DISPLAY=name, XAUTHORITY=authority, GDK_BACKEND='x11')
+        # A headless helper has no Gtk application window retaining a display.
+        # Exercise finalization in its own interpreter so a late GI use-after-free
+        # cannot be masked by the graphical fixture's global toolkit references.
+        lifecycle = """
+import sys
+sys.path.insert(0, sys.argv[1])
+from gi.repository import GLib
+from host_desktop_x11 import X11Desktop
+for _ in range(3):
+    backend = X11Desktop(sys.argv[2], GLib)
+    backend.close()
+"""
+        subprocess.run([str(Path(args.helper, 'python3')), '-c', lifecycle, args.helper, name],
+                       check=True, timeout=10)
         import gi
         gi.require_version('Gtk', '3.0')
         gi.require_version('Gst', '1.0')
