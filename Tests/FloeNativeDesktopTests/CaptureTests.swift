@@ -1,4 +1,5 @@
 import XCTest
+import VideoToolbox
 @testable import FloeNativeDesktop
 
 final class CaptureTests: XCTestCase {
@@ -24,6 +25,40 @@ final class CaptureTests: XCTestCase {
         let events = try NativeDesktopInput.text("A中😀\n")
         XCTAssertEqual(events.count, 8)
         XCTAssertEqual(events.last?.getIntegerValueField(.keyboardEventKeycode), 36)
+    }
+
+    func testLosslessImageConversionPreservesOpaqueSourceSamples() throws {
+        let width = 64, height = 48
+        var buffer: CVPixelBuffer?
+        XCTAssertEqual(CVPixelBufferCreate(kCFAllocatorDefault, width, height, kCVPixelFormatType_32BGRA,
+            [kCVPixelBufferIOSurfacePropertiesKey: [:]] as CFDictionary, &buffer), noErr)
+        let source = try XCTUnwrap(buffer)
+        CVBufferSetAttachment(source, kCVImageBufferCGColorSpaceKey, CGColorSpace(name: CGColorSpace.sRGB)!, .shouldPropagate)
+        CVPixelBufferLockBaseAddress(source, [])
+        let stride = CVPixelBufferGetBytesPerRow(source)
+        let pointer = try XCTUnwrap(CVPixelBufferGetBaseAddress(source)).assumingMemoryBound(to: UInt8.self)
+        var expected = [UInt8](repeating: 0, count: width * height * 4)
+        for y in 0..<height {
+            for x in 0..<width {
+                let pixel: [UInt8] = [UInt8((x * 7) % 256), UInt8((y * 11) % 256), UInt8((x + y) % 256), 255]
+                for c in 0..<4 { pointer[y * stride + x * 4 + c] = pixel[c]; expected[(y * width + x) * 4 + c] = pixel[c] }
+            }
+        }
+        CVPixelBufferUnlockBaseAddress(source, [])
+        let image = try XCTUnwrap(nativeCaptureImage(source))
+        let context = try XCTUnwrap(CGContext(data: nil, width: width, height: height, bitsPerComponent: 8,
+            bytesPerRow: width * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+            bitmapInfo: CGBitmapInfo.byteOrder32Little.rawValue | CGImageAlphaInfo.premultipliedFirst.rawValue))
+        context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        let actual = Data(bytes: try XCTUnwrap(context.data), count: expected.count)
+        XCTAssertEqual(actual, Data(expected))
+    }
+
+    func testEncoderProbesRequestedPixelsWithoutCapturingTheDisplay() throws {
+        XCTAssertNil(NativeVideoEncoder.prepare(width: 0, height: 1080, frameRate: 60, bitrate: 1_000_000))
+        XCTAssertNil(NativeVideoEncoder.prepare(width: 8192, height: 8192, frameRate: 60, bitrate: 1_000_000))
+        let encoder = try XCTUnwrap(NativeVideoEncoder.prepare(width: 64, height: 64, frameRate: 60, bitrate: 1_000_000))
+        VTCompressionSessionInvalidate(encoder.session)
     }
 }
 

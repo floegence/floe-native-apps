@@ -73,15 +73,20 @@ public func nativeCapturePixelsEqual(_ lhs: CVPixelBuffer, _ rhs: CVPixelBuffer)
 // only the pending unencoded buffer. Existing application clients can retain one credit.
 public final class NativeCaptureStream: NSObject, SCStreamOutput, SCStreamDelegate {
     private var stream: SCStream?
+    private var captureFilter: SCContentFilter?
+    private var captureConfiguration: SCStreamConfiguration?
     // Main-thread lifecycle: ScreenCaptureKit stop must wait for start to finish.
     private var starting = false
     private var retiring = false
     private var stopping = false
     private var stopCallbacks: [() -> Void] = []
-    private let context = CIContext()
     private let queue = DispatchQueue(label: "floe.native.capture", qos: .userInteractive)
     private var stopped = false
+    private var captureReady = false
     private var encoder: VTCompressionSession?
+    private var encoderHardware = true
+    private var encoderName = ""
+    private let softwareQueue = DispatchQueue(label: "floe.native.software-video", qos: .userInitiated)
     private var latest: CVPixelBuffer?
     private var sequence = 0
     private var sentSequence = 0
@@ -101,7 +106,7 @@ public final class NativeCaptureStream: NSObject, SCStreamOutput, SCStreamDelega
     private var refinementPending = false
     private let refinementQueue = DispatchQueue(label: "floe.native.refinement", qos: .userInitiated)
     private var audioEncoder: NativeOpusEncoder?
-    public let generation: Int
+    public private(set) var generation: Int
     public let settings: NativeCaptureSettings
     private let emitFrame: ([String: Any]) -> Void
     let failed: (Error) -> Void
@@ -161,6 +166,7 @@ public final class NativeCaptureStream: NSObject, SCStreamOutput, SCStreamDelega
         configuration.queueDepth = 3
         configuration.showsCursor = cursor
         configuration.pixelFormat = kCVPixelFormatType_32BGRA
+        configuration.colorSpaceName = CGColorSpace.sRGB
         configuration.capturesAudio = settings.audio
         configuration.sampleRate = 48000
         configuration.channelCount = 2
@@ -168,6 +174,7 @@ public final class NativeCaptureStream: NSObject, SCStreamOutput, SCStreamDelega
         if #available(macOS 14.2, *) { configuration.includeChildWindows = true }
         let stream = SCStream(filter: filter, configuration: configuration, delegate: self)
         self.stream = stream
+        captureFilter = filter; captureConfiguration = configuration
         queue.async {
             self.prepareEncoder()
             if self.settings.requireVideo && !self.videoActive {
@@ -195,6 +202,12 @@ public final class NativeCaptureStream: NSObject, SCStreamOutput, SCStreamDelega
                     if let error, !self.retiring { self.failed(error) }
                     self.finishStop()
                     completion()
+                    // The consumer publishes its active generation in completion.
+                    // A first frame must not race ahead of that state: its receipt
+                    // would be rejected, leaving a static desktop without input.
+                    if error == nil, !self.retiring {
+                        self.queue.async { self.captureReady = true; self.produce() }
+                    }
                 }
             }
         } catch {
@@ -206,35 +219,19 @@ public final class NativeCaptureStream: NSObject, SCStreamOutput, SCStreamDelega
     }
     private func prepareEncoder() {
         guard settings.video else { return }
-        var session: VTCompressionSession?
-        let specification = [
-            kVTVideoEncoderSpecification_RequireHardwareAcceleratedVideoEncoder: true,
-            kVTVideoEncoderSpecification_EnableLowLatencyRateControl: true,
-        ] as CFDictionary
-        guard VTCompressionSessionCreate(allocator: kCFAllocatorDefault, width: Int32(dimensions.width), height: Int32(dimensions.height), codecType: kCMVideoCodecType_H264, encoderSpecification: specification, imageBufferAttributes: nil, compressedDataAllocator: nil, outputCallback: nil, refcon: nil, compressionSessionOut: &session) == noErr, let session else { return }
         let pixels = dimensions.width * dimensions.height
         bitrate = Int(min(32_000_000, max(1_000_000, pixels * Double(settings.frameRate) * (settings.mode == "data" ? 0.06 : 0.12))))
-        let properties: [CFString: Any] = [
-            kVTCompressionPropertyKey_RealTime: true,
-            kVTCompressionPropertyKey_AllowFrameReordering: false,
-            kVTCompressionPropertyKey_MaxFrameDelayCount: 0,
-            kVTCompressionPropertyKey_ProfileLevel: kVTProfileLevel_H264_Main_AutoLevel,
-            kVTCompressionPropertyKey_ExpectedFrameRate: settings.frameRate,
-            kVTCompressionPropertyKey_MaxKeyFrameInterval: settings.frameRate * 2,
-            kVTCompressionPropertyKey_AverageBitRate: bitrate,
-        ]
-        guard VTSessionSetProperties(session, propertyDictionary: properties as CFDictionary) == noErr,
-              VTCompressionSessionPrepareToEncodeFrames(session) == noErr else { VTCompressionSessionInvalidate(session); return }
-        encoder = session; videoActive = true
+        guard let prepared = NativeVideoEncoder.prepare(width: Int(dimensions.width), height: Int(dimensions.height),
+            frameRate: settings.frameRate, bitrate: bitrate) else { return }
+        encoder = prepared.session; encoderHardware = prepared.hardware; encoderName = prepared.name; videoActive = true
     }
     public func stop(completion: @escaping () -> Void = {}) {
         retiring = true
         stopCallbacks.append(completion)
         queue.async {
-            self.stopped = true; self.timer?.cancel(); self.timer = nil
+            self.stopped = true; self.captureReady = false; self.timer?.cancel(); self.timer = nil
             self.pendingProduce?.cancel(); self.pendingProduce = nil
-            if let encoder = self.encoder { VTCompressionSessionInvalidate(encoder) }
-            self.encoder = nil; self.latest = nil
+            self.retireEncoder(); self.latest = nil
         }
         finishStop()
     }
@@ -270,9 +267,25 @@ public final class NativeCaptureStream: NSObject, SCStreamOutput, SCStreamDelega
         }
     }
     public func requestKeyFrame() { queue.async { self.forceKeyFrame = true } }
+    public func recover(generation: Int) {
+        queue.async {
+            guard !self.stopped, generation > self.generation else { return }
+            self.generation = generation
+            self.audioEncoder?.reset()
+            // Retire transport credit at an explicit keyframe boundary while
+            // keeping the authorized capture and latest unencoded pixels alive.
+            // Frame IDs stay monotonic so an old codec callback cannot claim a
+            // newly reserved credit even if it completes after this reset.
+            self.inFlight.removeAll()
+            self.forceKeyFrame = true
+            self.sentSequence = 0; self.refinedSequence = 0; self.nextEncoded = 0
+            self.pendingProduce?.cancel(); self.pendingProduce = nil
+            self.produce()
+        }
+    }
     public func stream(_ stream: SCStream, didStopWithError error: Error) { queue.async { self.failure(error) } }
     public func stream(_ stream: SCStream, didOutputSampleBuffer sample: CMSampleBuffer, of type: SCStreamOutputType) {
-        if !stopped, type == .audio { audioEncoder?.append(sample); return }
+        if !stopped, type == .audio { if captureReady { audioEncoder?.append(sample) }; return }
         guard !stopped, type == .screen, sample.isValid,
               let attachments = CMSampleBufferGetSampleAttachmentsArray(sample, createIfNecessary: false) as? [[SCStreamFrameInfo: Any]],
               let status = attachments.first?[.status] as? Int, status == SCFrameStatus.complete.rawValue,
@@ -282,9 +295,10 @@ public final class NativeCaptureStream: NSObject, SCStreamOutput, SCStreamDelega
         produce()
     }
     private func produce() {
-        guard !stopped, !settings.requireVideo || videoActive, inFlight.count < settings.frameCapacity, let buffer = latest else { return }
+        guard !stopped, captureReady, !settings.requireVideo || videoActive,
+              inFlight.count < (encoderHardware ? settings.frameCapacity : 1), let buffer = latest else { return }
         let now = ProcessInfo.processInfo.systemUptime
-        let refine = now - changedAt >= 0.2 && refinedSequence != sequence
+        let refine = !forceKeyFrame && now - changedAt >= 0.2 && refinedSequence != sequence
         if refine {
             refineImage(buffer)
             return
@@ -310,73 +324,113 @@ public final class NativeCaptureStream: NSObject, SCStreamOutput, SCStreamDelega
         if let encoder {
             let properties = forceKeyFrame ? [kVTEncodeFrameOptionKey_ForceKeyFrame: true] as CFDictionary : nil
             forceKeyFrame = false
-            let result = VTCompressionSessionEncodeFrame(encoder, imageBuffer: buffer, presentationTimeStamp: CMTime(seconds: now, preferredTimescale: 1_000_000), duration: .invalid, frameProperties: properties, infoFlagsOut: nil) { [weak self] status, _, sample in
-                guard let self else { return }
-                self.queue.async {
-                    guard !self.stopped, self.inFlight[id] != nil else { return }
-                    guard status == noErr, let sample, let data = sample.dataBuffer,
-                          let format = sample.formatDescription else { self.fallbackToImages(buffer, id: id); return }
-                    let length = CMBlockBufferGetDataLength(data)
-                    var bytes = Data(count: length)
-                    let copied = bytes.withUnsafeMutableBytes { CMBlockBufferCopyDataBytes(data, atOffset: 0, dataLength: length, destination: $0.baseAddress!) }
-                    guard copied == noErr else { self.fallbackToImages(buffer, id: id); return }
-                    let attachments = CMSampleBufferGetSampleAttachmentsArray(sample, createIfNecessary: false) as? [[CFString: Any]]
-                    let key = attachments?.first?[kCMSampleAttachmentKey_NotSync] as? Bool != true
-                    var metadata: [String: Any] = ["codec": "h264", "key": key, "timestamp": Int(capturedAt * 1_000_000)]
-                    if key {
-                        let extensions = CMFormatDescriptionGetExtensions(format) as NSDictionary?
-                        guard let atoms = extensions?[kCMFormatDescriptionExtension_SampleDescriptionExtensionAtoms] as? NSDictionary,
-                              let avcc = atoms["avcC"] as? Data, avcc.count >= 4 else { self.fallbackToImages(buffer, id: id); return }
-                        metadata["description"] = avcc.base64EncodedString()
-                        metadata["profile"] = "avc1." + avcc[1...3].map { String(format: "%02X", $0) }.joined()
+            let encode = { [weak self] in
+                self?.encode(buffer, using: encoder, id: id, timestamp: now, capturedAt: capturedAt, properties: properties)
+            }
+            if encoderHardware { encode() }
+            else {
+                softwareQueue.async {
+                    encode()
+                    if VTCompressionSessionCompleteFrames(encoder, untilPresentationTimeStamp: .invalid) != noErr {
+                        self.queue.async {
+                            if !self.stopped, self.inFlight[id] != nil { self.fallbackToImages(buffer, id: id) }
+                        }
                     }
-                    self.output(bytes, id: id, metadata: metadata)
                 }
             }
-            if result != noErr { fallbackToImages(buffer, id: id) }
         } else { forceKeyFrame = false; outputImage(buffer, id: id, lossless: false) }
+    }
+    private func encode(_ buffer: CVPixelBuffer, using encoder: VTCompressionSession, id: Int,
+                        timestamp: TimeInterval, capturedAt: TimeInterval, properties: CFDictionary?) {
+        let result = VTCompressionSessionEncodeFrame(encoder, imageBuffer: buffer,
+            presentationTimeStamp: CMTime(seconds: timestamp, preferredTimescale: 1_000_000), duration: .invalid,
+            frameProperties: properties, infoFlagsOut: nil) { [weak self] status, _, sample in
+            guard let self else { return }
+            self.queue.async {
+                guard !self.stopped, self.inFlight[id] != nil else { return }
+                guard status == noErr, let sample, let data = sample.dataBuffer,
+                      let format = sample.formatDescription else { self.fallbackToImages(buffer, id: id); return }
+                let length = CMBlockBufferGetDataLength(data)
+                var bytes = Data(count: length)
+                let copied = bytes.withUnsafeMutableBytes { CMBlockBufferCopyDataBytes(data, atOffset: 0, dataLength: length, destination: $0.baseAddress!) }
+                guard copied == noErr else { self.fallbackToImages(buffer, id: id); return }
+                let attachments = CMSampleBufferGetSampleAttachmentsArray(sample, createIfNecessary: false) as? [[CFString: Any]]
+                let key = attachments?.first?[kCMSampleAttachmentKey_NotSync] as? Bool != true
+                var metadata: [String: Any] = ["codec": "h264", "key": key, "timestamp": Int(capturedAt * 1_000_000)]
+                if key {
+                    let extensions = CMFormatDescriptionGetExtensions(format) as NSDictionary?
+                    guard let atoms = extensions?[kCMFormatDescriptionExtension_SampleDescriptionExtensionAtoms] as? NSDictionary,
+                          let avcc = atoms["avcC"] as? Data, avcc.count >= 4 else { self.fallbackToImages(buffer, id: id); return }
+                    metadata["description"] = avcc.base64EncodedString()
+                    metadata["profile"] = "avc1." + avcc[1...3].map { String(format: "%02X", $0) }.joined()
+                }
+                self.output(bytes, id: id, metadata: metadata)
+            }
+        }
+        if result != noErr {
+            queue.async { if !self.stopped, self.inFlight[id] != nil { self.fallbackToImages(buffer, id: id) } }
+        }
+    }
+
+    private func retireEncoder() {
+        guard let encoder else { return }
+        self.encoder = nil
+        if encoderHardware { VTCompressionSessionInvalidate(encoder) }
+        else { softwareQueue.async { VTCompressionSessionInvalidate(encoder) } }
     }
     private func refineImage(_ buffer: CVPixelBuffer) {
         guard !refinementPending, inFlight.isEmpty else { return }
         refinementPending = true
         let sourceSequence = sequence
+        let sourceGeneration = generation
         let capturedAt = changedAt
-        refinementQueue.async { [weak self] in
+        let encodeStill: (CGImage?) -> Void = { [weak self] image in
             guard let self else { return }
-            let image = CIImage(cvPixelBuffer: buffer)
-            let data = NSMutableData()
-            var completed = false
-            autoreleasepool {
-                if let cg = self.context.createCGImage(image, from: image.extent),
-                   let destination = CGImageDestinationCreateWithData(data, UTType.png.identifier as CFString, 1, nil) {
-                    CGImageDestinationAddImage(destination, cg, nil)
-                    completed = CGImageDestinationFinalize(destination)
+            self.refinementQueue.async {
+                let data = NSMutableData()
+                var completed = false
+                autoreleasepool {
+                    if let cg = image,
+                       let destination = CGImageDestinationCreateWithData(data, UTType.png.identifier as CFString, 1, nil) {
+                        CGImageDestinationAddImage(destination, cg, nil)
+                        completed = CGImageDestinationFinalize(destination)
+                    }
+                }
+                let bytes = data as Data
+                let succeeded = completed
+                self.queue.async {
+                    self.refinementPending = false
+                    guard !self.stopped, self.generation == sourceGeneration,
+                          self.sequence == sourceSequence, self.inFlight.isEmpty else { return }
+                    guard succeeded else {
+                        self.failure(NativeDesktopError(code: "REFINEMENT_FAILED", message: "The lossless desktop capture failed.")); return
+                    }
+                    self.refinedSequence = sourceSequence
+                    self.frameID += 1; self.inFlight[self.frameID] = -1
+                    self.output(bytes, id: self.frameID, metadata: ["codec": "png", "key": true, "timestamp": Int(capturedAt * 1_000_000)])
                 }
             }
-            let bytes = data as Data
-            let succeeded = completed
-            self.queue.async {
-                self.refinementPending = false
-                guard !self.stopped, self.sequence == sourceSequence, self.inFlight.isEmpty, succeeded else { return }
-                self.refinedSequence = sourceSequence
-                self.frameID += 1; self.inFlight[self.frameID] = -1
-                self.output(bytes, id: self.frameID, metadata: ["codec": "png", "key": true, "timestamp": Int(capturedAt * 1_000_000)])
-            }
         }
+        if #available(macOS 14.0, *), let captureFilter, let captureConfiguration {
+            // ScreenCaptureKit's video samples can differ from its still-image
+            // output after display color conversion. Refine with the authorized
+            // still capture at the exact same filter and pixel dimensions.
+            SCScreenshotManager.captureImage(contentFilter: captureFilter, configuration: captureConfiguration) { image, error in
+                encodeStill(error == nil ? image : nil)
+            }
+        } else { encodeStill(nativeCaptureImage(buffer)) }
     }
     private func fallbackToImages(_ buffer: CVPixelBuffer, id: Int) {
         if settings.requireVideo {
             failure(NativeDesktopError(code: "VIDEO_ENCODER_FAILED", message: "The desktop H.264 encoder failed."))
             return
         }
-        if let encoder { VTCompressionSessionInvalidate(encoder) }
-        encoder = nil; videoActive = false
+        retireEncoder(); videoActive = false
         outputImage(buffer, id: id, lossless: false)
     }
     private func outputImage(_ buffer: CVPixelBuffer, id: Int, lossless: Bool) {
         autoreleasepool {
-            let image = CIImage(cvPixelBuffer: buffer)
-            guard let cg = context.createCGImage(image, from: image.extent) else { failure(NativeDesktopInput.unavailable()); return }
+            guard let cg = nativeCaptureImage(buffer) else { failure(NativeDesktopInput.unavailable()); return }
             let data = NSMutableData()
             guard let destination = CGImageDestinationCreateWithData(data, (lossless ? UTType.png : UTType.jpeg).identifier as CFString, 1, nil) else { failure(NativeDesktopInput.unavailable()); return }
             let options = lossless ? nil : [kCGImageDestinationLossyCompressionQuality: settings.imageQuality * (settings.mode == "auto" ? max(0.8, adaptiveFactor) : 1)] as CFDictionary
@@ -390,8 +444,15 @@ public final class NativeCaptureStream: NSObject, SCStreamOutput, SCStreamDelega
         var message = metadata
         message.merge(["type": "frame", "generation": generation, "frame_id": id, "data": data.base64EncodedString(),
                        "width": Int(dimensions.width), "height": Int(dimensions.height), "frame_rate": settings.frameRate,
-                       "encoder": videoActive ? "videotoolbox" : "",
+                       "encoder": videoActive ? encoderName : "",
                        "transport": videoActive ? "video" : "images", "mode": settings.mode]) { _, new in new }
         emitFrame(message)
     }
+}
+
+func nativeCaptureImage(_ buffer: CVPixelBuffer) -> CGImage? {
+    // Use the source buffer's pixel format and color profile directly.
+    var image: CGImage?
+    guard VTCreateCGImageFromCVPixelBuffer(buffer, options: nil, imageOut: &image) == noErr else { return nil }
+    return image
 }

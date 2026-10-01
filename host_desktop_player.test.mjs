@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { unpackDesktopMedia, DesktopPaintOrder } from './host_desktop_player.mjs';
 import { DesktopAudioRing } from './host_desktop_audio.mjs';
+const nativeSetTimeout = globalThis.setTimeout, nativeClearTimeout = globalThis.clearTimeout;
 
 function packet(header, payload = Uint8Array.of(1, 2, 3)) {
   const metadata = new TextEncoder().encode(JSON.stringify({ version: 1, type: 'frame', generation: 1, frame_id: 1, codec: 'png', width: 2, height: 2, bytes: payload.length, ...header }));
@@ -46,22 +47,25 @@ test('audio backlog stays bounded and reset cannot replay old sound', () => {
 
 async function playerFixture() {
   const { HostDesktopPlayer } = await import('./host_desktop_player.mjs');
-  const callbacks = new Map(); let next = 0;
+  const callbacks = new Map(), tasks = new Map(); let next = 0;
   globalThis.requestAnimationFrame = callback => { callbacks.set(++next, callback); return next; };
   globalThis.cancelAnimationFrame = id => callbacks.delete(id);
+  globalThis.setTimeout = (callback, delay, ...args) => delay === 0 ? (tasks.set(++next, callback), next) : nativeSetTimeout(callback, delay, ...args);
+  globalThis.clearTimeout = id => { tasks.delete(id); nativeClearTimeout(id); };
   const draws = [], acknowledgements = [];
   const canvas = { width:2, height:2, getContext:()=>({drawImage:image=>draws.push(image.id)}) };
   const player = new HostDesktopPlayer(canvas, { acknowledge:(generation,id)=>acknowledgements.push([generation,id]), recover:code=>{throw Error(code);} });
   player.reset(1);
   const frame = id => ({ id, close(){} });
-  const tick = () => { const scheduled=[...callbacks.values()]; callbacks.clear(); for(const callback of scheduled)callback(); };
-  return { player, frame, tick, draws, acknowledgements };
+  const refresh = () => { const scheduled=[...callbacks.values()]; callbacks.clear(); for(const callback of scheduled)callback(); };
+  const afterRender = () => { const scheduled=[...tasks.values()]; tasks.clear(); for(const callback of scheduled)callback(); };
+  const tick = () => { refresh(); afterRender(); };
+  return { player, frame, tick, refresh, afterRender, draws, acknowledgements };
 }
 
 test('paint receipts continue under consecutive animation frames and drain the last frame', async () => {
   const f=await playerFixture();
   f.player.schedule(f.frame(1),{generation:1,frame_id:1,width:2,height:2});
-  f.tick();
   assert.deepEqual(f.acknowledgements,[]);
   f.player.schedule(f.frame(2),{generation:1,frame_id:2,width:2,height:2});
   f.tick();f.tick();
@@ -70,29 +74,41 @@ test('paint receipts continue under consecutive animation frames and drain the l
   f.player.close();
 });
 
+test('an idle decoder output draws immediately but authorizes input only after a refresh', async () => {
+  const f = await playerFixture();
+  f.player.schedule(f.frame(1), { generation: 1, frame_id: 1, width: 2, height: 2 });
+  assert.deepEqual(f.draws, [1]);
+  assert.deepEqual(f.acknowledgements, []);
+  f.refresh();
+  assert.deepEqual(f.acknowledgements, []);
+  f.afterRender();
+  assert.deepEqual(f.acknowledgements, [[1, 1]]);
+  f.player.close();
+});
+
 test('reset retires an already drawn but not yet confirmed frame', async () => {
   const f=await playerFixture();
   f.player.schedule(f.frame(1),{generation:1,frame_id:1,width:2,height:2});
-  f.tick(); f.player.reset(2); f.tick();
+  f.refresh(); f.player.reset(2); f.afterRender(); f.tick();
   assert.deepEqual(f.draws,[1]);
   assert.deepEqual(f.acknowledgements,[]);
   f.player.close();
 });
 
-test('decoded arrival bursts preserve consecutive presentations with a two-frame limit', async () => {
+test('decoded arrival bursts present the freshest picture without queuing old interaction state', async () => {
   const f = await playerFixture();
   const closed = [];
   const schedule = id => f.player.schedule({ id, close: () => closed.push(id) },
     { generation: 1, frame_id: id, width: 2, height: 2 });
   schedule(1); schedule(2); schedule(3);
-  assert.deepEqual(closed, [1]);
+  assert.deepEqual(closed, [1, 2]);
   f.tick(); f.tick(); f.tick();
-  assert.deepEqual(f.draws, [2, 3]);
-  assert.deepEqual(f.acknowledgements, [[1, 2], [1, 3]]);
+  assert.deepEqual(f.draws, [1, 3]);
+  assert.deepEqual(f.acknowledgements, [[1, 1], [1, 3]]);
   schedule(4); schedule(5);
   f.player.reset(2); f.tick();
   assert.deepEqual(closed, [1, 2, 3, 4, 5]);
-  assert.deepEqual(f.draws, [2, 3]);
+  assert.deepEqual(f.draws, [1, 3, 4]);
   f.player.close();
 });
 
@@ -117,9 +133,10 @@ test('decoder failure cancels pending pixels and their control-authorizing recei
   const failures = [];
   f.player.recover = code => failures.push(code);
   f.player.schedule(f.frame(1), { generation: 1, frame_id: 1, width: 2, height: 2 });
+  f.player.schedule(f.frame(2), { generation: 1, frame_id: 2, width: 2, height: 2 });
   f.player.fail('DECODE_FAILED');
   f.tick(); f.tick();
-  assert.deepEqual(f.draws, []);
+  assert.deepEqual(f.draws, [1]);
   assert.deepEqual(f.acknowledgements, []);
   assert.deepEqual(failures, ['DECODE_FAILED']);
   f.player.close();
@@ -162,6 +179,40 @@ test('codec negotiation completing after reset cannot install a retired decoder'
   } finally {
     f.player.close();
     if (original === undefined) delete globalThis.VideoDecoder; else globalThis.VideoDecoder = original;
+  }
+});
+
+test('recent decoder output postpones draining another buffered frame', async () => {
+  const f = await playerFixture();
+  const originals = ['VideoDecoder', 'EncodedVideoChunk', 'setTimeout', 'clearTimeout'].map(key => [key, globalThis[key]]);
+  const timers = new Map(); let next = 10000, decoder, flushes = 0;
+  globalThis.setTimeout = (callback, delay) => { timers.set(++next, { callback, delay }); return next; };
+  globalThis.clearTimeout = id => timers.delete(id);
+  globalThis.EncodedVideoChunk = class { constructor(value) { Object.assign(this, value); } };
+  globalThis.VideoDecoder = class {
+    static async isConfigSupported(config) { return { supported: true, config }; }
+    constructor(callbacks) { this.callbacks = callbacks; this.decodeQueueSize = 0; decoder = this; }
+    configure() { this.state = 'configured'; }
+    decode() {}
+    async flush() { flushes++; }
+    close() { this.state = 'closed'; }
+  };
+  try {
+    f.player.receive(packet({ codec: 'h264', key: true, description: 'AQ==', profile: 'avc1.42e01e' }));
+    await new Promise(resolve => setImmediate(resolve));
+    f.player.receive(packet({ codec: 'h264', key: false, frame_id: 2 }));
+    const old = [...timers.keys()];
+    decoder.callbacks.output({ timestamp: 1, id: 1, close() {} });
+    assert(old.every(id => !timers.has(id)), 'output progress must cancel the stale drain timer');
+    assert.equal(flushes, 0);
+    const drain = [...timers.values()].find(timer => timer.delay === 80);
+    assert(drain, 'the remaining buffered frame still needs bounded drain');
+    drain.callback();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(flushes, 1);
+  } finally {
+    f.player.close();
+    for (const [key, value] of originals) { if (value === undefined) delete globalThis[key]; else globalThis[key] = value; }
   }
 });
 

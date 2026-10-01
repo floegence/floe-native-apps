@@ -1185,10 +1185,29 @@ macOS consumers build the exact published Swift package `FloeNativeDesktop` into
 their existing native helper. `NativeCaptureStream` supports application windows
 and physical displays in the same process. The default one-frame application
 contract remains available; desktop sessions use four credits and require H.264.
+VideoToolbox selection encodes a synthetic probe at the actual requested size;
+session creation alone cannot establish that the hardware accepts that size.
+If only the system software encoder accepts the source resolution, the stream
+reports `videotoolbox-software` and uses one frame credit. This preserves native
+pixels with bounded latency; it makes no 60 FPS claim for that encoder or size.
+On macOS 14 and later, static refinement uses ScreenCaptureKit's still-image
+capture with the same authorized filter and dimensions. Video sample color
+conversion is not a lossless still-image reference. A refinement is retired if
+source pixels, capture generation or ownership change before it is delivered.
 Application process/window ownership checks remain consumer-owned and mandatory.
 `NativeDesktopSession` accepts an authoritative `mayControl` predicate and owns
 native permission checks, display generations and release of its own held keys.
 It does not authenticate a network client or create a second capture process.
+Its explicit `paste` input writes the host text clipboard and posts the system
+paste shortcut. It rejects held keys/buttons and releases its own shortcut on
+failure. Consumers must disclose this clipboard mutation and obtain the user's
+choice before routing client IME commits through it. Physical keys support the
+host IME; generic Unicode key events and writable accessibility attributes do
+not establish universal text insertion into applications such as Electron.
+Complete or cancel the host's current IME composition before switching to client
+text commits. An unfinished host IME may consume synthetic paste shortcuts;
+native admission is not a receipt from the application's document. The SDK does
+not send speculative Escape/Enter or invoke application menus to hide this boundary.
 
 `HostDesktopClientResource` provides the WebCodecs player and AudioWorklet modules.
 Consumers own authenticated control/media channels, published remote-input and
@@ -1199,16 +1218,22 @@ is not proof that a browser used a particular hardware decoder. A slow client
 cannot grow the native frame pipeline, decoder queue or audio queue indefinitely.
 Encoded H.264 dependencies are retained until an explicit recovery generation;
 late PNG refinements cannot replace a newer video frame.
-Linux decoder recovery keeps its authenticated capture and portal session running,
-retires held input and frame credits, and replaces only the encoder. Queued video,
-audio and refinements retain their original generation and cannot authorize or
-overwrite the successor. The next encoder starts a fresh H.264 dependency chain.
-At most two decoded images await presentation to absorb arrival jitter; reset
-closes both before a successor generation can draw. Video and refinement
+Decoder recovery keeps the authorized capture running and retires held input and
+frame credits. Linux replaces only its encoder; macOS forces a new keyframe on
+its existing encoder. Queued video, audio and refinements retain their original
+generation and cannot authorize or overwrite the successor. Recovery starts a
+fresh H.264 dependency chain.
+An idle decoded picture draws immediately, then crosses an animation refresh
+and its following task before its paint receipt can authorize input. Until that
+receipt, at most one newer decoded picture awaits presentation; arrivals replace
+only that decoded picture, never encoded dependencies. Reset closes pending images and cancels
+retired paint receipts before a successor generation can draw. Video and refinement
 `timestamp` values identify the latest changed source pixels on the host's
 monotonic clock. They are telemetry, not a cross-host clock or decode ordering
 key. Qualification must distinguish canvas drawing from a later animation-frame
 receipt and must never report native input admission as painted response latency.
+The decoder's static-frame drain deadline moves on both input and output progress;
+a delayed browser callback cannot declare recently delivered output stalled.
 
 Run the focused Python `host_desktop_*_test` modules, Go `TestHostDesktop` tests,
 `node --test host_desktop_player.test.mjs` and `swift test` during development.
@@ -1221,6 +1246,13 @@ does not request screen authorization.
 `qualification/host_desktop_synthetic.py` measures the production encoder using a
 synthetic source; receipt FPS is not client-painted FPS. The macOS qualification
 executable's `probe` command is read-only; `session` uses the public native engine.
+`window-streams` captures only its own application window (JPEG and H.264) alongside
+the authorized physical display, proving independent generations and first-frame
+admission with one helper process. The input qualifier's `--separate-session`
+keeps the task editor and input sender in different processes; `--text-mode paste`
+checks clipboard mutation, held-key rejection, recovery and retired authority.
+`--compose-first` completes a real host IME composition before switching to client
+text. It does not certify simultaneous unfinished host/client compositions.
 Physical desktop, OS consent, input, reconnect and office-performance acceptance
 require dedicated real-host evidence. No synthetic test certifies those claims.
 

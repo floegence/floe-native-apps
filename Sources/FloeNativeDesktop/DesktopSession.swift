@@ -133,7 +133,10 @@ public final class NativeDesktopSession {
                 let next = try settings(request["picture"])
                 if picture != next { picture = next; replaceCapture() }
             case "keyframe":
-                try validateGeneration(request); replaceCapture()
+                try validateGeneration(request)
+                releaseInput(); generation += 1; painted = false; sentFrames.removeAll()
+                emitState()
+                capture?.recover(generation: generation)
             case "release_input":
                 try validateGeneration(request); releaseInput()
             case "input":
@@ -153,9 +156,7 @@ public final class NativeDesktopSession {
             case "set_clipboard":
                 try authorizeInput(request)
                 guard let text = request["text"] as? String, text.utf8.count <= 1 << 20, !text.contains("\0") else { throw failure("INVALID_ARGUMENT") }
-                NSPasteboard.general.clearContents()
-                guard NSPasteboard.general.setString(text, forType: .string) else { throw failure("CLIPBOARD_UNAVAILABLE") }
-                lastClipboard = text; clipboardChange = NSPasteboard.general.changeCount
+                try writeClipboard(text)
             case "lock":
                 try authorizeInput(request)
                 releaseInput()
@@ -233,6 +234,7 @@ public final class NativeDesktopSession {
                     self.emitState(); return
                 }
                 self.displayID = target
+                weak var ownedCapture: NativeCaptureStream?
                 let stream = NativeCaptureStream(generation: expected, settings: picture, output: { [weak self] message in
                     guard let self else { return }
                     let audio = message["type"] as? String == "audio"
@@ -253,16 +255,18 @@ public final class NativeDesktopSession {
                         // supplies and reports revocation through stream failure.
                         // Check console identity here; input admission independently
                         // checks current capture permission before posting events.
-                        guard !self.closed, self.generation == expected, Self.consoleReadiness == "ready" else { return }
+                        guard let ownedCapture, self.capture === ownedCapture, !self.closed,
+                              message["generation"] as? Int == self.generation, Self.consoleReadiness == "ready" else { return }
                         var packet = message
                         packet["display_id"] = String(target)
                         if let frame = message["frame_id"] as? Int { self.sentFrames.insert(frame) }
                         self.emit(packet)
                     }
                 }, failed: { [weak self] _ in
-                    guard let self, self.generation == expected else { return }
+                    guard let self, let ownedCapture, self.capture === ownedCapture else { return }
                     self.suspend("capture_unavailable")
                 })
+                ownedCapture = stream
                 self.capture = stream
                 stream.start(display) {
                     self.transition = false
@@ -326,8 +330,22 @@ public final class NativeDesktopSession {
     private func deliver(_ input: [String: Any]) throws {
         guard let kind = input["kind"] as? String, let displayID else { throw failure("INVALID_ARGUMENT") }
         var events: [CGEvent] = []
-        if kind == "text" {
+        if kind == "text" || kind == "paste" {
             guard let text = input["text"] as? String, text.utf8.count <= 16000, !text.contains("\0") else { throw failure("INVALID_ARGUMENT") }
+            if text.isEmpty { return }
+            if kind == "paste" {
+                // Clipboard mutation is an explicit operation, never a retry of
+                // a native text event that the target may already have consumed.
+                guard keys.isEmpty, buttons.isEmpty else { throw failure("INPUT_KEYS_HELD") }
+                try authorizePosting()
+                try writeClipboard(text)
+                defer { releaseInput() }
+                for (code, pressed) in [("MetaLeft", true), ("KeyV", true), ("KeyV", false), ("MetaLeft", false)] {
+                    try deliver(["kind": "key", "code": code, "key": code, "pressed": pressed,
+                                 "metaKey": code != "MetaLeft" || pressed])
+                }
+                return
+            }
             events = try NativeDesktopInput.text(text)
         } else if kind == "key" {
             var key = input
@@ -376,9 +394,21 @@ public final class NativeDesktopSession {
             // Screen authorization is checked once when admitting this request.
             // Recheck login, lock, input permission and ownership for every event,
             // including a multi-event text commit, without repeating TCC capture IPC.
-            guard Self.consoleReadiness == "ready", AXIsProcessTrusted(), mayControl() else { releaseInput(); throw failure("CONTROL_REVOKED") }
+            try authorizePosting()
             event.post(tap: .cghidEventTap)
         }
+    }
+
+    private func authorizePosting() throws {
+        guard Self.consoleReadiness == "ready", AXIsProcessTrusted(), mayControl() else {
+            releaseInput(); throw failure("CONTROL_REVOKED")
+        }
+    }
+
+    private func writeClipboard(_ text: String) throws {
+        NSPasteboard.general.clearContents()
+        guard NSPasteboard.general.setString(text, forType: .string) else { throw failure("CLIPBOARD_UNAVAILABLE") }
+        lastClipboard = text; clipboardChange = NSPasteboard.general.changeCount
     }
 
     public func releaseInput() {

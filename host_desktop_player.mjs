@@ -54,7 +54,7 @@ export class HostDesktopPlayer {
     this.gain = null; this.volume = 1; this.muted = false;
     this.audioStarting = null;
     this.audioPending = 0;
-    this.pending = []; this.animation = 0; this.confirmation = 0;
+    this.pending = []; this.confirmation = 0; this.confirmationTask = 0;
     this.idle = 0; this.flushing = false; this.needsKey = true;
     this.bytes = 0; this.draws = 0; this.lastStatistic = performance.now(); this.lastDraw = 0;
     this.intervals = []; this.decoderPath = 'unconfigured';
@@ -65,8 +65,9 @@ export class HostDesktopPlayer {
     this.lastDraw = 0; this.draws = this.bytes = 0; this.intervals = [];
     this.frames.clear(); this.incoming = [];
     clearTimeout(this.idle);
-    cancelAnimationFrame(this.animation); cancelAnimationFrame(this.confirmation);
-    this.animation = this.confirmation = 0;
+    cancelAnimationFrame(this.confirmation);
+    clearTimeout(this.confirmationTask);
+    this.confirmation = this.confirmationTask = 0;
     for (const pending of this.pending) pending.image.close();
     this.pending = [];
     if (this.decoder && this.decoder.state !== 'closed') this.decoder.close();
@@ -115,17 +116,7 @@ export class HostDesktopPlayer {
           this.frames.set(header.frame_id, header);
           this.needsKey = false;
           this.decoder.decode(new EncodedVideoChunk({ type: header.key ? 'key' : 'delta', timestamp: header.frame_id, data }));
-          clearTimeout(this.idle);
-          const decoder = this.decoder;
-          this.idle = setTimeout(() => {
-            if (this.closed || this.decoder !== decoder || !this.frames.size || this.flushing) return;
-            // Some decoders retain a static first frame. Flush only stalled output;
-            // the next chunk must start a fresh dependency chain.
-            this.flushing = true; this.needsKey = true;
-            decoder.flush().then(() => {
-              if (this.decoder === decoder) this.flushing = false;
-            }).catch(() => { if (this.decoder === decoder) this.fail('DECODE_FAILED'); });
-          }, 80);
+          this.scheduleDrain();
         } catch {
           // A retired asynchronous decode/configuration cannot fail a newly
           // connected desktop while this serial worker drains its old work.
@@ -134,6 +125,21 @@ export class HostDesktopPlayer {
       }
     } catch { this.fail('DECODE_FAILED'); }
     finally { this.processing = false; }
+  }
+  scheduleDrain() {
+    clearTimeout(this.idle);
+    if (!this.frames.size || this.flushing) return;
+    const decoder = this.decoder;
+    this.idle = setTimeout(() => {
+      if (this.closed || this.decoder !== decoder || !this.frames.size || this.flushing) return;
+      // Some decoders retain a static first frame. Drain only after neither
+      // submission nor output has made progress. A late event-loop turn must
+      // not flush a decoder that has just delivered another buffered picture.
+      this.flushing = true; this.needsKey = true;
+      decoder.flush().then(() => {
+        if (this.decoder === decoder) this.flushing = false;
+      }).catch(() => { if (this.decoder === decoder) this.fail('DECODE_FAILED'); });
+    }, 80);
   }
   async configure(header) {
     const epoch = this.epoch;
@@ -157,6 +163,7 @@ export class HostDesktopPlayer {
         const metadata = this.frames.get(image.timestamp);
         this.frames.delete(image.timestamp);
         if (!metadata) { image.close(); this.fail('FRAME_IDENTITY_INVALID'); return; }
+        this.scheduleDrain();
         this.schedule(image, metadata);
       },
       error: () => { if (this.decoder === decoder) this.fail('DECODE_FAILED'); },
@@ -166,54 +173,61 @@ export class HostDesktopPlayer {
   }
   schedule(image, header) {
     if (this.closed || this.recovering || !this.order.current(header) || this.pending.at(-1)?.header.frame_id >= header.frame_id) { image.close(); return; }
-    // Keep at most one decoded frame beyond the next presentation. This absorbs
-    // arrival jitter without discarding encoded dependencies or growing latency.
+    // Each presentation uses the freshest fully decoded picture. Retaining an
+    // older decoded picture adds a refresh interval to remote interaction. All
+    // encoded dependencies still pass through the decoder in order.
     this.pending.push({ image, header });
-    if (this.pending.length > 2) this.pending.shift().image.close();
+    if (this.pending.length > 1) this.pending.shift().image.close();
     this.present();
   }
   present() {
-    if (this.animation) return;
-    this.animation = requestAnimationFrame(() => {
-      this.animation = 0;
-      const pending = this.pending.shift();
-      if (!pending) return;
-      const { image, header } = pending;
-      if (!this.order.current(header)) { image.close(); if (this.pending.length) this.present(); return; }
-      try {
-        if (this.canvas.width !== header.width || this.canvas.height !== header.height) {
-          this.canvas.width = header.width; this.canvas.height = header.height;
-        }
-        this.context.drawImage(image, 0, 0, header.width, header.height);
-      } catch {
-        this.fail('RENDER_FAILED'); return;
-      } finally { image.close(); }
-      if (!this.order.paint(header)) return;
-      const now = performance.now();
-      if (this.lastDraw) { this.intervals.push(now - this.lastDraw); this.draws++; }
-      else { this.lastStatistic = now; this.draws = 0; }
-      this.lastDraw = now;
-      if (now - this.lastStatistic >= 1000) {
-        const elapsed = (now - this.lastStatistic) / 1000;
-        const intervals = this.intervals.sort((a,b) => a-b);
-        this.statistics({ width: header.width, height: header.height, fps: this.draws / elapsed,
-          bitsPerSecond: 8 * this.bytes / elapsed, frameIntervalP95: intervals[Math.floor(intervals.length * .95)] ?? 0,
-          decoderPreference: this.decoderPath, encoder: header.encoder ?? '', codec: header.codec });
-        this.lastStatistic = now; this.draws = this.bytes = 0; this.intervals = [];
+    // The idle path must not wait an extra refresh before drawing. Retain at
+    // most one newer decoded image until this picture crosses a refresh, so a
+    // decode burst cannot acknowledge pictures overwritten before presentation.
+    if (this.confirmation || this.confirmationTask) return;
+    const pending = this.pending.shift();
+    if (!pending) return;
+    const { image, header } = pending;
+    if (!this.order.current(header)) { image.close(); return; }
+    try {
+      if (this.canvas.width !== header.width || this.canvas.height !== header.height) {
+        this.canvas.width = header.width; this.canvas.height = header.height;
       }
-      this.lastPaintHeader = header;
-      this.confirmPaint(header);
-      if (this.pending.length) this.present();
-    });
+      this.context.drawImage(image, 0, 0, header.width, header.height);
+    } catch {
+      this.fail('RENDER_FAILED'); return;
+    } finally { image.close(); }
+    if (!this.order.paint(header)) return;
+    const now = performance.now();
+    if (this.lastDraw) { this.intervals.push(now - this.lastDraw); this.draws++; }
+    else { this.lastStatistic = now; this.draws = 0; }
+    this.lastDraw = now;
+    if (now - this.lastStatistic >= 1000) {
+      const elapsed = (now - this.lastStatistic) / 1000;
+      const intervals = this.intervals.sort((a,b) => a-b);
+      this.statistics({ width: header.width, height: header.height, fps: this.draws / elapsed,
+        bitsPerSecond: 8 * this.bytes / elapsed, frameIntervalP95: intervals[Math.floor(intervals.length * .95)] ?? 0,
+        decoderPreference: this.decoderPath, encoder: header.encoder ?? '', codec: header.codec });
+      this.lastStatistic = now; this.draws = this.bytes = 0; this.intervals = [];
+    }
+    this.lastPaintHeader = header;
+    this.confirmPaint(header);
   }
   confirmPaint(header) {
-    if (this.confirmation) return;
+    if (this.confirmation || this.confirmationTask) return;
+    const epoch = this.epoch;
     this.confirmation = requestAnimationFrame(() => {
       this.confirmation = 0;
-      if (this.closed || header.generation !== this.order.generation) return;
-      this.acknowledge(header.generation, header.frame_id);
-      this.painted(header.generation, header.frame_id);
-      if (this.lastPaintHeader?.frame_id > header.frame_id) this.confirmPaint(this.lastPaintHeader);
+      if (this.closed || epoch !== this.epoch) return;
+      // RAF runs before rendering. A task queued from it runs after that
+      // rendering opportunity; the receipt must not authorize input inside RAF.
+      this.confirmationTask = setTimeout(() => {
+        this.confirmationTask = 0;
+        if (this.closed || epoch !== this.epoch || header.generation !== this.order.generation) return;
+        this.acknowledge(header.generation, header.frame_id);
+        this.painted(header.generation, header.frame_id);
+        if (this.pending.length) this.present();
+      }, 0);
     });
   }
   fail(code) {

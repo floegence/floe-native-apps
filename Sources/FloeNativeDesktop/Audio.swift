@@ -17,6 +17,10 @@ final class NativeOpusEncoder {
 
     init(output: @escaping (Data, Int64) -> Void) { self.output = output }
 
+    func reset() {
+        converter = nil; inputFormat = nil; timestamp = 0
+    }
+
     func append(_ sample: CMSampleBuffer) {
         guard sample.isValid, let description = sample.formatDescription,
               let source = AVAudioFormat(cmAudioFormatDescription: description) as AVAudioFormat?,
