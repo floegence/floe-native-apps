@@ -48,6 +48,21 @@ class HelperTests(unittest.TestCase):
         self.command('input', input={'kind': 'key', 'code': 'KeyA', 'pressed': True})
         self.assertEqual(self.backend.calls, [('key', 30, True)])
 
+    def test_decoder_recovery_retires_dependencies_without_restarting_capture(self):
+        generations = []
+        media = self.desktop.media = SimpleNamespace(target_valid=True, recover=generations.append)
+        self.desktop.connected = True
+        self.desktop.authority.sent(4)
+        self.desktop.authority.paint(self.generation, 4)
+        self.desktop.held.key(29, True)
+        self.assertEqual(self.command('keyframe')['type'], 'result')
+        self.assertIs(self.desktop.media, media)
+        self.assertEqual(generations, [self.generation + 1])
+        self.assertEqual(self.backend.calls, [('key', 29, True), ('key', 29, False)])
+        self.assertFalse(self.backend.clipboard_enabled)
+        self.assertEqual(self.desktop.authority.last_painted, 0)
+        self.assertEqual(self.command('frame_ack', frame_id=4)['code'], 'STALE_DESKTOP')
+
     def test_lock_releases_owned_input_and_disables_clipboard(self):
         self.desktop.authority.sent(1)
         self.command('frame_ack', frame_id=1)

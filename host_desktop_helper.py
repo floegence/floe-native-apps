@@ -166,9 +166,7 @@ class HostDesktop:
                         self.media.acknowledge(command['frame_id'])
                     self.clipboard_enabled()
                 elif method == 'keyframe':
-                    # Decoder recovery retires outstanding encoded dependencies
-                    # and input authority together, even when all credits are full.
-                    self.transition(self.authority.display, self.authority.mode)
+                    self.recover_decoder()
                 else:
                     self.authority.input(generation)
                     self.require_active()
@@ -315,6 +313,18 @@ class HostDesktop:
             self.authority.sent(message['frame_id'])
         self.media_output(message, payload)
 
+    def recover_decoder(self):
+        self.require_active()
+        if self.authority.state != 'active' or not self.media:
+            raise DesktopError('DESKTOP_NOT_ACTIVE')
+        self.release_input()
+        generation = self.authority.bind(self.authority.display, self.authority.mode)
+        # A decoder reset retires encoded dependencies and paint authority, but
+        # leaves the already authorized capture/portal session running.
+        self.media.failed = lambda code: self.media_failed(generation, code)
+        self.media.recover(generation)
+        self.status('active')
+
     def clipboard_enabled(self):
         if self.backend:
             self.backend.clipboard_sync = self.clipboard_sync
@@ -381,13 +391,16 @@ class HostDesktop:
         elif self.connecting:
             self.status('authorizing', state)
 
-    def stop_media(self):
+    def release_input(self):
         if self.held:
             self.held.release()
         if self.backend:
             self.backend.clipboard_enabled = False
             self.backend.clipboard_epoch = getattr(self.backend, 'clipboard_epoch', 0) + 1
             self.backend.clipboard_text = None
+
+    def stop_media(self):
+        self.release_input()
         if self.media:
             self.media.close()
             self.media = None

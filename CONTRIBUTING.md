@@ -1199,6 +1199,10 @@ is not proof that a browser used a particular hardware decoder. A slow client
 cannot grow the native frame pipeline, decoder queue or audio queue indefinitely.
 Encoded H.264 dependencies are retained until an explicit recovery generation;
 late PNG refinements cannot replace a newer video frame.
+Linux decoder recovery keeps its authenticated capture and portal session running,
+retires held input and frame credits, and replaces only the encoder. Queued video,
+audio and refinements retain their original generation and cannot authorize or
+overwrite the successor. The next encoder starts a fresh H.264 dependency chain.
 At most two decoded images await presentation to absorb arrival jitter; reset
 closes both before a successor generation can draw. Video and refinement
 `timestamp` values identify the latest changed source pixels on the host's

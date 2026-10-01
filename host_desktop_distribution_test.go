@@ -22,8 +22,23 @@ func TestHostDesktopRecipeCannotActivatePrivateApplicationTools(t *testing.T) {
 			t.Fatal("physical and private desktops share a preparation identity")
 		}
 		installations := compatibleInstallations(pkg)
-		if len(installations) != 2 || installations[0].Contract != hostDesktopContract || installations[1].Contract != hostDesktopContract {
-			t.Fatal("host desktop adopted an unrelated private desktop")
+		releases, err := hostDesktopReleases()
+		if err != nil {
+			t.Fatal(err)
+		}
+		expected := map[string]bool{pkg.Digest(): true}
+		for _, release := range releases {
+			if release.Architecture == architecture {
+				expected[release.Digest] = true
+			}
+		}
+		if len(installations) != len(expected) {
+			t.Fatal("host desktop lost a published installation")
+		}
+		for _, installed := range installations {
+			if installed.Contract != hostDesktopContract || !expected[installed.Digest] || installed.Digest == private.Digest() {
+				t.Fatal("host desktop adopted an unrelated private desktop")
+			}
 		}
 		pkg.Preparation.NativeSHA256 = private.Preparation.NativeSHA256
 		if pkg.Validate() == nil {

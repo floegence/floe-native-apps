@@ -212,7 +212,7 @@ class DesktopMedia:
         self.source.set_property('caps', self.Gst.Caps.from_string(
             f'video/x-raw,format=BGRA,width={width},height={height},framerate={fps}/1'))
         self.source.set_property('max-bytes', width * height * 4 * 4)
-        self.encoding.get_by_name('encoded').connect('new-sample', self._encoded)
+        self.encoding.get_by_name('encoded').connect('new-sample', self._encoded, self.generation)
         if self.encoding.set_state(self.Gst.State.PLAYING) == self.Gst.StateChangeReturn.FAILURE:
             raise DesktopError('VIDEO_ENCODER_UNAVAILABLE')
         self.encoding_size = size
@@ -261,9 +261,9 @@ class DesktopMedia:
             self._fail('VIDEO_ENCODER_FAILED')
         return False
 
-    def _encoded(self, sink):
+    def _encoded(self, sink, generation):
         sample = sink.emit('pull-sample')
-        if sample is None or self.closed:
+        if sample is None or self.closed or generation != self.generation:
             return self.Gst.FlowReturn.OK
         buffer = sample.get_buffer()
         caps = sample.get_caps().get_structure(0)
@@ -272,7 +272,7 @@ class DesktopMedia:
         data = buffer.extract_dup(0, buffer.get_size())
         key = not buffer.has_flags(self.Gst.BufferFlags.DELTA_UNIT)
         def publish():
-            if self.closed:
+            if self.closed or generation != self.generation:
                 return False
             if not self.submitted or len(config) < 4:
                 self._fail('VIDEO_PROTOCOL_INVALID')
@@ -303,10 +303,11 @@ class DesktopMedia:
                 return self.Gst.FlowReturn.OK
             self.audio_pending += 1
         timestamp = time.monotonic_ns() // 1000
+        generation = self.generation
         def publish():
             with self.lock:
                 self.audio_pending -= 1
-            if not self.closed:
+            if not self.closed and self.generation == generation:
                 self.emit({'type': 'audio', 'generation': self.generation, 'codec': 'opus',
                     'sample_rate': 48000, 'channels': 2, 'timestamp': timestamp}, data)
             return False
@@ -317,13 +318,20 @@ class DesktopMedia:
         self.credit.acknowledge(frame)
         self._schedule_produce()
 
-    def keyframe(self):
+    def recover(self, generation):
+        # Stop only the encoder before changing generation. Output already
+        # queued on GLib keeps its original generation and cannot consume new
+        # credits. The next encoder starts with a complete keyframe.
         if self.encoding:
-            structure = self.Gst.Structure.new_empty('GstForceKeyUnit')
-            structure.set_value('all-headers', True)
-            self.encoding.send_event(self.Gst.Event.new_custom(self.Gst.EventType.CUSTOM_UPSTREAM, structure))
-            self.encoded_sequence = 0
-            self.produce()
+            self.encoding.set_state(self.Gst.State.NULL)
+            self.encoding.get_bus().remove_signal_watch()
+        self.encoding = self.source = self.encoding_size = None
+        self.generation = generation
+        self.submitted.clear()
+        self.credit = FrameCredit()
+        self.encoding_busy = self.refining = False
+        self.encoded_sequence = self.refined_sequence = self.next_encoded = 0
+        self._schedule_produce()
 
     def _tick(self):
         if self.closed:
@@ -333,6 +341,7 @@ class DesktopMedia:
             settled = time.monotonic() - self.changed_at >= 0.15
         if latest and settled and not self.credit.pending and not self.refining and self.refined_sequence != sequence:
             self.refining = True
+            generation = self.generation
             def refine():
                 try:
                     captured, width, height = latest
@@ -355,9 +364,11 @@ class DesktopMedia:
                     finally:
                         pipeline.set_state(self.Gst.State.NULL)
                 except Exception:
-                    self.GLib.idle_add(lambda: self._fail('REFINEMENT_FAILED'))
+                    self.GLib.idle_add(lambda: self._fail('REFINEMENT_FAILED') if self.generation == generation else False)
                     return
                 def publish():
+                    if self.closed or self.generation != generation:
+                        return False
                     self.refining = False
                     if self.closed or self.sequence != sequence or self.credit.pending:
                         return False

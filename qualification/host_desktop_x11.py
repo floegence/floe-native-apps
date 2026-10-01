@@ -77,6 +77,7 @@ for _ in range(3):
         displays = backend.displays()
         assert len(displays) == 1 and displays[0]['width'] == 1920 and displays[0]['height'] == 1080
         result = {'display':displays[0], 'frames':0, 'text':False, 'keys':False, 'clipboard':False, 'pointer':False}
+        recovering_at = None
         button.connect('clicked', lambda _: result.update(pointer=True))
         expected = 'Remote 中文輸入 😀'
         loop = GLib.MainLoop()
@@ -86,7 +87,10 @@ for _ in range(3):
             return False
         def output(message, _payload):
             result['frames'] += 1
-            GLib.idle_add(lambda: (media.acknowledge(message['frame_id']), False)[1])
+            if message['generation'] == 2 and 'recovery_ms' not in result:
+                assert message['codec'] == 'h264' and message['key'] and message['frame_id'] == 1
+                result['recovery_ms'] = 1000 * (time.monotonic() - recovering_at)
+            GLib.idle_add(lambda: (media.acknowledge(message['frame_id']), False)[1] if message['generation'] == media.generation else False)
         media = DesktopMedia(Gst, GLib, 1, {'mode':'clarity', 'max_dimension':1920, 'frame_rate':60, 'audio':False},
                              select_encoder(Gst), output, failure)
         media.start_x11(name, (0, 0, 1920, 1080))
@@ -118,10 +122,18 @@ for _ in range(3):
                 loop.quit()
             backend.read_clipboard(received)
             return False
+        def recover():
+            global recovering_at
+            capture = media.capture
+            recovering_at = time.monotonic()
+            media.recover(2)
+            assert media.capture is capture
+            return False
         GLib.timeout_add(300, type_key)
         GLib.timeout_add(600, paste)
         GLib.timeout_add(850, click)
-        GLib.timeout_add(1100, finish)
+        GLib.timeout_add(950, recover)
+        GLib.timeout_add(1800, finish)
         GLib.timeout_add_seconds(8, lambda: failure('FIXTURE_TIMEOUT'))
         try:
             loop.run()
@@ -131,7 +143,7 @@ for _ in range(3):
             backend.close()
             window.destroy()
         print(json.dumps(result), flush=True)
-        assert result['frames'] > 0 and result['keys'] and result['text'] and result['clipboard'] and result['pointer'] and not result.get('error')
+        assert result['frames'] > 0 and result['keys'] and result['text'] and result['clipboard'] and result['pointer'] and 'recovery_ms' in result and not result.get('error')
     finally:
         os.close(reader)
         server.terminate()
