@@ -68,6 +68,39 @@ public func nativeCapturePixelsEqual(_ lhs: CVPixelBuffer, _ rhs: CVPixelBuffer)
     return true
 }
 
+// One pending screen sample crosses from acquisition to encoder state. A slow
+// consumer replaces only unencoded pixels; encoded reference frames never enter
+// this mailbox. Closing it releases pending storage and rejects late callbacks.
+final class NativeCaptureMailbox {
+    private let lock = NSLock()
+    private var pending: (CVPixelBuffer, TimeInterval)?
+    private var scheduled = false
+    private var closed = false
+
+    var accepting: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return !closed
+    }
+    func replace(_ buffer: CVPixelBuffer, at timestamp: TimeInterval) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        guard !closed else { return false }
+        pending = (buffer, timestamp)
+        guard !scheduled else { return false }
+        scheduled = true
+        return true
+    }
+    func take() -> (CVPixelBuffer, TimeInterval)? {
+        lock.lock(); defer { lock.unlock() }
+        let value = pending
+        pending = nil; scheduled = false
+        return value
+    }
+    func close() {
+        lock.lock(); defer { lock.unlock() }
+        closed = true; pending = nil
+    }
+}
+
 // All encoder state is confined to the capture queue. Bounded frame credit
 // permits pipelining without dropping dependent H.264 frames. New samples replace
 // only the pending unencoded buffer. Existing application clients can retain one credit.
@@ -81,6 +114,11 @@ public final class NativeCaptureStream: NSObject, SCStreamOutput, SCStreamDelega
     private var stopping = false
     private var stopCallbacks: [() -> Void] = []
     private let queue = DispatchQueue(label: "floe.native.capture", qos: .userInteractive)
+    // Locking ScreenCaptureKit's pixel buffers can wait on the producer GPU.
+    // Keep those waits off the queue that forwards completed encoded frames.
+    private let screenQueue = DispatchQueue(label: "floe.native.screen", qos: .userInteractive)
+    private let screenMailbox = NativeCaptureMailbox()
+    private var comparedScreen: CVPixelBuffer? // Confined to screenQueue.
     private var stopped = false
     private var captureReady = false
     private var encoder: VTCompressionSession?
@@ -187,7 +225,7 @@ public final class NativeCaptureStream: NSObject, SCStreamOutput, SCStreamDelega
             self.timer = timer; timer.resume()
         }
         do {
-            try stream.addStreamOutput(self, type: .screen, sampleHandlerQueue: queue)
+            try stream.addStreamOutput(self, type: .screen, sampleHandlerQueue: screenQueue)
             if settings.audio {
                 audioEncoder = NativeOpusEncoder { [weak self] packet, timestamp in
                     guard let self, !self.stopped else { return }
@@ -228,6 +266,8 @@ public final class NativeCaptureStream: NSObject, SCStreamOutput, SCStreamDelega
     public func stop(completion: @escaping () -> Void = {}) {
         retiring = true
         stopCallbacks.append(completion)
+        screenMailbox.close()
+        screenQueue.async { self.comparedScreen = nil }
         queue.async {
             self.stopped = true; self.captureReady = false; self.timer?.cancel(); self.timer = nil
             self.pendingProduce?.cancel(); self.pendingProduce = nil
@@ -285,14 +325,23 @@ public final class NativeCaptureStream: NSObject, SCStreamOutput, SCStreamDelega
     }
     public func stream(_ stream: SCStream, didStopWithError error: Error) { queue.async { self.failure(error) } }
     public func stream(_ stream: SCStream, didOutputSampleBuffer sample: CMSampleBuffer, of type: SCStreamOutputType) {
-        if !stopped, type == .audio { if captureReady { audioEncoder?.append(sample) }; return }
-        guard !stopped, type == .screen, sample.isValid,
+        if type == .audio {
+            if !stopped, captureReady { audioEncoder?.append(sample) }
+            return
+        }
+        guard type == .screen, screenMailbox.accepting, sample.isValid,
               let attachments = CMSampleBufferGetSampleAttachmentsArray(sample, createIfNecessary: false) as? [[SCStreamFrameInfo: Any]],
               let status = attachments.first?[.status] as? Int, status == SCFrameStatus.complete.rawValue,
               let buffer = sample.imageBuffer else { return }
-        if let latest, nativeCapturePixelsEqual(latest, buffer) { return }
-        latest = buffer; sequence += 1; changedAt = ProcessInfo.processInfo.systemUptime
-        produce()
+        if let comparedScreen, nativeCapturePixelsEqual(comparedScreen, buffer) { return }
+        comparedScreen = buffer
+        if screenMailbox.replace(buffer, at: ProcessInfo.processInfo.systemUptime) {
+            queue.async {
+                guard let (buffer, timestamp) = self.screenMailbox.take(), !self.stopped else { return }
+                self.latest = buffer; self.sequence += 1; self.changedAt = timestamp
+                self.produce()
+            }
+        }
     }
     private func produce() {
         guard !stopped, captureReady, !settings.requireVideo || videoActive,

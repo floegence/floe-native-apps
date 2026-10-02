@@ -18,9 +18,11 @@ from host_desktop_media import DesktopMedia, select_encoder
 # GStreamer element alone does not prove that the private loader can resolve
 # this mandatory dependency. Loading it needs no desktop or portal connection.
 ctypes.CDLL('libpipewire-module-client-node.so')
+for library in ('libxcb.so.1', 'libxcb-shm.so.0', 'libxcb-xfixes.so.0', 'libcairo.so.2'):
+    ctypes.CDLL(library)
 
 Gst.init(None)
-for name in ('pipewiresrc', 'ximagesrc', 'pulsesrc', 'h264parse', 'pngenc', 'opusenc', 'opusdec', 'openh264dec'):
+for name in ('pipewiresrc', 'pulsesrc', 'h264parse', 'pngenc', 'opusenc', 'opusdec', 'openh264dec'):
     if not Gst.ElementFactory.find(name):
         raise RuntimeError('required media element missing: ' + name)
 encoder, specification = select_encoder(Gst)

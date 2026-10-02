@@ -1,7 +1,8 @@
 """Low-delay desktop media with bounded pre-encode and encoded work.
 
-GStreamer owns capture/codec integration. Only a latest unencoded sample may be
-replaced; already encoded H.264 references are delivered in order until reset.
+GStreamer owns PipeWire acquisition and codecs; XCB owns authenticated X11
+acquisition. Only a latest unencoded sample may be replaced; already encoded
+H.264 references are delivered in order until reset.
 """
 import base64
 import ctypes
@@ -97,6 +98,8 @@ class DesktopMedia:
         self.emit, self.failed = emit, failed
         self.credit = FrameCredit()
         self.capture = self.encoding = self.audio = None
+        self.x11_capture = None
+        self.pixel_format = 'BGRA'
         self.source = None
         self.closed = False
         self.target_valid = True
@@ -129,24 +132,19 @@ class DesktopMedia:
         self._start_capture()
 
     def start_x11(self, display, rectangle):
-        # Damage notifications on some compositors coalesce scroll updates and
-        # deliver a sub-60Hz source even while the desktop is visibly moving.
-        # Capture the selected authenticated display at its negotiated cadence;
-        # unchanged pixels are still removed by the bounded equality check.
-        self.capture = self._pipeline('ximagesrc name=desktop use-damage=false show-pointer=true ! videoconvert ! '
-            f'video/x-raw,format=BGRA,framerate={self.picture["frame_rate"]}/1 ! '
-            'appsink name=frames max-buffers=1 drop=true emit-signals=true sync=false')
-        source = self.capture.get_by_name('desktop')
-        source.set_property('display-name', display)
-        x, y, width, height = rectangle
-        for name, value in (('startx', x), ('starty', y), ('endx', x + width - 1), ('endy', y + height - 1)):
-            source.set_property(name, value)
-        self._start_capture()
+        from host_desktop_xcapture import X11Capture
+        self.pixel_format = 'BGRx'
+        self.x11_capture = X11Capture(self.Gst, display, rectangle, self.picture['frame_rate'],
+                                      self._changed, self._fail, equal_pixels)
+        self._start_audio()
 
     def _start_capture(self):
         self.capture.get_by_name('frames').connect('new-sample', self._captured)
         if self.capture.set_state(self.Gst.State.PLAYING) == self.Gst.StateChangeReturn.FAILURE:
             raise DesktopError('CAPTURE_UNAVAILABLE')
+        self._start_audio()
+
+    def _start_audio(self):
         if self.picture.get('audio'):
             self.audio = self._pipeline('pulsesrc device=@DEFAULT_MONITOR@ do-timestamp=true ! audioconvert ! audioresample ! '
                 'audio/x-raw,rate=48000,channels=2 ! opusenc bitrate=128000 frame-size=20 audio-type=restricted-lowdelay ! '
@@ -187,12 +185,17 @@ class DesktopMedia:
                     buffer.unmap(current)
                 if prior_ok:
                     previous[0].unmap(prior)
+        self._changed(buffer, width, height, time.monotonic())
+        return self.Gst.FlowReturn.OK
+
+    def _changed(self, buffer, width, height, timestamp):
         with self.lock:
+            if self.closed:
+                return
             self.latest = (buffer, width, height)
             self.sequence += 1
-            self.changed_at = time.monotonic()
+            self.changed_at = timestamp
         self._schedule_produce()
-        return self.Gst.FlowReturn.OK
 
     def _ensure_encoder(self, width, height):
         output_width, output_height = capture_size(width, height, self.picture['max_dimension'], self.picture.get('native_pixels', False))
@@ -210,7 +213,7 @@ class DesktopMedia:
             'appsink name=encoded max-buffers=4 drop=false emit-signals=true sync=false')
         self.source = self.encoding.get_by_name('source')
         self.source.set_property('caps', self.Gst.Caps.from_string(
-            f'video/x-raw,format=BGRA,width={width},height={height},framerate={fps}/1'))
+            f'video/x-raw,format={self.pixel_format},width={width},height={height},framerate={fps}/1'))
         self.source.set_property('max-bytes', width * height * 4 * 4)
         self.encoding.get_by_name('encoded').connect('new-sample', self._encoded, self.generation)
         if self.encoding.set_state(self.Gst.State.PLAYING) == self.Gst.StateChangeReturn.FAILURE:
@@ -352,7 +355,7 @@ class DesktopMedia:
                     try:
                         source = pipeline.get_by_name('source')
                         source.set_property('caps', self.Gst.Caps.from_string(
-                            f'video/x-raw,format=BGRA,width={width},height={height},framerate=1/1'))
+                            f'video/x-raw,format={self.pixel_format},width={width},height={height},framerate=1/1'))
                         pipeline.set_state(self.Gst.State.PLAYING)
                         source.emit('push-buffer', captured)
                         source.emit('end-of-stream')
@@ -393,6 +396,9 @@ class DesktopMedia:
                 self.GLib.source_remove(self.produce_source)
                 self.produce_source = None
         self.GLib.source_remove(self.deadline)
+        if self.x11_capture:
+            self.x11_capture.close()
+            self.x11_capture = None
         for pipeline in (self.capture, self.encoding, self.audio):
             if pipeline:
                 pipeline.set_state(self.Gst.State.NULL)

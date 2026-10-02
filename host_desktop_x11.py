@@ -39,7 +39,7 @@ class X11Desktop:
         result = []
         for monitor in self.connection.screen().root.xrandr_get_monitors(True).monitors:
             name = self.connection.get_atom_name(monitor.name)
-            # XTest and ximagesrc share RandR pixel coordinates. GDK logical
+            # XTest and XCB acquisition share RandR pixel coordinates. GDK logical
             # monitor rectangles can differ under X11 scale settings.
             result.append({'id': 'x11-' + hashlib.sha256(name.encode()).hexdigest()[:24], 'name': name,
                 'x': monitor.x, 'y': monitor.y, 'width': monitor.width_in_pixels, 'height': monitor.height_in_pixels,

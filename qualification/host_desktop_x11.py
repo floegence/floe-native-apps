@@ -8,6 +8,7 @@ import select
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 
 parser = argparse.ArgumentParser()
@@ -55,6 +56,8 @@ for _ in range(3):
         from host_desktop_x11 import X11Desktop
         from host_desktop_input import HeldInput, physical_key
         from host_desktop_media import DesktopMedia, select_encoder
+        from host_desktop_xcapture import Surface
+        from host_desktop_contract import DesktopError
         Gst.init(None)
         Gtk.init([])
         window = Gtk.Window(title='Floe isolated host desktop qualification')
@@ -74,9 +77,82 @@ for _ in range(3):
         window.get_window().focus(Gdk.CURRENT_TIME)
         backend = X11Desktop(name, GLib)
         held = HeldInput(backend)
+        while Gtk.events_pending():
+            Gtk.main_iteration_do(False)
         displays = backend.displays()
         assert len(displays) == 1 and displays[0]['width'] == 1920 and displays[0]['height'] == 1080
+        # Compare raw acquisition against an independent XGetImage request on
+        # the fixture's own X server. Repeated mappings must not retain FDs.
+        descriptor_count = len(list(Path('/proc/self/fd').iterdir()))
+        for _ in range(10):
+            surface = Surface(name, (800, 600, 64, 64), threading.Event())
+            try:
+                pixels, cursor = surface.read()
+                try:
+                    reference = backend.connection.screen().root.get_image(800, 600, 64, 64, 2, 0xffffffff)
+                    assert bytes(pixels) == reference.data
+                finally:
+                    pixels.release()
+            finally:
+                surface.close()
+        assert len(list(Path('/proc/self/fd').iterdir())) == descriptor_count
+        surface = Surface(name, (0, 0, 1920, 1080), threading.Event())
+        try:
+            fixture_display = window.get_display()
+            # Stay in the toplevel's margin; Gtk.Entry owns a separate I-beam
+            # cursor that would override a cursor set on its parent window.
+            backend.pointer(0, 45, 45)
+            fixture_display.sync()
+            while Gtk.events_pending():
+                Gtk.main_iteration_do(False)
+            pixels, first_cursor = surface.read()
+            pixels.release()
+            window.get_window().set_cursor(Gdk.Cursor.new_for_display(fixture_display, Gdk.CursorType.CROSSHAIR))
+            fixture_display.sync()
+            while Gtk.events_pending():
+                Gtk.main_iteration_do(False)
+            deadline = time.monotonic() + 1
+            while True:
+                pixels, cursor = surface.read()
+                if cursor[0] != first_cursor[0]:
+                    break
+                pixels.release()
+                if time.monotonic() >= deadline:
+                    raise AssertionError('cursor shape notification was not observed')
+                time.sleep(.01)
+            try:
+                composed = surface.painter.compose(Gst, pixels, 1920, 1080, cursor)
+                image = composed.extract_dup(0, composed.get_size())
+                # A fully opaque cursor pixel must replace the corresponding
+                # RGB triplet, including the server-provided hotspot offset.
+                shape = surface.painter.pixels
+                opaque = next(index for index in range(cursor[3] * cursor[4]) if shape[index * 4 + 3] == 255)
+                x, y = cursor[1] + opaque % cursor[3], cursor[2] + opaque // cursor[3]
+                offset = (y * 1920 + x) * 4
+                assert image[offset:offset + 3] == shape[opaque * 4:opaque * 4 + 3]
+            finally:
+                pixels.release()
+            cached_shape = surface.painter.pixels
+            backend.pointer(0, 75, 45)
+            pixels, moved_cursor = surface.read()
+            pixels.release()
+            assert surface.painter.pixels is cached_shape and moved_cursor[1] == cursor[1] + 30
+        finally:
+            surface.close()
+        # X11 protocol errors stay within this connection and cannot abort GTK
+        # or change another client's process-wide error handler.
+        surface = Surface(name, (2000, 0, 64, 64), threading.Event())
+        try:
+            try:
+                surface.read()
+                raise AssertionError('out-of-bounds acquisition was accepted')
+            except DesktopError:
+                pass
+        finally:
+            surface.close()
         result = {'display':displays[0], 'frames':0, 'text':False, 'keys':False, 'clipboard':False, 'pointer':False}
+        result.update(raw_pixels=True, mapping_cleanup=True, protocol_failure_isolated=True,
+                      cursor_shape=True, cursor_hotspot=True, cursor_position=True)
         recovering_at = None
         button.connect('clicked', lambda _: result.update(pointer=True))
         expected = 'Remote 中文輸入 😀'
@@ -124,10 +200,10 @@ for _ in range(3):
             return False
         def recover():
             global recovering_at
-            capture = media.capture
+            capture = media.x11_capture
             recovering_at = time.monotonic()
             media.recover(2)
-            assert media.capture is capture
+            assert media.x11_capture is capture
             return False
         GLib.timeout_add(300, type_key)
         GLib.timeout_add(600, paste)

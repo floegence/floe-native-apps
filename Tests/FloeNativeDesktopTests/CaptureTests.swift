@@ -3,6 +3,42 @@ import VideoToolbox
 @testable import FloeNativeDesktop
 
 final class CaptureTests: XCTestCase {
+    func testSlowEncoderReceivesOnlyNewestUnencodedSample() throws {
+        let mailbox = NativeCaptureMailbox()
+        var latest: CVPixelBuffer?
+        for timestamp in 1...100 {
+            var buffer: CVPixelBuffer?
+            XCTAssertEqual(CVPixelBufferCreate(kCFAllocatorDefault, 16, 16, kCVPixelFormatType_32BGRA,
+                                              nil, &buffer), noErr)
+            latest = try XCTUnwrap(buffer)
+            XCTAssertEqual(mailbox.replace(latest!, at: Double(timestamp)), timestamp == 1)
+        }
+        let delivered = try XCTUnwrap(mailbox.take())
+        XCTAssertTrue(delivered.0 === latest)
+        XCTAssertEqual(delivered.1, 100)
+        XCTAssertNil(mailbox.take())
+        XCTAssertTrue(mailbox.replace(latest!, at: 101))
+        mailbox.close()
+        XCTAssertFalse(mailbox.accepting)
+        XCTAssertNil(mailbox.take())
+        XCTAssertFalse(mailbox.replace(latest!, at: 102))
+        XCTAssertNil(mailbox.take())
+    }
+
+    func testClosingMailboxRejectsConcurrentCaptureCallbacks() throws {
+        var buffer: CVPixelBuffer?
+        XCTAssertEqual(CVPixelBufferCreate(kCFAllocatorDefault, 16, 16, kCVPixelFormatType_32BGRA,
+                                          nil, &buffer), noErr)
+        let sample = try XCTUnwrap(buffer)
+        let mailbox = NativeCaptureMailbox()
+        DispatchQueue.concurrentPerform(iterations: 1000) { index in
+            if index == 500 { mailbox.close() }
+            else { _ = mailbox.replace(sample, at: Double(index)) }
+        }
+        XCTAssertNil(mailbox.take())
+        XCTAssertFalse(mailbox.accepting)
+    }
+
     func testSourcePixelsAreNotInventedByPicturePreferences() throws {
         let settings = try NativeCaptureSettings(request: ["pixel_ratio": 4, "max_dimension": 2560])
         XCTAssertEqual(settings.dimensions(points: CGSize(width: 1920, height: 1080), sourceScale: 1), CGSize(width: 1920, height: 1080))

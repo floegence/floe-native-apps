@@ -456,3 +456,27 @@ Input bodies and document histories are not logged. Pending text exists only
 until delivery or revocation. `onError(code)` exposes stable error codes without
 user text. See [CONTRIBUTING.md](CONTRIBUTING.md) for native qualification and
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for licenses and module provenance.
+
+## Current-user desktop capture
+
+The separate host-desktop contract connects to the authenticated graphical
+session selected by the consuming product. It does not create an application
+private desktop or expand product permissions. Linux Wayland uses the desktop
+portal and PipeWire; Linux X11 requires a local authenticated display, a
+little-endian 24-bit TrueColor visual, MIT-SHM 1.2 and XFixes. XCB reads the
+selected RandR rectangle into an anonymous shared mapping without grabbing the
+X server. Cursor shapes are cached until XFixes reports a change, and pointer
+positions remain fresh. Unsupported layouts and protocol failures stop capture;
+there is no switch to another graphical session.
+
+GStreamer encodes H.264 and system-output Opus from the selected backend.
+Acquisition may sample twice per negotiated frame interval to observe compositor
+commits, but unchanged pixels are discarded before encoding. Only the latest
+unencoded image is retained; encoded dependencies use bounded frame credits.
+On macOS, ScreenCaptureKit pixel comparison runs separately from VideoToolbox
+completion delivery through a single pending-sample mailbox. Stop closes that
+mailbox, and old callbacks cannot restart a retired stream.
+
+These are scheduling and resource guarantees, not a universal frame-rate claim.
+Real-host performance, permissions, physical displays and audio still require
+qualification in the consuming product's authenticated transport.
