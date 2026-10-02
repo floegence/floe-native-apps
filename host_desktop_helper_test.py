@@ -144,6 +144,33 @@ class HelperTests(unittest.TestCase):
         self.assertNotIn(('key', 30, True), self.backend.calls)
         self.assertIsNone(self.desktop.identity)
 
+    def test_lost_display_stream_releases_input_and_requires_a_new_portal_session(self):
+        self.desktop.connected = True
+        stopped = []
+        self.desktop.media = SimpleNamespace(close=lambda: stopped.append(True))
+        self.desktop.authority.sent(1)
+        self.desktop.authority.paint(self.generation, 1)
+        self.desktop.held.key(29, True)
+        self.desktop.held.button(272, True)
+        self.desktop.media_failed(self.generation, 'DISPLAY_STREAM_LOST')
+        self.assertEqual(stopped, [True])
+        self.assertFalse(self.desktop.connected)
+        self.assertIsNone(self.desktop.backend)
+        self.assertIsNone(self.desktop.identity)
+        self.assertEqual(self.desktop.authority.last_painted, 0)
+        self.assertEqual(self.messages[-1]['state'], 'reconnect_required')
+        self.assertEqual(self.messages[-1]['code'], 'DISPLAY_STREAM_LOST')
+        self.assertIn(('key', 29, False), self.backend.calls)
+        self.assertIn(('button', 272, False), self.backend.calls)
+        self.assertEqual(self.command('frame_ack', frame_id=1)['code'], 'STALE_DESKTOP')
+
+    def test_old_stream_failure_does_not_disconnect_replacement(self):
+        self.desktop.connected = True
+        self.desktop.media_failed(self.generation - 1, 'DISPLAY_STREAM_LOST')
+        self.assertTrue(self.desktop.connected)
+        self.assertIs(self.desktop.backend, self.backend)
+        self.assertEqual(self.messages, [])
+
     def test_login_change_cancels_pending_consent_and_releases_identity(self):
         self.desktop.connecting = True
         self.desktop.identity_changed('user_switched')

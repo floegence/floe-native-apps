@@ -113,10 +113,14 @@ public final class NativeDesktopSession {
                 desiredDisplay = candidate
                 if mode == "control", !AXIsProcessTrusted() { throw failure("INPUT_PERMISSION_REQUIRED") }
                 if mode == "control", !mayControl() { throw failure("CONTROL_UNAVAILABLE") }
-                guard Self.readiness == "ready" else { throw failure(Self.readiness.uppercased()) }
+                let readiness = Self.readiness
+                guard readiness == "ready" || readiness == "locked" else { throw failure(readiness.uppercased()) }
                 timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in self?.observe() }
                 displaySnapshot = Self.displaySignature()
-                replaceCapture()
+                // Keep an authorized attachment paused across a local unlock.
+                // No capture or input is admitted while the console is locked.
+                if readiness == "locked" { suspend("locked") }
+                else { replaceCapture() }
             case "disconnect":
                 close(); return
             case "frame_ack":

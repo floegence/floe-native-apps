@@ -76,7 +76,7 @@ media = DesktopMedia(Gst, GLib, 1, {'mode': 'clarity', 'max_dimension': 1920, 'f
                      (encoder, specification), output, failed)
 media.capture = media._pipeline('videotestsrc num-buffers=1 pattern=smpte ! '
     'video/x-raw,format=BGRA,width=320,height=180,framerate=60/1 ! '
-    'appsink name=frames max-buffers=1 drop=true emit-signals=true sync=false')
+    'appsink name=frames max-buffers=1 drop=true emit-signals=true sync=false', 'capture')
 timeout = GLib.timeout_add_seconds(8, lambda: failed('SYNTHETIC_FRAME_TIMEOUT'))
 try:
     media._start_capture()

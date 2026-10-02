@@ -24,6 +24,46 @@ class PixelComparisonTests(unittest.TestCase):
 
 
 class SchedulerTests(unittest.TestCase):
+    def test_lost_pipewire_source_invalidates_target_and_requests_display_reconnect(self):
+        callbacks, failures = [], []
+        loop = SimpleNamespace(timeout_add=lambda *_: 1, idle_add=lambda callback, *args: callbacks.append(lambda: callback(*args)))
+        gst = SimpleNamespace(ResourceError=SimpleNamespace(quark=lambda: 5, FAILED=1))
+        media = DesktopMedia(gst, loop, 1, {'frame_rate': 60}, ('fixture', ''), lambda *_: None, failures.append)
+        source, pipeline, error = Mock(), Mock(), Mock()
+        media.capture = pipeline
+        pipeline.get_by_name.return_value = source
+        error.matches.side_effect = lambda domain, code: (domain, code) == (5, 1)
+        message = SimpleNamespace(src=source, parse_error=lambda: (error, 'fixture diagnostics'))
+        media._pipeline_error(pipeline, message, 'capture')
+        self.assertFalse(media.target_valid)
+        for callback in callbacks:
+            callback()
+        self.assertEqual(failures, ['DISPLAY_STREAM_LOST'])
+
+    def test_other_media_errors_do_not_request_display_reconnect(self):
+        for role, source_matches, resource_matches in (('encoding', True, True), ('audio', True, True),
+                                                      ('capture', False, True), ('capture', True, False)):
+            with self.subTest(role=role, source_matches=source_matches, resource_matches=resource_matches):
+                callbacks, failures = [], []
+                loop = SimpleNamespace(timeout_add=lambda *_: 1, idle_add=lambda callback, *args: callbacks.append(lambda: callback(*args)))
+                gst = SimpleNamespace(ResourceError=SimpleNamespace(quark=lambda: 5, FAILED=1))
+                media = DesktopMedia(gst, loop, 1, {'frame_rate': 60}, ('fixture', ''), lambda *_: None, failures.append)
+                pipeline, source, error = Mock(), Mock(), Mock()
+                setattr(media, role, pipeline)
+                pipeline.get_by_name.return_value = source if source_matches else Mock()
+                error.matches.return_value = resource_matches
+                media._pipeline_error(pipeline, SimpleNamespace(src=source, parse_error=lambda: (error, '')), role)
+                for callback in callbacks:
+                    callback()
+                self.assertEqual(failures, ['MEDIA_PIPELINE_FAILED'])
+
+    def test_retired_pipeline_error_does_not_revoke_current_capture(self):
+        loop = SimpleNamespace(timeout_add=lambda *_: 1)
+        media = DesktopMedia(None, loop, 2, {'frame_rate': 60}, ('fixture', ''), lambda *_: None, lambda *_: None)
+        media.encoding = Mock()
+        media._pipeline_error(Mock(), Mock(), 'encoding')
+        self.assertTrue(media.target_valid)
+
     def test_recovery_keeps_capture_and_rejects_queued_old_encoder_output(self):
         callbacks, outputs = [], []
         loop = SimpleNamespace(timeout_add=lambda *_: 1, idle_add=lambda callback: callbacks.append(callback) or len(callbacks))

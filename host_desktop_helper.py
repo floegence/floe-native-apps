@@ -373,7 +373,7 @@ class HostDesktop:
 
     def media_failed(self, generation, code):
         if generation == self.authority.generation:
-            if code in ('DISPLAY_GEOMETRY_CHANGED', 'DISPLAY_SIZE_UNSUPPORTED'):
+            if code in ('DISPLAY_GEOMETRY_CHANGED', 'DISPLAY_SIZE_UNSUPPORTED', 'DISPLAY_STREAM_LOST'):
                 self.disconnect()
                 self.displays, self.streams = [], {}
                 self.status('reconnect_required', code)

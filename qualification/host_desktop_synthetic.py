@@ -47,7 +47,7 @@ def failed(code):
 media = DesktopMedia(Gst, GLib, 1, {'mode':'clarity', 'max_dimension':args.width, 'frame_rate':60, 'audio':False},
                      select_encoder(Gst), output, failed)
 media.capture = media._pipeline(f'videotestsrc is-live=true pattern={args.pattern} ! video/x-raw,format=BGRA,width={args.width},height={args.height},framerate=60/1 ! '
-                               'appsink name=frames max-buffers=1 drop=true emit-signals=true sync=false')
+    'appsink name=frames max-buffers=1 drop=true emit-signals=true sync=false', 'capture')
 media._start_capture()
 GLib.timeout_add_seconds(args.seconds, lambda: (loop.quit(), False)[1])
 try:

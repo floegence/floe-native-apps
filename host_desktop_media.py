@@ -116,16 +116,30 @@ class DesktopMedia:
         self.audio_pending = 0
         self.deadline = GLib.timeout_add(40, self._tick)
 
-    def _pipeline(self, description):
+    def _pipeline(self, description, role):
         pipeline = self.Gst.parse_launch(description)
         bus = pipeline.get_bus()
         bus.add_signal_watch()
-        bus.connect('message::error', lambda *_: self._fail('MEDIA_PIPELINE_FAILED'))
+        bus.connect('message::error', lambda _bus, message: self._pipeline_error(pipeline, message, role))
         return pipeline
+
+    def _pipeline_error(self, pipeline, message, role):
+        if self.closed or pipeline is not getattr(self, role):
+            return
+        error, _debug = message.parse_error()
+        # Mutter can retire the portal's PipeWire node before delivering a
+        # resized sample. Only that source's typed resource failure requires
+        # a new portal session; codec and audio failures remain suspended.
+        if (role == 'capture' and message.src == pipeline.get_by_name('desktop') and
+                error.matches(self.Gst.ResourceError.quark(), self.Gst.ResourceError.FAILED)):
+            self.target_valid = False
+            self._fail('DISPLAY_STREAM_LOST')
+        else:
+            self._fail('MEDIA_PIPELINE_FAILED')
 
     def start_pipewire(self, fd, node):
         self.capture = self._pipeline('pipewiresrc name=desktop do-timestamp=true ! videoconvert ! '
-            'video/x-raw,format=BGRA ! appsink name=frames max-buffers=1 drop=true emit-signals=true sync=false')
+            'video/x-raw,format=BGRA ! appsink name=frames max-buffers=1 drop=true emit-signals=true sync=false', 'capture')
         source = self.capture.get_by_name('desktop')
         source.set_property('fd', fd)
         source.set_property('path', str(node))
@@ -148,7 +162,7 @@ class DesktopMedia:
         if self.picture.get('audio'):
             self.audio = self._pipeline('pulsesrc device=@DEFAULT_MONITOR@ do-timestamp=true ! audioconvert ! audioresample ! '
                 'audio/x-raw,rate=48000,channels=2 ! opusenc bitrate=128000 frame-size=20 audio-type=restricted-lowdelay ! '
-                'appsink name=audio max-buffers=4 drop=true emit-signals=true sync=false')
+                'appsink name=audio max-buffers=4 drop=true emit-signals=true sync=false', 'audio')
             self.audio.get_by_name('audio').connect('new-sample', self._audio_sample)
             if self.audio.set_state(self.Gst.State.PLAYING) == self.Gst.StateChangeReturn.FAILURE:
                 raise DesktopError('AUDIO_UNAVAILABLE')
@@ -210,7 +224,7 @@ class DesktopMedia:
         self.encoding = self._pipeline('appsrc name=source is-live=true format=time do-timestamp=true block=false ! '
             'videoconvertscale n-threads=4 ! video/x-raw,format=I420,width=' + str(output_width) + ',height=' + str(output_height) + ' ! '
             + specification + ' ! h264parse config-interval=-1 ! video/x-h264,stream-format=avc,alignment=au ! '
-            'appsink name=encoded max-buffers=4 drop=false emit-signals=true sync=false')
+            'appsink name=encoded max-buffers=4 drop=false emit-signals=true sync=false', 'encoding')
         self.source = self.encoding.get_by_name('source')
         self.source.set_property('caps', self.Gst.Caps.from_string(
             f'video/x-raw,format={self.pixel_format},width={width},height={height},framerate={fps}/1'))

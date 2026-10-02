@@ -477,6 +477,15 @@ On macOS, ScreenCaptureKit pixel comparison runs separately from VideoToolbox
 completion delivery through a single pending-sample mailbox. Stop closes that
 mailbox, and old callbacks cannot restart a retired stream.
 
+When the Wayland compositor retires the authorized PipeWire capture source,
+the helper revokes input and reports `reconnect_required` with
+`DISPLAY_STREAM_LOST`. The consumer may recreate the portal session using its
+existing authorization policy; codec and audio failures do not use that recovery
+path. Retired pipeline errors cannot revoke a replacement pipeline. On macOS,
+an attachment admitted while the console is locked remains paused until the
+host user unlocks locally. Capture then resumes with a fresh generation and
+requires a new painted frame before input.
+
 These are scheduling and resource guarantees, not a universal frame-rate claim.
 Real-host performance, permissions, physical displays and audio still require
 qualification in the consuming product's authenticated transport.

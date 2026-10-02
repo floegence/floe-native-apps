@@ -108,7 +108,7 @@ def dispatch(command):
         media = engine(Gst, GLib, generation, picture, select_encoder(Gst), emit_media,
             lambda code: control.send({'type':'error','code':code}))
         media.capture = media._pipeline(f'videotestsrc is-live=true pattern=smpte ! video/x-raw,format=BGRA,width={width},height={height},framerate=60/1 ! '
-            'appsink name=frames max-buffers=1 drop=true emit-signals=true sync=false')
+            'appsink name=frames max-buffers=1 drop=true emit-signals=true sync=false', 'capture')
         control.send({'type':'state','state':'active','generation':generation,'mode':'view'})
         media._start_capture()
     elif method == 'frame_ack' and media and command['generation'] == generation:
