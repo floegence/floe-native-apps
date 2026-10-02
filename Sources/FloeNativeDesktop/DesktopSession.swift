@@ -2,6 +2,11 @@ import AppKit
 import ApplicationServices
 import ScreenCaptureKit
 
+func nativeDesktopDisplayAfterChange(_ selected: CGDirectDisplayID?, available: [CGDirectDisplayID]) -> CGDirectDisplayID? {
+    if let selected, available.contains(selected) { return selected }
+    return available.first
+}
+
 // A consumer-authorized physical desktop attachment. It owns only native
 // capture and input; the consumer owns authentication and the console lease.
 public final class NativeDesktopSession {
@@ -308,7 +313,7 @@ public final class NativeDesktopSession {
         let signature = Self.displaySignature()
         if signature != displaySnapshot {
             displaySnapshot = signature
-            if let desiredDisplay, !displays.contains(desiredDisplay) { self.desiredDisplay = displays.first }
+            self.desiredDisplay = nativeDesktopDisplayAfterChange(desiredDisplay, available: displays)
             if desiredDisplay == nil { suspend("display_unavailable") }
             else { replaceCapture() }
             return

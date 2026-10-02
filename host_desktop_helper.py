@@ -426,7 +426,7 @@ class HostDesktop:
                 self.transition(self.authority.display, self.authority.mode)
             except DesktopError:
                 self.suspend('RECONNECT_REQUIRED')
-        elif self.identity.backend == 'x11' and self.authority.state == 'active':
+        elif self.identity.backend == 'x11' and self.authority.state in ('active', 'DISPLAY_CHANGED'):
             self.refresh_displays()
         return True
 

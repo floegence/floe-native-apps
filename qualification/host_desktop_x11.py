@@ -146,8 +146,8 @@ for _ in range(3):
             try:
                 surface.read()
                 raise AssertionError('out-of-bounds acquisition was accepted')
-            except DesktopError:
-                pass
+            except DesktopError as error:
+                assert error.code == 'DISPLAY_GEOMETRY_CHANGED'
         finally:
             surface.close()
         result = {'display':displays[0], 'frames':0, 'text':False, 'keys':False, 'clipboard':False, 'pointer':False}

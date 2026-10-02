@@ -74,7 +74,7 @@ class Connection:
             raise DesktopError('X11_DISPLAY_UNAVAILABLE')
 
     @contextmanager
-    def reply(self, cookie):
+    def reply(self, cookie, protocol_error='CAPTURE_UNAVAILABLE'):
         result, error = C.c_void_p(), C.c_void_p()
         deadline = time.monotonic() + 2
         self.x.xcb_flush(self.handle)
@@ -84,7 +84,9 @@ class Connection:
                         or time.monotonic() >= deadline):
                     raise DesktopError('CAPTURE_UNAVAILABLE')
                 select.select([self.x.xcb_get_file_descriptor(self.handle)], [], [], .02)
-            if error or not result:
+            if error:
+                raise DesktopError(protocol_error)
+            if not result:
                 raise DesktopError('CAPTURE_UNAVAILABLE')
             yield result
         finally:
@@ -268,7 +270,7 @@ class Surface:
             self.width, self.height, 0xffffffff, 2, self.segment, 0)
         pointer = c.x.xcb_query_pointer(c.handle, self.root)
         cursor = c.fixes.xcb_xfixes_get_cursor_image(c.handle) if self.cursor_changed else None
-        with c.reply(image) as reply:
+        with c.reply(image, protocol_error='DISPLAY_GEOMETRY_CHANGED') as reply:
             data = C.string_at(reply, 16)
             if data[1] != 24 or struct.unpack_from('=I', data, 12)[0] != self.size:
                 raise DesktopError('CAPTURE_LAYOUT_UNSUPPORTED')

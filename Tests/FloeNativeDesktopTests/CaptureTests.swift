@@ -3,6 +3,14 @@ import VideoToolbox
 @testable import FloeNativeDesktop
 
 final class CaptureTests: XCTestCase {
+    func testDisplayCanReturnAfterTheLastMonitorWasRemoved() {
+        let removed = nativeDesktopDisplayAfterChange(4, available: [])
+        XCTAssertNil(removed)
+        XCTAssertEqual(nativeDesktopDisplayAfterChange(removed, available: [8]), 8)
+        XCTAssertEqual(nativeDesktopDisplayAfterChange(8, available: [4, 8]), 8)
+        XCTAssertEqual(nativeDesktopDisplayAfterChange(8, available: [4]), 4)
+    }
+
     func testSlowEncoderReceivesOnlyNewestUnencodedSample() throws {
         let mailbox = NativeCaptureMailbox()
         var latest: CVPixelBuffer?

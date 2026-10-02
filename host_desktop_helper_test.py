@@ -39,6 +39,27 @@ class HelperTests(unittest.TestCase):
         self.desktop.command(dict(version=1, id=1, method=method, generation=self.generation, **values))
         return self.messages[-1]
 
+    def test_x11_display_return_is_observed_after_all_outputs_disappear(self):
+        self.desktop.connected = True
+        self.desktop.identity.backend = 'x11'
+        self.desktop.identity.refresh = lambda: 'ready'
+        original = [{'id': 'display-1', 'width': 1920, 'height': 1080}]
+        available = []
+        self.desktop.displays = original
+        self.backend.displays = lambda: available
+        self.desktop.authority.sent(1)
+        self.desktop.authority.paint(self.generation, 1)
+        self.desktop.held.key(29, True)
+        self.desktop.observe()
+        self.assertEqual(self.messages[-1]['displays'], [])
+        self.assertEqual(self.backend.calls[-1], ('key', 29, False))
+        self.assertEqual(self.desktop.authority.last_painted, 0)
+        available = original
+        self.desktop.observe()
+        self.assertEqual(self.messages[-1]['displays'], original)
+        self.assertEqual(self.desktop.authority.state, 'DISPLAY_CHANGED')
+        self.assertEqual(self.desktop.authority.last_painted, 0)
+
     def test_paint_is_required_and_future_ack_does_not_admit_input(self):
         self.assertEqual(self.command('input', input={'kind': 'key', 'code': 'KeyA', 'pressed': True})['code'], 'STALE_DESKTOP')
         self.desktop.authority.sent(1)
