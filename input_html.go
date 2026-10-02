@@ -15,6 +15,9 @@ var inputClientSource embed.FS
 //go:embed viewer.js
 var viewerSource []byte
 
+//go:embed viewer_transport.js
+var viewerTransportSource []byte
+
 // PrepareInputClient prepares an Xpra HTML5 v20/v21 distribution with exactly
 // one external keyboard owner and one external pointer owner. It retains the
 // graphics, clipboard and pointer transport. The destination must not exist. Neither
@@ -131,6 +134,9 @@ func PrepareInputClient(source, destination string) error {
 			return err
 		}
 	}
+	if err = os.WriteFile(filepath.Join(destination, "js/FloeTransport.js"), viewerTransportSource, 0600); err != nil {
+		return err
+	}
 	complete = true
 	return nil
 }
@@ -138,6 +144,8 @@ func PrepareInputClient(source, destination string) error {
 func prepareInputProtocol(data []byte) ([]byte, error) {
 	source := string(data)
 	for old, next := range map[string]string{
+		`this.websocket = new WebSocket(uri, "binary");`: `const Socket = typeof FloeXpraTransport === "undefined" ? WebSocket : FloeXpraTransport.socket();
+      this.websocket = new Socket(uri, "binary");`,
 		"this.error(\"Error: failed to encode packet:\", packet);": "this.error(\"Error: failed to encode packet type:\", packet[0]);",
 		"this.error(`packet=${packet_data}`);":                     "this.error(\"Packet content withheld\");",
 		"this.error(` packet data: ${packet_data}`)":               "this.error(\"Packet content withheld\")",
@@ -171,6 +179,15 @@ func prepareInputHTML(index, client []byte) ([]byte, []byte, error) {
 		return source[:i] + next + source[j:]
 	}
 	c, h := string(client), string(index)
+	h = replace(h, `    <script type="text/javascript" src="js/Protocol.js"></script>`, `    <script type="text/javascript" src="js/FloeTransport.js"></script>
+    <script type="text/javascript" src="js/Protocol.js"></script>`)
+	c = replace(c, "    if (this.webtransport) {\n      this.protocol = new XpraWebTransportProtocol();", `    if (document.documentElement?.hasAttribute("data-floe-host-transport")) {
+      if (typeof FloeXpraTransport === "undefined") throw Error("Host viewer transport is unavailable");
+      FloeXpraTransport.socket();
+      this.webtransport = false;
+      this.protocol = new XpraProtocol();
+    } else if (this.webtransport) {
+      this.protocol = new XpraWebTransportProtocol();`)
 	h = replace(h, `    <script type="text/javascript" src="js/Client.js"></script>`, `    <script type="text/javascript" src="js/FloeViewer.js"></script>
     <script type="text/javascript" src="js/Client.js"></script>`)
 	for _, retired := range []string{"const PASTEBOARD_SELECTOR = \"#pasteboard\";\n", "    this.key_packets = [];\n", "    this.clipboard_delayed_event_time = 0;\n", "    this.last_keycode_pressed = 0;\n", "    this.last_key_packet = [];\n"} {

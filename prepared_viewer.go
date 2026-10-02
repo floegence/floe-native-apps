@@ -2,8 +2,10 @@ package nativeapps
 
 import (
 	"fmt"
+	"html"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 )
@@ -68,5 +70,34 @@ func (v *PreparedViewer) Assets() *ClientAssets { return v.assets }
 // Document returns this snapshot's entry point with versioned public references.
 // The document, settings, credentials and transport must never be cached.
 func (v *PreparedViewer) Document(basePath string) ([]byte, error) {
-	return v.assets.RewriteHTML(v.document, basePath)
+	return v.DocumentWithOptions(basePath, ViewerDocumentOptions{})
+}
+
+// ViewerDocumentOptions binds a prepared client to a host-owned transport.
+// The same-origin script must synchronously publish floeHostTransport.WebSocket,
+// a WebSocket-compatible constructor. Missing transport fails closed. Protocol
+// processing stays in this realm; independent graphics decode workers remain enabled.
+// The host owns authorization, carrier lifetime and script CSP permission.
+type ViewerDocumentOptions struct {
+	TransportScriptURL string
+}
+
+func (v *PreparedViewer) DocumentWithOptions(basePath string, options ViewerDocumentOptions) ([]byte, error) {
+	document, err := v.assets.RewriteHTML(v.document, basePath)
+	if err != nil || options.TransportScriptURL == "" {
+		return document, err
+	}
+	u, err := url.Parse(options.TransportScriptURL)
+	if err != nil || u.IsAbs() || u.Host != "" || !strings.HasPrefix(u.Path, "/") ||
+		u.Path != path.Clean(u.Path) || u.RawQuery != "" || u.Fragment != "" ||
+		u.RawPath != "" || strings.ContainsAny(options.TransportScriptURL, "%?#\\\"'<>\r\n\t ") {
+		return nil, ErrInvalid
+	}
+	source := string(document)
+	if strings.Count(source, "<html") != 1 || strings.Count(source, "<head>") != 1 {
+		return nil, ErrInvalid
+	}
+	source = strings.Replace(source, "<html", `<html data-floe-host-transport="required"`, 1)
+	source = strings.Replace(source, "<head>", `<head><script src="`+html.EscapeString(u.Path)+`"></script>`, 1)
+	return []byte(source), nil
 }

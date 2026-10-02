@@ -83,3 +83,30 @@ func TestPreparedViewerRejectsMissingDocumentResource(t *testing.T) {
 		t.Fatal("incomplete viewer accepted")
 	}
 }
+
+func TestPreparedViewerHostTransportIsExplicitAndPrecedesClient(t *testing.T) {
+	for _, version := range []string{"v20", "v21"} {
+		viewer, err := PrepareViewer(originalViewerFixture(t, version))
+		if err != nil {
+			t.Fatal(err)
+		}
+		base := "/assets/" + viewer.Assets().Digest() + "/"
+		document, err := viewer.DocumentWithOptions(base, ViewerDocumentOptions{TransportScriptURL: "/window/transport.js"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		text := string(document)
+		if !strings.Contains(text, `data-floe-host-transport="required"`) || strings.Index(text, "/window/transport.js") > strings.Index(text, base+"js/Client.js") {
+			t.Fatal("host transport must be required before client initialization")
+		}
+		for _, invalid := range []string{"https://other.example/transport.js", "//other.example/t.js", "/../t.js", "/t.js?token=secret", "/t.js#secret", "/x\\y.js"} {
+			if _, err := viewer.DocumentWithOptions(base, ViewerDocumentOptions{TransportScriptURL: invalid}); err == nil {
+				t.Fatalf("accepted transport script %q", invalid)
+			}
+		}
+		plain, err := viewer.Document(base)
+		if err != nil || bytes.Contains(plain, []byte(`data-floe-host-transport="required"`)) {
+			t.Fatal("default viewer unexpectedly requires host transport")
+		}
+	}
+}

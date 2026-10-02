@@ -46,3 +46,38 @@ test('the protocol worker keeps its relative imports and does not require a docu
   vm.runInContext(readFileSync(join(fixture,'Protocol.js'),'utf8'),context);
   assert.deepEqual(imports,['lib/lz4.js','lib/brotli_decode.js','lib/rencode.js','Utilities.js']);
 });
+
+test('required host transport preserves decoding workers and rejects native network fallback', () => {
+  const workers = [];
+  const sockets = [];
+  class Worker {
+    constructor(url) { workers.push(String(url)); }
+    addEventListener() {}
+    postMessage() {}
+  }
+  class HostSocket {
+    constructor(url, protocol) { sockets.push({url, protocol}); }
+    addEventListener() {}
+  }
+  const document = {currentScript:null, documentElement:{hasAttribute:()=>true}};
+  const context = vm.createContext({document, window:{document,Worker,createImageBitmap(){}}, Worker, URL,
+    floeHostTransport:{WebSocket:HostSocket}, WebSocket:class { constructor() { throw Error('raw network bypass'); } },
+    console, setTimeout:()=>0, clearTimeout(){}, XpraOffscreenWorker:{isAvailable:()=>true}});
+  for (const name of ['FloeTransport.js','Protocol.js','Client.js']) {
+    document.currentScript = {src:'https://host.test/assets/js/'+name};
+    vm.runInContext(readFileSync(join(fixture,name),'utf8'),context);
+  }
+  vm.runInContext(`
+    const client = Object.create(XpraClient.prototype);
+    client.clog = () => {};
+    client.open_protocol = () => {};
+    client.ssl = true; client.offscreen_api = true; client.webtransport = true;
+    client.initialize_workers();
+    if (!(client.protocol instanceof XpraProtocol) || client.webtransport) throw Error('carrier bypass');
+    client.protocol.open('wss://host.test/socket');
+  `,context);
+  assert.deepEqual(sockets, [{url:'wss://host.test/socket',protocol:'binary'}]);
+  assert.deepEqual(workers, ['https://host.test/assets/js/OffscreenDecodeWorker.js']);
+  vm.runInContext('delete globalThis.floeHostTransport',context);
+  assert.throws(()=>vm.runInContext('client.initialize_workers()',context), /Host viewer transport is unavailable/);
+});

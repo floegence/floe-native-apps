@@ -41,6 +41,20 @@ change description. Vulnerabilities belong in private reports, not public issues
 
 ## Native qualification
 
+Prepared Xpra viewers can use `DocumentWithOptions` with a same-origin
+`TransportScriptURL`. The script must synchronously supply
+`globalThis.floeHostTransport.WebSocket`, a WebSocket-compatible constructor
+owned by the authenticated host. The document requires this transport before
+any client initialization; failure never falls back to a native socket or
+WebTransport. Only protocol processing moves to the document realm. Offscreen
+and image decoding workers retain their independent capability negotiation.
+The transport script, authentication, resource access and connection lifetime
+belong to the host. Default `Document` consumers keep the existing transport.
+`TestClientAssetsRewriteOnlyPublicReferencesAndKeepWorkersWithScripts` executes
+both reviewed client versions with a required carrier, missing carrier and
+active decoding worker; `TestPreparedViewerHostTransportIsExplicitAndPrecedesClient`
+verifies script origin and initialization ordering.
+
 On a native Linux host of each supported architecture:
 
 ```sh

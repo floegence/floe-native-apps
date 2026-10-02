@@ -26,6 +26,7 @@ func clientAssetsFixture(t *testing.T, version string) string {
 	}
 	for name, data := range map[string][]byte{
 		"index.html": index, "js/Client.js": client, "js/Protocol.js": protocol,
+		"js/FloeTransport.js":         viewerTransportSource,
 		"js/FloeInput.js":             []byte("/* prepared input owner */"),
 		"js/DecodeWorker.js":          []byte("importScripts('RgbHelpers.js')"),
 		"js/OffscreenDecodeWorker.js": []byte("importScripts('VideoDecoder.js')"),
@@ -157,7 +158,7 @@ func TestClientAssetsRewriteOnlyPublicReferencesAndKeepWorkersWithScripts(t *tes
 			}
 			// Execute the real prepared vendor classes with delayed worker creation.
 			dir := t.TempDir()
-			for _, name := range []string{"Client.js", "Protocol.js"} {
+			for _, name := range []string{"Client.js", "Protocol.js", "FloeTransport.js"} {
 				res := httptest.NewRecorder()
 				assets.ServeHTTP(res, httptest.NewRequest("GET", "https://host/js/"+name, nil))
 				if err := os.WriteFile(filepath.Join(dir, name), res.Body.Bytes(), 0600); err != nil {
