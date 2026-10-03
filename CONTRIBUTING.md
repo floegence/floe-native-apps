@@ -1182,12 +1182,30 @@ writers from media; all use a big-endian four-byte JSON-header length, the heade
 and its declared binary payload. `WriteHostDesktopCommand` and
 `ReadHostDesktopMessage` own this protocol. EOF revokes the attachment.
 
-Portal restore grants are private, consumed durably once, and replaced with the
-portal's new token only when unattended authorization was explicitly requested.
-Only one pending portal start may consume and rotate that token at a time; its
-lease ends on completion or cancellation. Established viewers keep independent
-portal sessions. A failed durable token write fails the connection explicitly.
-This native grant lease does not replace the consumer's remote control lease.
+Portal restore grants are private and independent of the current desktop state.
+`capabilities.authorization` and state events report `unsupported`,
+`needs_consent`, `saved`, `restoring`, `revoked`, or `unknown`; `saved` means a
+credential exists, not that the OS guarantees acceptance. Probe never starts a
+sharing request or consumes a token. Hosts explicitly request persistence with
+`unattended`; the SDK uses RemoteDesktop `persist_mode=2`. Older portals still
+support temporary sharing and advertise persistence as unsupported.
+
+Only one pending start or `forget_authorization` operation holds the grant lease.
+A submitted single-use token is retained with an uncertain state but never replayed.
+A replacement returned by Start is durably staged before PipeWire initialization;
+valid streams and an opened descriptor commit it. Media failure or process restart
+can recover the staged replacement. Failed writes fail the connection. Legacy v1
+grants are read without mutation and migrate atomically on the next write; unknown
+versions or invalid private files fail without replacement. Forget removes only
+local credentials, never system permissions, and cannot race a pending start.
+
+A Portal response code 1 means cancellation; code 2 is a generic failure, not
+proof of revocation. Session Closed revokes live input/media authority but does
+not prove that persistent OS permission was withdrawn. Report only observable
+reasons; neither event discards a successfully stored successor grant. No retry
+loop can make an uncertain submitted token reusable. The system may request
+consent again after a consumed token's result is lost or restoration is refused.
+The native grant lease does not replace the host's remote control lease.
 The SDK never changes lock-screen policy. The current capability reports remote
 unlock as unavailable. Lock and login changes retire frame authority, held input,
 clipboard transfers and media. The GNOME 46 clipboard backend advertises MIME

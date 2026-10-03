@@ -1,3 +1,4 @@
+import tempfile
 import unittest
 from unittest.mock import patch
 from types import SimpleNamespace
@@ -38,6 +39,29 @@ class HelperTests(unittest.TestCase):
     def command(self, method, **values):
         self.desktop.command(dict(version=1, id=1, method=method, generation=self.generation, **values))
         return self.messages[-1]
+
+    def test_probe_reports_saved_grant_without_requesting_or_consuming_it(self):
+        from host_desktop_portal import PortalGrant
+        with tempfile.TemporaryDirectory() as directory:
+            self.desktop.state_directory = directory
+            PortalGrant(directory).save('private-grant')
+            self.desktop.identity.refresh = lambda: 'ready'
+            self.desktop.identity.bus = None
+            self.desktop.Gst = SimpleNamespace(ElementFactory=SimpleNamespace(find=lambda _: True))
+            with patch('host_desktop_helper.PortalSession') as constructor:
+                portal = constructor.return_value
+                portal.grant = PortalGrant(directory)
+                portal.version.return_value = 2
+                result = self.desktop.capabilities()
+                self.assertEqual(result['state'], 'ready')
+                self.assertEqual(result['authorization'], 'saved')
+                portal.start.assert_not_called()
+                self.assertEqual(PortalGrant(directory).inspect(), 'saved')
+
+    def test_forget_is_an_explicit_idle_helper_operation(self):
+        self.desktop.connected = True
+        self.desktop.command(dict(version=1, id=1, method='forget_authorization'))
+        self.assertEqual(self.messages[-1]['code'], 'AUTHORIZATION_PENDING')
 
     def test_x11_display_return_is_observed_after_all_outputs_disappear(self):
         self.desktop.connected = True

@@ -32,17 +32,18 @@ type HostDesktopDisplay struct {
 }
 
 type HostDesktopCapabilities struct {
-	Backend    string               `json:"backend"`
-	State      string               `json:"state"`
-	Reason     string               `json:"reason,omitempty"`
-	Screen     bool                 `json:"screen"`
-	Input      bool                 `json:"input"`
-	Clipboard  bool                 `json:"clipboard"`
-	Audio      bool                 `json:"audio"`
-	Unattended bool                 `json:"unattended"`
-	Unlock     bool                 `json:"unlock"`
-	Encoder    string               `json:"encoder,omitempty"`
-	Displays   []HostDesktopDisplay `json:"displays"`
+	Authorization string               `json:"authorization,omitempty"`
+	Backend       string               `json:"backend"`
+	State         string               `json:"state"`
+	Reason        string               `json:"reason,omitempty"`
+	Screen        bool                 `json:"screen"`
+	Input         bool                 `json:"input"`
+	Clipboard     bool                 `json:"clipboard"`
+	Audio         bool                 `json:"audio"`
+	Unattended    bool                 `json:"unattended"`
+	Unlock        bool                 `json:"unlock"`
+	Encoder       string               `json:"encoder,omitempty"`
+	Displays      []HostDesktopDisplay `json:"displays"`
 }
 
 type HostDesktopPicture struct {
@@ -93,30 +94,31 @@ type HostDesktopCommand struct {
 // HostDesktopMessage carries control metadata or one encoded media packet.
 // Data is binary on media transports; credentials and content are not diagnostics.
 type HostDesktopMessage struct {
-	Version      int                      `json:"version"`
-	Type         string                   `json:"type"`
-	ID           uint64                   `json:"id,omitempty"`
-	Code         string                   `json:"code,omitempty"`
-	State        string                   `json:"state,omitempty"`
-	Mode         string                   `json:"mode,omitempty"`
-	Capabilities *HostDesktopCapabilities `json:"capabilities,omitempty"`
-	Displays     []HostDesktopDisplay     `json:"displays,omitempty"`
-	DisplayID    string                   `json:"display_id,omitempty"`
-	Generation   uint64                   `json:"generation,omitempty"`
-	FrameID      uint64                   `json:"frame_id,omitempty"`
-	Timestamp    int64                    `json:"timestamp,omitempty"`
-	Codec        string                   `json:"codec,omitempty"`
-	Profile      string                   `json:"profile,omitempty"`
-	Description  string                   `json:"description,omitempty"`
-	Encoder      string                   `json:"encoder,omitempty"`
-	Width        int                      `json:"width,omitempty"`
-	Height       int                      `json:"height,omitempty"`
-	Key          bool                     `json:"key,omitempty"`
-	SampleRate   int                      `json:"sample_rate,omitempty"`
-	Channels     int                      `json:"channels,omitempty"`
-	Text         *string                  `json:"text,omitempty"`
-	Bytes        int                      `json:"bytes,omitempty"`
-	Data         []byte                   `json:"-"`
+	Authorization string                   `json:"authorization,omitempty"`
+	Version       int                      `json:"version"`
+	Type          string                   `json:"type"`
+	ID            uint64                   `json:"id,omitempty"`
+	Code          string                   `json:"code,omitempty"`
+	State         string                   `json:"state,omitempty"`
+	Mode          string                   `json:"mode,omitempty"`
+	Capabilities  *HostDesktopCapabilities `json:"capabilities,omitempty"`
+	Displays      []HostDesktopDisplay     `json:"displays,omitempty"`
+	DisplayID     string                   `json:"display_id,omitempty"`
+	Generation    uint64                   `json:"generation,omitempty"`
+	FrameID       uint64                   `json:"frame_id,omitempty"`
+	Timestamp     int64                    `json:"timestamp,omitempty"`
+	Codec         string                   `json:"codec,omitempty"`
+	Profile       string                   `json:"profile,omitempty"`
+	Description   string                   `json:"description,omitempty"`
+	Encoder       string                   `json:"encoder,omitempty"`
+	Width         int                      `json:"width,omitempty"`
+	Height        int                      `json:"height,omitempty"`
+	Key           bool                     `json:"key,omitempty"`
+	SampleRate    int                      `json:"sample_rate,omitempty"`
+	Channels      int                      `json:"channels,omitempty"`
+	Text          *string                  `json:"text,omitempty"`
+	Bytes         int                      `json:"bytes,omitempty"`
+	Data          []byte                   `json:"-"`
 }
 
 func hostDesktopText(text string, maximum int) bool {
@@ -241,7 +243,7 @@ func (command HostDesktopCommand) Valid() bool {
 		return false
 	}
 	switch command.Method {
-	case "probe", "disconnect":
+	case "probe", "disconnect", "forget_authorization":
 		return command.Generation == 0
 	case "connect":
 		return command.Generation == 0 && (command.Mode == "view" || command.Mode == "control") && command.Picture != nil
@@ -265,7 +267,18 @@ func (command HostDesktopCommand) Valid() bool {
 	return false
 }
 
+func hostDesktopAuthorization(value string) bool {
+	switch value {
+	case "", "unsupported", "needs_consent", "saved", "restoring", "revoked", "unknown":
+		return true
+	}
+	return false
+}
+
 func (message HostDesktopMessage) valid() bool {
+	if !hostDesktopAuthorization(message.Authorization) || message.Capabilities != nil && !hostDesktopAuthorization(message.Capabilities.Authorization) {
+		return false
+	}
 	if message.Version != HostDesktopProtocolVersion || message.Bytes < 0 || message.Bytes > hostDesktopPayloadLimit {
 		return false
 	}

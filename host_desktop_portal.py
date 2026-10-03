@@ -18,7 +18,7 @@ from host_desktop_contract import DesktopError
 
 
 class PortalGrant:
-    """A single-use restore token; consuming it is durable before portal Start."""
+    """Private crash-aware rotation: retain submitted tokens but never replay them."""
     def __init__(self, directory):
         info = os.lstat(directory)
         if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
@@ -42,40 +42,77 @@ class PortalGrant:
         finally:
             os.close(fd)
 
-    def consume(self):
+    def inspect(self):
         try:
             with self._locked():
-                return self._consume()
+                return self._read()['state']
         except OSError as error:
             raise DesktopError('RESTORE_TOKEN_STORAGE_FAILED') from error
 
-    def _consume(self):
+    def begin_restore(self):
+        try:
+            with self._locked():
+                record = self._read()
+                token = record['candidate'] or (record['token'] if record['state'] == 'saved' else '')
+                if token:
+                    self._save(dict(version=2, state='unknown', token=token, candidate=''))
+                return token or None
+        except OSError as error:
+            raise DesktopError('RESTORE_TOKEN_STORAGE_FAILED') from error
+
+    def stage(self, token):
+        if token is not None and not self._valid_token(token):
+            raise DesktopError('RESTORE_TOKEN_INVALID')
+        try:
+            with self._locked():
+                record = self._read()
+                self._save(dict(version=2, state='unknown', token=record['token'], candidate=token or ''))
+        except OSError as error:
+            raise DesktopError('RESTORE_TOKEN_STORAGE_FAILED') from error
+
+    def save(self, token):
+        if token is not None and not self._valid_token(token):
+            raise DesktopError('RESTORE_TOKEN_INVALID')
+        try:
+            with self._locked():
+                self._read()  # Never overwrite unknown versions or damaged credentials.
+                self._save(dict(version=2, state='saved' if token else 'needs_consent', token=token or '', candidate=''))
+        except OSError as error:
+            raise DesktopError('RESTORE_TOKEN_STORAGE_FAILED') from error
+
+    def forget(self):
+        lease = self.acquire_start()
+        try:
+            self.save(None)
+        finally:
+            os.close(lease)
+
+    def _read(self):
         try:
             fd = os.open(self.path, os.O_RDONLY | os.O_NOFOLLOW)
         except FileNotFoundError:
-            return None
+            return dict(version=2, state='needs_consent', token='', candidate='')
         except OSError as error:
             raise DesktopError('RESTORE_TOKEN_INVALID') from error
         with os.fdopen(fd, 'rb') as source:
             info = os.fstat(source.fileno())
-            if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077 or info.st_size > 16384:
+            if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077 or info.st_size > 32768:
                 raise DesktopError('RESTORE_TOKEN_INVALID')
             try:
                 record = json.load(source, object_pairs_hook=_unique_object)
             except (ValueError, UnicodeError) as error:
                 raise DesktopError('RESTORE_TOKEN_INVALID') from error
-        if (not isinstance(record, dict) or type(record.get('version')) is not int or record.get('version') != 1
-                or not self._valid_token(record.get('token'))):
+        if not isinstance(record, dict) or type(record.get('version')) is not int or not self._valid_token(record.get('token')):
             raise DesktopError('RESTORE_TOKEN_INVALID')
-        self._save(None)
-        return record['token'] or None
-
-    def save(self, token):
-        try:
-            with self._locked():
-                self._save(token)
-        except OSError as error:
-            raise DesktopError('RESTORE_TOKEN_STORAGE_FAILED') from error
+        if record['version'] == 1 and set(record) == {'version', 'token'}:
+            return dict(version=2, state='saved' if record['token'] else 'needs_consent', token=record['token'], candidate='')
+        if (record['version'] != 2 or set(record) != {'version', 'state', 'token', 'candidate'} or
+                record['state'] not in ('saved', 'needs_consent', 'unknown', 'revoked') or
+                not self._valid_token(record['candidate']) or
+                record['state'] == 'saved' and (not record['token'] or record['candidate']) or
+                record['state'] in ('needs_consent', 'revoked') and (record['token'] or record['candidate'])):
+            raise DesktopError('RESTORE_TOKEN_INVALID')
+        return record
 
     def acquire_start(self):
         # Serialize consent and single-use token rotation, not active viewers.
@@ -108,13 +145,11 @@ class PortalGrant:
         except UnicodeError:
             return False
 
-    def _save(self, token):
-        if token is not None and not self._valid_token(token):
-            raise DesktopError('RESTORE_TOKEN_INVALID')
+    def _save(self, record):
         fd, path = tempfile.mkstemp(prefix='.portal-', dir=self.directory)
         try:
             with os.fdopen(fd, 'w') as target:
-                json.dump({'version': 1, 'token': token or ''}, target)
+                json.dump(record, target, ensure_ascii=False)
                 target.flush()
                 os.fsync(target.fileno())
             os.replace(path, self.path)
@@ -135,6 +170,23 @@ def _unique_object(pairs):
             raise ValueError('duplicate field')
         result[key] = value
     return result
+
+
+def valid_portal_streams(streams):
+    if not isinstance(streams, (list, tuple)) or not 1 <= len(streams) <= 64:
+        return False
+    nodes = set()
+    for stream in streams:
+        if not isinstance(stream, (list, tuple)) or len(stream) != 2:
+            return False
+        node, properties = stream
+        if type(node) is not int or not 0 < node < 1 << 32 or node in nodes or not isinstance(properties, dict):
+            return False
+        size = properties.get('size')
+        if not isinstance(size, (list, tuple)) or len(size) != 2 or any(type(n) is not int or not 2 <= n <= 32768 for n in size):
+            return False
+        nodes.add(node)
+    return True
 
 
 class PortalSession:
@@ -163,6 +215,7 @@ class PortalSession:
         self.clipboard_types = []
         self.clipboard_text = None
         self.transfer_serial = 0
+        self.authorization = None
         self.clipboard_reads = threading.BoundedSemaphore(2)
         self.clipboard_writes = threading.BoundedSemaphore(4)
         self.subscriptions.append(bus.signal_subscribe(
@@ -212,7 +265,7 @@ class PortalSession:
         def response(parameters):
             code, result = parameters.unpack()
             finish(result if code == 0 else None,
-                None if code == 0 else 'PERMISSION_CANCELLED' if code == 1 else 'PERMISSION_DENIED')
+                None if code == 0 else 'PERMISSION_CANCELLED' if code == 1 else 'PORTAL_FAILED')
 
         def called(connection, result):
             try:
@@ -236,9 +289,7 @@ class PortalSession:
         if version < 1 or self.version(self.SCREEN) < 1:
             done(None, 'PORTAL_UNAVAILABLE')
             return
-        if unattended and version < 2:
-            done(None, 'UNATTENDED_UNAVAILABLE')
-            return
+        unattended = unattended and version >= 2
         try:
             self.start_lease = self.grant.acquire_start()
         except DesktopError as error:
@@ -246,7 +297,14 @@ class PortalSession:
             return
         completion = done
         def done(streams, error):
-            self.release_start()
+            try:
+                if unattended:
+                    self.authorization = self.grant.inspect()
+                    self.changed('authorization_' + self.authorization)
+            except DesktopError as failure:
+                streams, error = None, failure.code
+            finally:
+                self.release_start()
             completion(streams, error)
         options = {'session_handle_token': self.GLib.Variant('s', 'floe_' + secrets.token_hex(12))}
 
@@ -262,10 +320,12 @@ class PortalSession:
             if version >= 2:
                 devices['persist_mode'] = self.GLib.Variant('u', 2 if unattended else 0)
                 try:
-                    token = self.grant.consume() if unattended else None
+                    token = self.grant.begin_restore() if unattended else None
                 except DesktopError as failure:
                     done(None, failure.code)
                     return
+                self.authorization = 'restoring' if token else 'needs_consent'
+                self.changed('authorization_' + self.authorization)
                 if token:
                     devices['restore_token'] = self.GLib.Variant('s', token)
             self._request(self.REMOTE, 'SelectDevices', ('o', (self.session,)), devices, selected_devices)
@@ -298,14 +358,16 @@ class PortalSession:
                 self.streams = result.get('streams', [])
                 self.devices = result.get('devices', 0)
                 self.clipboard = result.get('clipboard_enabled', False)
-                if not self.streams:
-                    raise DesktopError('DISPLAY_UNAVAILABLE')
                 if unattended:
-                    self.grant.save(result.get('restore_token'))
+                    self.grant.stage(result.get('restore_token'))
+                if not valid_portal_streams(self.streams):
+                    raise DesktopError('DISPLAY_UNAVAILABLE')
                 response, descriptors = self.bus.call_with_unix_fd_list_sync(self.NAME, self.PATH,
                     self.SCREEN, 'OpenPipeWireRemote', self.GLib.Variant('(oa{sv})', (self.session, {})),
                     self.GLib.VariantType.new('(h)'), self.Gio.DBusCallFlags.NONE, 5000, None, None)
                 self.fd = descriptors.get(response.unpack()[0])
+                if unattended:
+                    self.grant.save(result.get('restore_token'))
                 done(self.streams, None)
             except self.GLib.Error:
                 done(None, 'PIPEWIRE_UNAVAILABLE')

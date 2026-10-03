@@ -76,17 +76,21 @@ class HostDesktop:
         self.displays, self.streams = [], {}
         self.picture = None
         self.unattended = False
+        self.authorization = 'unsupported'
         self.clipboard_sync = False
         self.lock_requested_at = None
         self.connected = self.connecting = False
         self.observer = GLib.timeout_add(500, self.observe)
 
     def emit(self, message):
+        if message.get('type') == 'error':
+            message = dict(message, authorization=self.authorization)
         self.output(dict(message, generation=self.authority.generation))
 
     def status(self, state, reason=None):
         self.emit({'type': 'state', 'state': state, 'code': reason or '',
-                   'mode': self.authority.mode, 'display_id': self.authority.display or ''})
+                   'mode': self.authority.mode, 'display_id': self.authority.display or '',
+                   'authorization': self.authorization})
 
     def capabilities(self):
         if self.identity is None:
@@ -99,23 +103,24 @@ class HostDesktop:
                 available = portal.version(portal.REMOTE) >= 1 and portal.version(portal.SCREEN) >= 1
                 clipboard = portal.version(portal.CLIPBOARD) >= 1
                 unattended = portal.version(portal.REMOTE) >= 2
+                self.authorization = portal.grant.inspect() if unattended else 'unsupported'
             finally:
                 portal.close()
         else:
             available, clipboard, unattended = True, True, True
+            self.authorization = 'unsupported'
         audio = bool(self.Gst.ElementFactory.find('pulsesrc') and self.Gst.ElementFactory.find('opusenc'))
-        if self.identity.backend == 'wayland' and state == 'ready' and not self.connected:
-            state = 'authorization_required'
         return {'backend': self.identity.backend, 'state': state, 'screen': available, 'input': available,
                 'clipboard': clipboard, 'audio': audio, 'unattended': unattended, 'unlock': False,
-                'encoder': self.encoder[0] if self.encoder else '', 'displays': self.displays}
+                'encoder': self.encoder[0] if self.encoder else '', 'displays': self.displays,
+                'authorization': self.authorization}
 
     def command(self, command):
         request = command['id']
         try:
             method = command.get('method')
             common = {'version', 'id', 'method'}
-            fields = {'probe': set(), 'disconnect': set(),
+            fields = {'probe': set(), 'disconnect': set(), 'forget_authorization': set(),
                 'connect': {'display_id', 'mode', 'picture', 'unattended'},
                 'configure': {'generation', 'picture'}, 'set_mode': {'generation', 'mode'},
                 'select_display': {'generation', 'display_id'}, 'frame_ack': {'generation', 'frame_id'},
@@ -128,7 +133,14 @@ class HostDesktop:
             if method == 'probe':
                 self.emit({'type': 'capabilities', 'id': request, 'capabilities': self.capabilities()})
                 return False
-            if method == 'disconnect':
+            if method == 'forget_authorization':
+                if self.connected or self.connecting:
+                    raise DesktopError('AUTHORIZATION_PENDING')
+                if self.capabilities()['backend'] != 'wayland':
+                    raise DesktopError('UNATTENDED_UNAVAILABLE')
+                PortalGrant(self.state_directory).forget()
+                self.authorization = 'needs_consent'
+            elif method == 'disconnect':
                 self.disconnect()
             elif method == 'connect':
                 self.connect(command)
@@ -382,7 +394,11 @@ class HostDesktop:
         return False
 
     def portal_changed(self, state):
-        if state == 'permission_revoked':
+        if state.startswith('authorization_'):
+            self.authorization = state.removeprefix('authorization_')
+            if self.connecting:
+                self.status('authorizing', state)
+        elif state == 'permission_revoked':
             if self.connecting:
                 self.disconnect()
                 self.status('reconnect_required', state)

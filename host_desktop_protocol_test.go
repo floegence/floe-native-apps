@@ -100,3 +100,26 @@ func TestHostDesktopZeroCoordinatesSurviveNativeForwarding(t *testing.T) {
 		}
 	}
 }
+
+func TestHostDesktopAuthorizationMetadataAndExplicitForget(t *testing.T) {
+	for _, state := range []string{"unsupported", "needs_consent", "saved", "restoring", "revoked", "unknown"} {
+		message := HostDesktopMessage{Version: 1, Type: "state", State: "authorizing", Authorization: state}
+		var wire bytes.Buffer
+		if err := WriteHostDesktopMessage(&wire, message); err != nil {
+			t.Fatal(err)
+		}
+		got, err := ReadHostDesktopMessage(&wire)
+		if err != nil || got.Authorization != state {
+			t.Fatal(got, err)
+		}
+	}
+	if (HostDesktopMessage{Version: 1, Type: "state", Authorization: "token-body"}).valid() {
+		t.Fatal("unknown authorization state accepted")
+	}
+	if _, err := ParseHostDesktopCommand([]byte(`{"version":1,"id":1,"method":"forget_authorization"}`)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ParseHostDesktopCommand([]byte(`{"version":1,"id":1,"method":"forget_authorization","generation":1}`)); err == nil {
+		t.Fatal("live-session forget accepted")
+	}
+}
