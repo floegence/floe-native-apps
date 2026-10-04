@@ -96,7 +96,11 @@ int main(int argc, char **argv) {
     config.encodeCodecConfig.h264Config.idrPeriod = 120;
     config.encodeCodecConfig.h264Config.repeatSPSPPS = 1;
     config.encodeCodecConfig.h264Config.chromaFormatIDC = 1;
+    config.encodeCodecConfig.h264Config.maxNumRefFrames = 1;
     NV_ENC_CONFIG_H264_VUI_PARAMETERS *vui = &config.encodeCodecConfig.h264Config.h264VUIParameters;
+    /* Without this explicit SPS restriction VideoToolbox may conservatively
+     * retain low-delay pictures until a flush, even when the encoder has no B frames. */
+    vui->bitstreamRestrictionFlag = 1;
     vui->colourDescriptionPresentFlag = 1; vui->videoSignalTypePresentFlag = 1;
     vui->colourPrimaries = 1; vui->transferCharacteristics = 1; vui->colourMatrix = 1;
     NV_ENC_INITIALIZE_PARAMS params = {0};
