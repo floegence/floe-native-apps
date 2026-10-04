@@ -147,6 +147,7 @@ class PipeWireCapture:
         self.cursor_changed = cursor_changed
         self.cursor = CursorState()
         self.previous = None
+        self.previous_sequence = None
         self.previous_cursor = self.previous_shape = None
         self.width = self.height = self.format = 0
         self.closed = self.broken = self.started = False
@@ -243,7 +244,10 @@ class PipeWireCapture:
             if self.width and (width, height) != (self.width, self.height):
                 raise DesktopError('DISPLAY_GEOMETRY_CHANGED')
             self.format, self.width, self.height = format, width, height
+            self.previous_sequence = None
             metas = [_object(0x40005, 6, [(1, _scalar(3, 1)), (2, _scalar(4, 32))]),
+                     _object(0x40005, 6, [(1, _scalar(3, 3)), (2, _choice(4, 4,
+                         [struct.pack('<i', size * 16) for size in (16, 1, 16)], 1))]),
                      _object(0x40005, 6, [(1, _scalar(3, 5)), (2, _choice(4, 4,
                          [struct.pack('<i', 28 + 20 + size * size * 4) for size in (64, 1, 512)], 1))])]
             buffers = _object(0x40004, 5, [(6, _choice(4, 4, [struct.pack('<i', (1 << 1) | (1 << 2))], 4))])
@@ -271,14 +275,27 @@ class PipeWireCapture:
         if (not self.width or not 1 <= buffer.n_metas <= 64 or not buffer.metas or
                 buffer.n_datas != 1 or not buffer.datas):
             raise DesktopError('CAPTURE_LAYOUT_UNSUPPORTED')
-        cursor_meta = None
+        cursor_meta, damage, sequence, discontinuous = None, None, None, False
         for index in range(buffer.n_metas):
             meta = buffer.metas[index]
             if meta.type == 1:
                 if not meta.data or meta.size < 32:
                     raise DesktopError('CAPTURE_LAYOUT_UNSUPPORTED')
-                if struct.unpack('<I', C.string_at(meta.data, 4))[0] & 2:
+                flags, _, _, _, sequence = struct.unpack('<IIqqQ', C.string_at(meta.data, 32))
+                if flags & 2:
+                    self.previous_sequence = None
                     return
+                discontinuous = bool(flags & 1)
+            if meta.type == 3:
+                if not meta.data or not 16 <= meta.size <= 16 * 16 or meta.size % 16:
+                    raise DesktopError('CAPTURE_LAYOUT_UNSUPPORTED')
+                damage = []
+                for x, y, width, height in struct.iter_unpack('<iiII', C.string_at(meta.data, meta.size)):
+                    if not width or not height:
+                        break
+                    if x < 0 or y < 0 or x + width > self.width or y + height > self.height:
+                        raise DesktopError('CAPTURE_LAYOUT_UNSUPPORTED')
+                    damage.append((x, y, width, height))
             if meta.type == 2:
                 if not meta.data or meta.size < 16:
                     raise DesktopError('CAPTURE_LAYOUT_UNSUPPORTED')
@@ -299,9 +316,11 @@ class PipeWireCapture:
             raise DesktopError('CAPTURE_LAYOUT_UNSUPPORTED')
         chunk = data.chunk.contents
         if chunk.flags & 1:
+            self.previous_sequence = None
             return
         self.cursor.update(cursor_meta)
         pixels = self.previous
+        changed = False
         if chunk.size:
             row = self.width * 4
             stride = chunk.stride or row
@@ -309,12 +328,32 @@ class PipeWireCapture:
             if (data.type not in (1, 2) or not data.data or stride < row or stride > row + 65536 or
                     length > 256 * 1024 * 1024 or chunk.offset + length > data.maxsize or length > chunk.size):
                 raise DesktopError('CAPTURE_LAYOUT_UNSUPPORTED')
-            raw = C.string_at(data.data + chunk.offset, length)
-            pixels = raw if stride == row else b''.join(raw[y * stride:y * stride + row] for y in range(self.height))
-            if self.format in (7, 11):
-                converted = bytearray(pixels)
-                converted[0::4], converted[2::4] = pixels[2::4], pixels[0::4]
-                pixels = bytes(converted)
+            # Damage is relative to the preceding frame, not to an arbitrary
+            # retained buffer. Missing metadata, sequence gaps and discontinuity
+            # force a complete comparison. Never infer unchanged pixels from a
+            # skipped/corrupt frame or an uninitialized baseline.
+            trusted_damage = (self.previous is not None and sequence is not None and
+                self.previous_sequence is not None and sequence == self.previous_sequence + 1 and not discontinuous)
+            regions = damage if trusted_damage else None
+            address = data.data + chunk.offset
+            unchanged = regions == []
+            if not unchanged and self.previous is not None and self.format in (8, 12):
+                mapped = memoryview((C.c_ubyte * length).from_address(address)).cast('B')
+                prior = memoryview(self.previous)
+                if regions is not None and sum(h for _, _, _, h in regions) <= 128:
+                    unchanged = all(self.equal(mapped[y * stride + x * 4:y * stride + (x + w) * 4],
+                        prior[y * row + x * 4:y * row + (x + w) * 4])
+                        for x, top, w, h in regions for y in range(top, top + h))
+                elif stride == row:
+                    unchanged = self.equal(mapped, prior)
+            if not unchanged:
+                raw = C.string_at(address, length)
+                pixels = raw if stride == row else b''.join(raw[y * stride:y * stride + row] for y in range(self.height))
+                if self.format in (7, 11):
+                    converted = bytearray(pixels)
+                    converted[0::4], converted[2::4] = pixels[2::4], pixels[0::4]
+                    pixels = bytes(converted)
+                changed = self.previous is None or not self.equal(pixels, self.previous)
         cursor = self.cursor
         shape = (cursor.visible, cursor.width, cursor.height, cursor.hotspot, cursor.pixels)
         placement = (cursor.visible, cursor.position, shape)
@@ -325,7 +364,6 @@ class PipeWireCapture:
                                     cursor_png(cursor.pixels, cursor.width, cursor.height))
             else:
                 self.cursor_changed(1, 1, 0, 0, cursor_png(bytes(4), 1, 1))
-        changed = pixels is not None and (self.previous is None or not self.equal(pixels, self.previous))
         if pixels is not None and (changed or not self.cursor_changed and placement != self.previous_cursor):
             if self.cursor_changed:
                 image = self.Gst.Buffer.new_wrapped(pixels)
@@ -341,6 +379,7 @@ class PipeWireCapture:
                     (0, x, y, cursor.width, cursor.height, cursor.visible))
             self.captured(image, self.width, self.height, time.monotonic())
         self.previous, self.previous_cursor, self.previous_shape = pixels, placement, shape
+        self.previous_sequence = sequence
 
     def close(self):
         if self.closed:

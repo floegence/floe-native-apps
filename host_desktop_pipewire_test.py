@@ -56,6 +56,7 @@ class PipeWireBufferTests(unittest.TestCase):
         capture.format = format
         capture.cursor = CursorState()
         capture.previous = capture.previous_cursor = capture.previous_shape = None
+        capture.previous_sequence = None
         capture.painter = None
         frames, shapes = [], []
         capture.Gst = SimpleNamespace(Buffer=SimpleNamespace(new_wrapped=lambda pixels: pixels))
@@ -64,13 +65,76 @@ class PipeWireBufferTests(unittest.TestCase):
         capture.equal = lambda a, b: a == b
         return capture, frames, shapes
 
-    def deliver(self, capture, pixels, cursor, *, stride=8, offset=0, maximum=None, corrupt=0):
+    def deliver(self, capture, pixels, cursor, *, stride=8, offset=0, maximum=None, corrupt=0,
+                damage=None, sequence=None, flags=0):
         from host_desktop_pipewire import _Buffer, _Data, _Meta, _Chunk
         raw, meta = C.create_string_buffer(pixels), C.create_string_buffer(cursor)
         chunk = _Chunk(offset, len(pixels), stride, corrupt)
         datas = (_Data * 1)(_Data(1, 1, -1, 0, maximum or len(pixels), C.addressof(raw), C.pointer(chunk)))
-        metas = (_Meta * 1)(_Meta(5, len(cursor), C.addressof(meta)))
-        capture._buffer(_Buffer(1, 1, metas, datas))
+        values = [_Meta(5, len(cursor), C.addressof(meta))]
+        if damage is not None:
+            regions = C.create_string_buffer(damage)
+            values.append(_Meta(3, len(damage), C.addressof(regions)))
+        if sequence is not None:
+            header = C.create_string_buffer(struct.pack('<IIqqQ', flags, 0, 0, 0, sequence))
+            values.append(_Meta(1, 32, C.addressof(header)))
+        metas = (_Meta * len(values))(*values)
+        capture._buffer(_Buffer(len(values), 1, metas, datas))
+
+    def test_empty_damage_skips_pixel_copy_only_with_a_contiguous_baseline(self):
+        capture, frames, _ = self.fixture()
+        self.deliver(capture, bytes(16), bytes(28), damage=bytes(16), sequence=1)
+        capture.equal = lambda *_: self.fail('Empty damage must not scan pixels')
+        with patch('host_desktop_pipewire.C.string_at', wraps=C.string_at) as read:
+            self.deliver(capture, bytes(16), bytes(28), damage=bytes(16), sequence=2)
+        self.assertEqual([call.args[1] for call in read.call_args_list], [28, 16, 32])
+        self.assertEqual(frames, [bytes(16)])
+
+    def test_missing_damage_discontinuity_and_dropped_sequence_require_full_pixels(self):
+        for damage, sequence, flags in ((None, 2, 0), (bytes(16), 3, 0), (bytes(16), 2, 1),
+                                        (bytes(16), None, 0)):
+            capture, frames, _ = self.fixture()
+            self.deliver(capture, bytes(16), bytes(28), damage=bytes(16), sequence=1)
+            self.deliver(capture, bytes([50]) * 16, bytes(28), damage=damage, sequence=sequence, flags=flags)
+            self.assertEqual(frames[-1], bytes([50]) * 16)
+
+    def test_damage_region_compares_only_changed_rows_and_keeps_full_frame(self):
+        capture, frames, _ = self.fixture()
+        self.deliver(capture, bytes(16), bytes(28), sequence=1)
+        compared = []
+        capture.equal = lambda a, b: compared.append(len(a)) or a == b
+        region = struct.pack('<iiII', 1, 1, 1, 1)
+        self.deliver(capture, bytes(16), bytes(28), sequence=2, damage=region)
+        self.assertEqual(compared, [4])
+        self.assertEqual(len(frames), 1)
+        self.deliver(capture, bytes(12) + bytes([1, 2, 3, 255]), bytes(28), sequence=3, damage=region)
+        self.assertEqual(frames[-1], bytes(12) + bytes([1, 2, 3, 255]))
+
+    def test_corrupt_frame_breaks_damage_continuity(self):
+        capture, frames, _ = self.fixture()
+        self.deliver(capture, bytes(16), bytes(28), sequence=1)
+        self.deliver(capture, bytes(16), bytes(28), sequence=2, corrupt=1)
+        self.deliver(capture, bytes([7]) * 16, bytes(28), sequence=3, damage=bytes(16))
+        self.assertEqual(frames[-1], bytes([7]) * 16)
+
+    def test_missing_cursor_metadata_never_claims_embedded_pixels(self):
+        from host_desktop_pipewire import _Buffer, _Data, _Meta, _Chunk
+        capture, frames, _ = self.fixture()
+        raw, header = C.create_string_buffer(bytes(16)), C.create_string_buffer(bytes(32))
+        chunk = _Chunk(0, 16, 8, 0)
+        datas = (_Data * 1)(_Data(1, 1, -1, 0, 16, C.addressof(raw), C.pointer(chunk)))
+        metas = (_Meta * 1)(_Meta(1, 32, C.addressof(header)))
+        with self.assertRaisesRegex(DesktopError, 'CURSOR_METADATA_UNAVAILABLE'):
+            capture._buffer(_Buffer(1, 1, metas, datas))
+        self.assertEqual(frames, [])
+
+    def test_invalid_damage_is_rejected_before_reading_pixels(self):
+        for damage in (bytes(15), struct.pack('<iiII', -1, 0, 1, 1),
+                       struct.pack('<iiII', 1, 1, 2, 2), bytes(16 * 17)):
+            capture, frames, _ = self.fixture()
+            with self.assertRaisesRegex(DesktopError, 'CAPTURE_LAYOUT_UNSUPPORTED'):
+                self.deliver(capture, bytes(16), bytes(28), damage=damage, sequence=1)
+            self.assertEqual(frames, [])
 
     def test_cursor_only_control_updates_never_reencode_identical_pixels(self):
         capture, frames, shapes = self.fixture()

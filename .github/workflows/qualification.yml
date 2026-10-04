@@ -375,10 +375,17 @@ jobs:
           "$root/floe/host-desktop/desktop-nvenc" --check
           # The X server belongs only to this disposable qualification runner.
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends xvfb xauth fonts-dejavu-core
+          sudo apt-get install -y --no-install-recommends xvfb xauth fonts-dejavu-core pipewire-bin libpipewire-0.3-dev pkg-config dbus-daemon
           "$root/floe/host-desktop/python3" qualification/host_desktop_x11.py \
             --helper "$root/floe/host-desktop" \
             2>&1 | tee "$RUNNER_TEMP/host-desktop-evidence/x11.log"
+          cc -Wall -Wextra -Werror -Wno-unused-parameter qualification/host_desktop_pipewire_source.c \
+            $(pkg-config --cflags --libs libpipewire-0.3) -o "$RUNNER_TEMP/pipewire-source"
+          python3 qualification/host_desktop_pipewire.py \
+            --helper "$root/floe/host-desktop" --source "$RUNNER_TEMP/pipewire-source" \
+            2>&1 | tee "$RUNNER_TEMP/host-desktop-evidence/pipewire.log"
+          python3 qualification/host_desktop_portal_input.py --helper "$root/floe/host-desktop" \
+            2>&1 | tee "$RUNNER_TEMP/host-desktop-evidence/portal-input.log"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:

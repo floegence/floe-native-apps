@@ -1264,11 +1264,26 @@ refresh and its following task; overwritten pictures receive no individual
 receipt. The newest cumulative receipt releases older frame credits. Reset
 retires every outstanding receipt. PNG decoding runs independently of ordered
 H.264 dependencies, with at most four retained refinements.
-Linux X11 control sessions send bounded cursor PNG/shape/hotspot messages instead
+Linux X11 and metadata-capable Wayland control sessions send bounded cursor PNG/shape/hotspot messages instead
 of burning the host cursor into video. Cursor-only motion does not encode a frame.
 The browser uses the local system pointer with that image; cursor messages never
-grant input authority. View sessions retain the captured cursor. Wayland and
-macOS retain their current embedded-cursor contract.
+grant input authority. View sessions retain the host cursor, composited from
+PipeWire metadata on Wayland. Portals without metadata support and macOS retain
+embedded cursor capture. Each painted frame declares `cursor` presentation;
+consumers show a local pointer only after drawing a current separate-cursor frame.
+Missing metadata in a negotiated metadata stream fails explicitly, never changes
+that contract by guessing that the cursor was embedded.
+Wayland input submits ordered, bounded asynchronous Portal calls so pointer
+round trips do not block media and authority callbacks. Delivery failure or a
+full input window closes the OS session and requires reconnect; input admission
+does not claim compositor/application delivery. The same connection orders
+releases before session closure. SPA VideoDamage reduces mapped comparisons and
+skips unchanged copies only across contiguous header sequences with a retained
+baseline. Missing metadata, corruption and discontinuity require full pixels.
+Static refinements wait for both changed pixels and input to settle; an input
+event during PNG encoding retires the candidate before transport admission.
+Already admitted H.264 dependencies and binary packets remain ordered. This is
+not DMA-BUF zero-copy, libei input or network congestion adaptation.
 Video and refinement
 `timestamp` values identify the latest changed source pixels on the host's
 monotonic clock. They are telemetry, not a cross-host clock or decode ordering
@@ -1297,6 +1312,15 @@ checks clipboard mutation, held-key rejection, recovery and retired authority.
 text. It does not certify simultaneous unfinished host/client compositions.
 Physical desktop, OS consent, input, reconnect and office-performance acceptance
 require dedicated real-host evidence. No synthetic test certifies those claims.
+`qualification/host_desktop_pipewire.py` runs the installed client against a
+private synthetic PipeWire daemon on both native Linux architectures. It checks
+control/view/control transitions, retained portal-FD reuse, metadata negotiation,
+cursor-free control pixels and composited view pixels without requesting OS
+screen sharing or reading any user desktop. Weak-VM performance is observational,
+not a functional or distribution release threshold.
+`qualification/host_desktop_portal_input.py` uses a private synthetic D-Bus service
+that withholds replies until every ordered input and release arrives. It proves
+nonblocking submission with the installed Gio binding without injecting OS input.
 
 To refresh the media catalog, run `scripts/host_desktop_catalog.py` with explicit
 private `--work` and candidate `--output` paths. Verify all acquired APK signatures

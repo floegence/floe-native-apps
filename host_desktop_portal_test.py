@@ -114,6 +114,66 @@ class PortalGrantTests(unittest.TestCase):
             self.assertNotIn('saved-token', Path(grant.path).read_text())
 
 
+class PortalInputTests(unittest.TestCase):
+    def fixture(self):
+        calls, completions, states = [], [], []
+        gio = SimpleNamespace(DBusSignalFlags=SimpleNamespace(NONE=0), DBusCallFlags=SimpleNamespace(NONE=0))
+        glib = SimpleNamespace(Error=RuntimeError, Variant=lambda signature, value: (signature, value))
+        def call(*args):
+            calls.append((args[3], args[4]))
+            completions.append(args[-1])
+        def finish(result):
+            if isinstance(result, Exception):
+                raise result
+        bus = SimpleNamespace(signal_subscribe=lambda *_: 1, signal_unsubscribe=lambda _: None,
+            call=call, call_finish=finish,
+            call_sync=lambda *args: calls.append((args[3], args[4])))
+        portal = PortalSession(bus, gio, glib, None, states.append)
+        portal.session = portal.PATH + '/session/fixture'
+        return portal, calls, completions, states
+
+    def test_input_does_not_wait_for_replies_and_releases_stay_ordered(self):
+        from host_desktop_input import HeldInput
+        portal, calls, completions, states = self.fixture()
+        held = HeldInput(portal)
+        portal.pointer(1, 10, 20)
+        held.button(272, True)
+        portal.pointer(1, 30, 40)
+        portal.scroll(0, 3)
+        held.key(29, True)
+        held.release()
+        self.assertEqual(len(completions), 7, 'Every event is submitted before any reply arrives')
+        self.assertEqual([name for name, _ in calls], ['NotifyPointerMotionAbsolute', 'NotifyPointerButton',
+            'NotifyPointerMotionAbsolute', 'NotifyPointerAxis', 'NotifyKeyboardKeycode',
+            'NotifyKeyboardKeycode', 'NotifyPointerButton'])
+        for complete in reversed(completions):
+            complete(portal.bus, None)
+        self.assertEqual(portal.input_pending, 0)
+        self.assertEqual(states, [])
+
+    def test_late_input_error_closes_authority_once_and_cannot_affect_a_successor(self):
+        portal, calls, completions, states = self.fixture()
+        portal.key(29, True)
+        portal.key(29, False)
+        completions[0](portal.bus, RuntimeError('denied'))
+        completions[1](portal.bus, RuntimeError('closed'))
+        self.assertTrue(portal.closed)
+        self.assertEqual(states, ['INPUT_DELIVERY_FAILED'])
+        self.assertEqual([name for name, _ in calls].count('Close'), 1)
+        with self.assertRaisesRegex(DesktopError, 'SESSION_CLOSED'):
+            portal.pointer(1, 0, 0)
+
+    def test_unresponsive_portal_has_a_bounded_input_window(self):
+        portal, calls, completions, states = self.fixture()
+        for _ in range(64):
+            portal.pointer(1, 0, 0)
+        with self.assertRaisesRegex(DesktopError, 'INPUT_BACKPRESSURE'):
+            portal.key(29, True)
+        self.assertEqual(len(completions), 64)
+        self.assertTrue(portal.closed)
+        self.assertEqual(states, ['INPUT_BACKPRESSURE'])
+
+
 class PortalRecoveryTests(unittest.TestCase):
     def run_portal(self, directory, failure=None, version=2, replacement='new-token', cursor_modes=7):
         grant = PortalGrant(directory)

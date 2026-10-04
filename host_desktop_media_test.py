@@ -1,6 +1,6 @@
 import unittest
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 from host_desktop_media import DesktopMedia, equal_pixels
 
 
@@ -24,6 +24,20 @@ class PixelComparisonTests(unittest.TestCase):
 
 
 class SchedulerTests(unittest.TestCase):
+    def test_interaction_defers_refinement_until_pixels_and_input_are_idle(self):
+        loop = SimpleNamespace(timeout_add=lambda *_: 1)
+        media = DesktopMedia(None, loop, 1, {'frame_rate': 60}, ('fixture', ''), lambda *_: None, lambda *_: None)
+        media.changed_at = 10
+        with patch('host_desktop_media.time.monotonic', return_value=10.2):
+            self.assertTrue(media._settled())
+            media.interacted()
+            self.assertFalse(media._settled())
+        with patch('host_desktop_media.time.monotonic', return_value=10.6):
+            self.assertTrue(media._settled())
+        media.changed_at = 10.59
+        with patch('host_desktop_media.time.monotonic', return_value=10.6):
+            self.assertFalse(media._settled())
+
     def test_lost_pipewire_source_invalidates_target_and_requests_display_reconnect(self):
         callbacks, failures = [], []
         loop = SimpleNamespace(timeout_add=lambda *_: 1, idle_add=lambda callback, *args: callbacks.append(lambda: callback(*args)))

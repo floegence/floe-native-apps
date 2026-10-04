@@ -9,6 +9,12 @@ below in `native/dist`, together with their corresponding source and notices.
 
 ## Image codecs
 
+`qualification/host_desktop_pipewire_source.c` adapts PipeWire's MIT-licensed
+`src/examples/video-src.c` by Wim Taymans. It is a synthetic release fixture,
+not a distributed runtime component; its source retains the copyright/license
+notices. The public source is available in the
+[PipeWire repository](https://gitlab.freedesktop.org/pipewire/pipewire/-/blob/1.4.9/src/examples/video-src.c).
+
 The native capture helper dynamically uses the catalog's original libpng,
 libjpeg-turbo, and libwebp packages. Their original BSD/zlib/libpng license and
 source metadata are retained in `desktop_catalog.json`; no third-party codec

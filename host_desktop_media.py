@@ -116,6 +116,7 @@ class DesktopMedia:
         self.latest = None
         self.sequence = self.encoded_sequence = self.refined_sequence = 0
         self.changed_at = 0
+        self.interacted_at = 0
         self.encoding_size = None
         self.submitted = deque()
         self.encoding_busy = False
@@ -419,6 +420,13 @@ class DesktopMedia:
         self.credit.acknowledge(frame)
         self._schedule_produce()
 
+    def interacted(self):
+        self.interacted_at = time.monotonic()
+
+    def _settled(self):
+        now = time.monotonic()
+        return now - self.changed_at >= 0.15 and now - self.interacted_at >= 0.3
+
     def recover(self, generation):
         # Stop only the encoder before changing generation. Output already
         # queued on GLib keeps its original generation and cannot consume new
@@ -447,7 +455,7 @@ class DesktopMedia:
             return False
         with self.lock:
             latest, sequence, captured_at = self.latest, self.sequence, self.changed_at
-            settled = time.monotonic() - self.changed_at >= 0.15
+            settled = self._settled()
         if latest and settled and not self.credit.pending and not self.refining and self.refined_sequence != sequence:
             self.refining = True
             generation = self.generation
@@ -479,7 +487,7 @@ class DesktopMedia:
                     if self.closed or self.generation != generation:
                         return False
                     self.refining = False
-                    if self.closed or self.sequence != sequence or self.credit.pending:
+                    if self.closed or self.sequence != sequence or self.credit.pending or not self._settled():
                         return False
                     self.refined_sequence = sequence
                     frame = self.credit.reserve()

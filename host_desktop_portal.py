@@ -209,6 +209,7 @@ class PortalSession:
         self.clipboard = False
         self.devices = 0
         self.cursor_mode = 2
+        self.input_pending = 0
         self.clipboard_changed = clipboard_changed
         self.clipboard_enabled = False
         self.clipboard_epoch = 0
@@ -390,20 +391,53 @@ class PortalSession:
             self.Gio.DBusCallFlags.NONE, 5000, None)
 
     def pointer(self, stream, x, y):
-        self._call(self.REMOTE, 'NotifyPointerMotionAbsolute', '(oa{sv}udd)',
+        self._input('NotifyPointerMotionAbsolute', '(oa{sv}udd)',
             (self.session, {}, stream, x, y))
 
     def button(self, button, down):
-        self._call(self.REMOTE, 'NotifyPointerButton', '(oa{sv}iu)',
+        self._input('NotifyPointerButton', '(oa{sv}iu)',
             (self.session, {}, button, int(down)))
 
     def key(self, keycode, down):
-        self._call(self.REMOTE, 'NotifyKeyboardKeycode', '(oa{sv}iu)',
+        self._input('NotifyKeyboardKeycode', '(oa{sv}iu)',
             (self.session, {}, keycode, int(down)))
 
     def scroll(self, x, y):
-        self._call(self.REMOTE, 'NotifyPointerAxis', '(oa{sv}dd)',
+        self._input('NotifyPointerAxis', '(oa{sv}dd)',
             (self.session, {}, x, y))
+
+    def _input_failed(self, code):
+        if not self.closed:
+            # Closing the authorized OS session also releases its emulated input.
+            # Never retain a live session whose input delivery is uncertain.
+            self.close()
+            self.changed(code)
+
+    def _input(self, method, signature, arguments):
+        if not self.session or self.closed:
+            raise DesktopError('SESSION_CLOSED')
+        if self.input_pending >= 64:
+            self._input_failed('INPUT_BACKPRESSURE')
+            raise DesktopError('INPUT_BACKPRESSURE')
+        # One D-Bus connection preserves submission order, including key/button
+        # releases and Session.Close. Do not block the media/authority main loop
+        # on one round trip per pointer event. Results acknowledge admission;
+        # asynchronous delivery failures revoke the session explicitly.
+        self.input_pending += 1
+        def completed(connection, result):
+            self.input_pending -= 1
+            try:
+                connection.call_finish(result)
+            except self.GLib.Error:
+                self._input_failed('INPUT_DELIVERY_FAILED')
+        try:
+            self.bus.call(self.NAME, self.PATH, self.REMOTE, method,
+                self.GLib.Variant(signature, arguments), None,
+                self.Gio.DBusCallFlags.NONE, 1000, None, completed)
+        except self.GLib.Error:
+            self.input_pending -= 1
+            self._input_failed('INPUT_DELIVERY_FAILED')
+            raise DesktopError('INPUT_DELIVERY_FAILED') from None
 
     def _selection_changed(self, _bus, _sender, _path, _interface, _signal, parameters):
         session, options = parameters.unpack()

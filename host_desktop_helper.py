@@ -184,6 +184,8 @@ class HostDesktop:
                     self.require_active()
                     if method == 'input':
                         self.input(command.get('input'))
+                        if self.media:
+                            self.media.interacted()
                     elif method == 'set_clipboard':
                         value = command.get('text')
                         if not text_value(value, 1 << 20):
@@ -395,7 +397,10 @@ class HostDesktop:
         return False
 
     def portal_changed(self, state):
-        if state.startswith('authorization_'):
+        if state in ('INPUT_DELIVERY_FAILED', 'INPUT_BACKPRESSURE'):
+            self.disconnect()
+            self.status('reconnect_required', state)
+        elif state.startswith('authorization_'):
             self.authorization = state.removeprefix('authorization_')
             if self.connecting:
                 self.status('authorizing', state)
