@@ -372,6 +372,7 @@ jobs:
             2>&1 | tee "$RUNNER_TEMP/host-desktop-evidence/install.log"
           root=$(tail -n 1 "$RUNNER_TEMP/host-desktop-evidence/install.log")
           test -x "$root/floe/host-desktop/python3"
+          "$root/floe/host-desktop/desktop-nvenc" --check
           # The X server belongs only to this disposable qualification runner.
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends xvfb xauth fonts-dejavu-core
