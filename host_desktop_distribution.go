@@ -16,7 +16,7 @@ import (
 
 const hostDesktopContract = "host-desktop-media-v1"
 
-//go:embed host_desktop_catalog.json host_desktop_releases.json host_desktop_contract.py host_desktop_wire.py host_desktop_identity.py host_desktop_input.py host_desktop_portal.py host_desktop_x11.py host_desktop_xcapture.py host_desktop_media.py host_desktop_helper.py host_desktop_selfcheck.py
+//go:embed host_desktop_catalog.json host_desktop_releases.json host_desktop_contract.py host_desktop_wire.py host_desktop_identity.py host_desktop_input.py host_desktop_portal.py host_desktop_x11.py host_desktop_xcapture.py host_desktop_media.py host_desktop_nvenc.py host_desktop_helper.py host_desktop_selfcheck.py native/host-desktop/dist native/host-desktop/vendor
 var hostDesktopDistribution embed.FS
 
 type hostDesktopRelease struct {
@@ -83,6 +83,21 @@ func hostDesktopFiles(architecture string) (map[string][]byte, error) {
 		}
 		files[entry.Name()] = data
 	}
+	// Own native binaries, provenance and permissively licensed API headers are
+	// bound into the same preparation digest as the helper. Host driver libraries
+	// are never downloaded or copied into the isolated media runtime.
+	for name, path := range map[string]string{
+		"desktop-nvenc":    "native/host-desktop/dist/" + architecture + "/desktop-nvenc",
+		"nvenc-build.json": "native/host-desktop/dist/" + architecture + "/manifest.json",
+		"nvEncodeAPI.h":    "native/host-desktop/vendor/nvEncodeAPI.h",
+		"dynlink_cuda.h":   "native/host-desktop/vendor/dynlink_cuda.h",
+	} {
+		data, err := hostDesktopDistribution.ReadFile(path)
+		if err != nil {
+			return nil, err
+		}
+		files[name] = data
+	}
 	loader := map[string]string{"amd64": "x86_64", "arm64": "aarch64"}[architecture]
 	files["python3"] = []byte("#!/bin/sh\nROOT=$(CDPATH= cd -- \"$(dirname -- \"$0\")/../..\" && pwd) || exit 1\n" +
 		"export PYTHONHOME=\"$ROOT/usr\" PYTHONNOUSERSITE=1 PYTHONDONTWRITEBYTECODE=1\n" +
@@ -120,7 +135,7 @@ func ResolveHostDesktopTools(root, architecture string) (HostDesktopTools, error
 	manifest := make(map[string]desktopFile, len(files))
 	for name, data := range files {
 		digest := sha256.Sum256(data)
-		manifest[name] = desktopFile{Size: int64(len(data)), SHA256: hex.EncodeToString(digest[:]), Executable: name == "python3"}
+		manifest[name] = desktopFile{Size: int64(len(data)), SHA256: hex.EncodeToString(digest[:]), Executable: name == "python3" || name == "desktop-nvenc"}
 	}
 	return resolveHostDesktopFiles(root, architecture, manifest)
 }
@@ -196,7 +211,7 @@ func prepareHostDesktopTools(ctx context.Context, root, architecture string) err
 			return err
 		}
 		mode := os.FileMode(0600)
-		if name == "python3" {
+		if name == "python3" || name == "desktop-nvenc" {
 			mode = 0700
 		}
 		if err := os.WriteFile(filepath.Join(base, name), data, mode); err != nil {

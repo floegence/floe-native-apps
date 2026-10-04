@@ -70,6 +70,9 @@ ENCODERS = (
 
 def select_encoder(Gst):
     """Exercise a test pattern before selecting a codec; never read the desktop."""
+    from host_desktop_nvenc import available
+    if available():
+        return 'nvidia-nvenc', ''
     for name, specification in ENCODERS:
         if not Gst.ElementFactory.find(name):
             continue
@@ -99,6 +102,9 @@ class DesktopMedia:
         self.credit = FrameCredit()
         self.capture = self.encoding = self.audio = None
         self.x11_capture = None
+        self.nvenc = None
+        self.cursor_latest = None
+        self.cursor_source = None
         self.pixel_format = 'BGRA'
         self.source = None
         self.closed = False
@@ -145,12 +151,31 @@ class DesktopMedia:
         source.set_property('path', str(node))
         self._start_capture()
 
-    def start_x11(self, display, rectangle):
+    def start_x11(self, display, rectangle, local_cursor=False):
         from host_desktop_xcapture import X11Capture
         self.pixel_format = 'BGRx'
         self.x11_capture = X11Capture(self.Gst, display, rectangle, self.picture['frame_rate'],
-                                      self._changed, self._fail, equal_pixels)
+                                      self._changed, self._fail, equal_pixels, self._cursor_changed if local_cursor else None)
         self._start_audio()
+
+    def _cursor_changed(self, width, height, hot_x, hot_y, png):
+        with self.lock:
+            if self.closed:
+                return
+            self.cursor_latest = (width, height, hot_x, hot_y, png)
+            if self.cursor_source is not None:
+                return
+            generation = self.generation
+            def publish():
+                with self.lock:
+                    self.cursor_source = None
+                    current = self.cursor_latest
+                if not self.closed and self.generation == generation and current:
+                    w, h, x, y, data = current
+                    self.emit({'type': 'cursor', 'generation': generation, 'codec': 'png',
+                        'width': w, 'height': h, 'hot_x': x, 'hot_y': y}, data)
+                return False
+            self.cursor_source = self.GLib.idle_add(publish)
 
     def _start_capture(self):
         self.capture.get_by_name('frames').connect('new-sample', self._captured)
@@ -221,10 +246,27 @@ class DesktopMedia:
         fps = self.picture['frame_rate']
         bitrate = {'auto': 16000, 'clarity': 24000, 'smooth': 12000, 'data': 6000}[self.picture['mode']]
         specification = self.encoder_spec.replace('bitrate=16000000', 'bitrate=' + str(bitrate * 1000)) if self.encoder_name == 'openh264enc' else self.encoder_spec.replace('bitrate=16000', 'bitrate=' + str(bitrate))
-        self.encoding = self._pipeline('appsrc name=source is-live=true format=time do-timestamp=true block=false ! '
-            'videoconvertscale n-threads=4 ! video/x-raw,format=I420,width=' + str(output_width) + ',height=' + str(output_height) + ' ! '
-            + specification + ' ! h264parse config-interval=-1 ! video/x-h264,stream-format=avc,alignment=au ! '
-            'appsink name=encoded max-buffers=4 drop=false emit-signals=true sync=false', 'encoding')
+        if self.encoder_name == 'nvidia-nvenc':
+            from host_desktop_nvenc import NVEncoder
+            self.nvenc = NVEncoder(output_width, output_height, fps, bitrate * 1000)
+            # Scaling stays in the capture ABI. BGRA -> YUV conversion and H.264
+            # encoding belong to NVENC; its blocking pipe runs on Gst's streaming
+            # thread, never the GLib input/control dispatcher.
+            prefix = ('appsrc name=source is-live=true format=time do-timestamp=true block=false ! '
+                f'videoscale ! video/x-raw,format={self.pixel_format},width={output_width},height={output_height} ! '
+                'appsink name=raw max-buffers=1 drop=false emit-signals=true sync=false async=false '
+                'appsrc name=compressed is-live=true format=time do-timestamp=true block=false '
+                'caps=video/x-h264,stream-format=byte-stream,alignment=au ! ')
+        else:
+            prefix = ('appsrc name=source is-live=true format=time do-timestamp=true block=false ! '
+                f'videoconvertscale n-threads=4 ! video/x-raw,format=I420,width={output_width},height={output_height} ! '
+                + specification + ' ! ')
+        self.encoding = self._pipeline(prefix + 'h264parse config-interval=-1 ! '
+            'video/x-h264,stream-format=avc,alignment=au ! '
+            'appsink name=encoded max-buffers=4 drop=false emit-signals=true sync=false async=false', 'encoding')
+        if self.nvenc:
+            self.encoding.get_by_name('raw').connect('new-sample', self._nvenc_sample,
+                self.nvenc, self.encoding.get_by_name('compressed'), self.generation)
         self.source = self.encoding.get_by_name('source')
         self.source.set_property('caps', self.Gst.Caps.from_string(
             f'video/x-raw,format={self.pixel_format},width={width},height={height},framerate={fps}/1'))
@@ -233,6 +275,31 @@ class DesktopMedia:
         if self.encoding.set_state(self.Gst.State.PLAYING) == self.Gst.StateChangeReturn.FAILURE:
             raise DesktopError('VIDEO_ENCODER_UNAVAILABLE')
         self.encoding_size = size
+
+    def _nvenc_sample(self, sink, encoder, compressed, generation):
+        sample = sink.emit('pull-sample')
+        if sample is None or self.closed or self.generation != generation:
+            return self.Gst.FlowReturn.OK
+        buffer = sample.get_buffer()
+        ok, mapped = buffer.map(self.Gst.MapFlags.READ)
+        try:
+            if not ok:
+                raise DesktopError('CAPTURE_LAYOUT_UNSUPPORTED')
+            data = encoder.encode(mapped.data)
+            if self.closed or generation != self.generation:
+                return self.Gst.FlowReturn.OK
+            encoded = self.Gst.Buffer.new_wrapped(data)
+            encoded.duration = self.Gst.SECOND // self.picture['frame_rate']
+            if compressed.emit('push-buffer', encoded) != self.Gst.FlowReturn.OK:
+                raise DesktopError('VIDEO_ENCODER_FAILED')
+        except Exception:
+            if not self.closed and generation == self.generation and encoder is self.nvenc:
+                self._fail('VIDEO_ENCODER_FAILED')
+            return self.Gst.FlowReturn.ERROR
+        finally:
+            if ok:
+                buffer.unmap(mapped)
+        return self.Gst.FlowReturn.OK
 
     def _schedule_produce(self, delay=0):
         with self.lock:
@@ -339,11 +406,19 @@ class DesktopMedia:
         # Stop only the encoder before changing generation. Output already
         # queued on GLib keeps its original generation and cannot consume new
         # credits. The next encoder starts with a complete keyframe.
+        if self.nvenc:
+            encoder, self.nvenc = self.nvenc, None
+            encoder.close()
         if self.encoding:
             self.encoding.set_state(self.Gst.State.NULL)
             self.encoding.get_bus().remove_signal_watch()
         self.encoding = self.source = self.encoding_size = None
         self.generation = generation
+        if self.cursor_source is not None:
+            self.GLib.source_remove(self.cursor_source)
+            self.cursor_source = None
+        if self.cursor_latest:
+            self._cursor_changed(*self.cursor_latest)
         self.submitted.clear()
         self.credit = FrameCredit()
         self.encoding_busy = self.refining = False
@@ -406,9 +481,15 @@ class DesktopMedia:
     def close(self):
         with self.lock:
             self.closed = True
+            if self.cursor_source is not None:
+                self.GLib.source_remove(self.cursor_source)
+                self.cursor_source = None
             if self.produce_source is not None:
                 self.GLib.source_remove(self.produce_source)
                 self.produce_source = None
+        if self.nvenc:
+            encoder, self.nvenc = self.nvenc, None
+            encoder.close()
         self.GLib.source_remove(self.deadline)
         if self.x11_capture:
             self.x11_capture.close()

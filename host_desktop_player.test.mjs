@@ -63,14 +63,14 @@ async function playerFixture() {
   return { player, frame, tick, refresh, afterRender, draws, acknowledgements };
 }
 
-test('paint receipts continue under consecutive animation frames and drain the last frame', async () => {
+test('frames replaced before rendering grant only the newest cumulative receipt', async () => {
   const f=await playerFixture();
   f.player.schedule(f.frame(1),{generation:1,frame_id:1,width:2,height:2});
   assert.deepEqual(f.acknowledgements,[]);
   f.player.schedule(f.frame(2),{generation:1,frame_id:2,width:2,height:2});
   f.tick();f.tick();
   assert.deepEqual(f.draws,[1,2]);
-  assert.deepEqual(f.acknowledgements,[[1,1],[1,2]]);
+  assert.deepEqual(f.acknowledgements,[[1,2]]);
   f.player.close();
 });
 
@@ -101,14 +101,14 @@ test('decoded arrival bursts present the freshest picture without queuing old in
   const schedule = id => f.player.schedule({ id, close: () => closed.push(id) },
     { generation: 1, frame_id: id, width: 2, height: 2 });
   schedule(1); schedule(2); schedule(3);
-  assert.deepEqual(closed, [1, 2]);
+  assert.deepEqual(closed, [1, 2, 3]);
   f.tick(); f.tick(); f.tick();
-  assert.deepEqual(f.draws, [1, 3]);
-  assert.deepEqual(f.acknowledgements, [[1, 1], [1, 3]]);
+  assert.deepEqual(f.draws, [1, 2, 3]);
+  assert.deepEqual(f.acknowledgements, [[1, 3]]);
   schedule(4); schedule(5);
   f.player.reset(2); f.tick();
   assert.deepEqual(closed, [1, 2, 3, 4, 5]);
-  assert.deepEqual(f.draws, [1, 3, 4]);
+  assert.deepEqual(f.draws, [1, 2, 3, 4, 5]);
   f.player.close();
 });
 
@@ -136,7 +136,7 @@ test('decoder failure cancels pending pixels and their control-authorizing recei
   f.player.schedule(f.frame(2), { generation: 1, frame_id: 2, width: 2, height: 2 });
   f.player.fail('DECODE_FAILED');
   f.tick(); f.tick();
-  assert.deepEqual(f.draws, [1]);
+  assert.deepEqual(f.draws, [1, 2]);
   assert.deepEqual(f.acknowledgements, []);
   assert.deepEqual(failures, ['DECODE_FAILED']);
   f.player.close();
@@ -260,5 +260,81 @@ test('repeated audio gestures share setup and bind the worklet to the active gen
     for (const [key, value] of originals) {
       if (value === undefined) delete globalThis[key]; else globalThis[key] = value;
     }
+  }
+});
+
+
+test('new decoded pixels draw before the outstanding refresh without granting early authority', async () => {
+  const f = await playerFixture();
+  const schedule = id => f.player.schedule(f.frame(id), { generation: 1, frame_id: id, width: 2, height: 2 });
+  schedule(1); schedule(2);
+  assert.deepEqual(f.draws, [1, 2]);
+  assert.deepEqual(f.acknowledgements, []);
+  f.refresh();
+  schedule(3); // A later RAF callback could overwrite pixels before rendering.
+  f.afterRender();
+  assert.deepEqual(f.acknowledgements, []);
+  f.tick();
+  assert.deepEqual(f.acknowledgements, [[1, 3]]);
+  f.player.close();
+});
+
+
+test('a pending lossless refinement cannot block newer H264 decoding', async () => {
+  const f = await playerFixture();
+  const originals = ['VideoDecoder', 'EncodedVideoChunk', 'createImageBitmap'].map(key => [key, globalThis[key]]);
+  let resolveImage; const decoded = [];
+  globalThis.createImageBitmap = () => new Promise(resolve => { resolveImage = resolve; });
+  globalThis.EncodedVideoChunk = class { constructor(value) { Object.assign(this, value); } };
+  globalThis.VideoDecoder = class {
+    static async isConfigSupported(config) { return { supported: true, config }; }
+    constructor(callbacks) { this.callbacks = callbacks; this.decodeQueueSize = 0; }
+    configure() { this.state = 'configured'; }
+    decode(chunk) { decoded.push(chunk.timestamp); this.callbacks.output({ timestamp: chunk.timestamp, id: chunk.timestamp, close() {} }); }
+    close() { this.state = 'closed'; }
+  };
+  try {
+    f.player.receive(packet({ frame_id: 1 }));
+    f.player.receive(packet({ frame_id: 2, codec: 'h264', key: true, description: 'AQ==', profile: 'avc1.42e01e' }));
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(decoded, [2]);
+    f.tick();
+    assert.deepEqual(f.acknowledgements, [[1, 2]]);
+    let closed = false;
+    resolveImage({ id: 1, close() { closed = true; } });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(closed, true);
+    assert.deepEqual(f.draws, [2]);
+  } finally {
+    f.player.close();
+    for (const [key, value] of originals) { if (value === undefined) delete globalThis[key]; else globalThis[key] = value; }
+  }
+});
+
+test('cursor packets validate bounds and do not become painted frame receipts', async () => {
+  for (const header of [{ width: 513 }, { hot_x: -1 }, { hot_y: 2 }, { codec: 'h264' }]) {
+    assert.throws(() => unpackDesktopMedia(packet({ type: 'cursor', ...header })));
+  }
+  const f = await playerFixture();
+  const originals = ['createImageBitmap', 'document'].map(key => [key, globalThis[key]]);
+  const styles = new Map(); let resolveImage, closed = 0;
+  f.player.canvas.style = { setProperty: (k,v) => styles.set(k,v), removeProperty: k => styles.delete(k) };
+  globalThis.createImageBitmap = () => new Promise(resolve => { resolveImage = resolve; });
+  globalThis.document = { createElement: () => ({ getContext: () => ({ drawImage() {} }), toDataURL: () => 'data:image/png;base64,fixture' }) };
+  try {
+    f.player.receive(packet({ type: 'cursor', hot_x: 1, hot_y: 1 }));
+    resolveImage({ width: 2, height: 2, close() { closed++; } });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.match(styles.get('--floe-desktop-cursor'), /1 1, default$/);
+    assert.deepEqual(f.acknowledgements, []);
+    f.player.receive(packet({ type: 'cursor' }));
+    f.player.reset(2);
+    resolveImage({ width: 2, height: 2, close() { closed++; } });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(styles.size, 0);
+    assert.equal(closed, 2);
+  } finally {
+    f.player.close();
+    for (const [key, value] of originals) { if (value === undefined) delete globalThis[key]; else globalThis[key] = value; }
   }
 });

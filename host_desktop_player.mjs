@@ -13,6 +13,12 @@ export function unpackDesktopMedia(buffer) {
         !Number.isInteger(header.width) || header.width < 2 || header.width > 8192 ||
         !Number.isInteger(header.height) || header.height < 2 || header.height > 8192 ||
         header.width * header.height > 16 * 1024 * 1024) throw new Error('MEDIA_INVALID');
+  } else if (header.type === 'cursor') {
+    if (header.codec !== 'png' || header.bytes > 2 * 1024 * 1024 ||
+        !Number.isInteger(header.width) || header.width < 1 || header.width > 512 ||
+        !Number.isInteger(header.height) || header.height < 1 || header.height > 512 ||
+        !Number.isInteger(header.hot_x ?? 0) || (header.hot_x ?? 0) < 0 || (header.hot_x ?? 0) >= header.width ||
+        !Number.isInteger(header.hot_y ?? 0) || (header.hot_y ?? 0) < 0 || (header.hot_y ?? 0) >= header.height) throw new Error('MEDIA_INVALID');
   } else if (header.type !== 'audio' || header.codec !== 'opus' || header.sample_rate !== 48000 || header.channels !== 2 ||
              header.bytes > 64 * 1024 || !Number.isSafeInteger(header.timestamp) || header.timestamp < 0) {
     throw new Error('MEDIA_INVALID');
@@ -47,29 +53,31 @@ export class HostDesktopPlayer {
     this.acknowledge = acknowledge; this.recover = recover; this.painted = painted;
     this.statistics = statistics; this.audioState = audioState; this.workletURL = workletURL;
     this.order = new DesktopPaintOrder();
-    this.frames = new Map(); this.incoming = [];
+    this.frames = new Map(); this.incoming = []; this.refinements = new Set();
     this.epoch = 0;
     this.processing = false; this.closed = false; this.recovering = false;
     this.decoder = null; this.audioDecoder = null; this.audio = null; this.speaker = null;
     this.gain = null; this.volume = 1; this.muted = false;
     this.audioStarting = null;
     this.audioPending = 0;
-    this.pending = []; this.confirmation = 0; this.confirmationTask = 0;
+    this.lastPaintHeader = null; this.confirmation = 0; this.confirmationTask = 0;
     this.idle = 0; this.flushing = false; this.needsKey = true;
     this.bytes = 0; this.draws = 0; this.lastStatistic = performance.now(); this.lastDraw = 0;
     this.intervals = []; this.decoderPath = 'unconfigured';
+    this.cursorPending = null; this.cursorProcessing = false;
   }
   reset(generation) {
     this.epoch++;
     this.order.reset(generation); this.recovering = false; this.needsKey = true; this.flushing = false;
     this.lastDraw = 0; this.draws = this.bytes = 0; this.intervals = [];
-    this.frames.clear(); this.incoming = [];
+    this.frames.clear(); this.incoming = []; this.refinements.clear();
     clearTimeout(this.idle);
     cancelAnimationFrame(this.confirmation);
     clearTimeout(this.confirmationTask);
     this.confirmation = this.confirmationTask = 0;
-    for (const pending of this.pending) pending.image.close();
-    this.pending = [];
+    this.lastPaintHeader = null;
+    this.cursorPending = null;
+    this.canvas.style?.removeProperty('--floe-desktop-cursor');
     if (this.decoder && this.decoder.state !== 'closed') this.decoder.close();
     this.decoder = null;
     if (this.audioDecoder && this.audioDecoder.state !== 'closed') this.audioDecoder.close();
@@ -82,12 +90,38 @@ export class HostDesktopPlayer {
     let packet;
     try { packet = unpackDesktopMedia(buffer); } catch { this.fail('MEDIA_INVALID'); return; }
     if (packet.header.generation !== this.order.generation || this.recovering) return;
+    if (packet.header.type === 'cursor') { this.cursorPending = packet; void this.updateCursor(); return; }
     this.bytes += buffer.byteLength;
     if (packet.header.type === 'audio') { this.decodeAudio(packet); return; }
     if (!this.order.accept(packet.header)) return;
     if (this.incoming.length >= 4) { this.fail('VIDEO_QUEUE_LIMIT'); return; }
     this.incoming.push(packet);
     void this.process();
+  }
+  async updateCursor() {
+    if (this.cursorProcessing) return;
+    this.cursorProcessing = true;
+    try {
+      while (this.cursorPending && !this.closed && !this.recovering) {
+        const packet = this.cursorPending; this.cursorPending = null;
+        const epoch = this.epoch, { header, data } = packet;
+        let image;
+        try {
+          image = await createImageBitmap(new Blob([data], { type: 'image/png' }));
+          if (epoch !== this.epoch || this.closed || this.recovering || this.cursorPending) continue;
+          if (image.width !== header.width || image.height !== header.height) throw new Error('CURSOR_INVALID');
+          const scale = Math.min(1, 128 / Math.max(header.width, header.height));
+          const cursor = document.createElement('canvas');
+          cursor.width = Math.max(1, Math.round(header.width * scale));
+          cursor.height = Math.max(1, Math.round(header.height * scale));
+          cursor.getContext('2d').drawImage(image, 0, 0, cursor.width, cursor.height);
+          const x = Math.min(cursor.width - 1, Math.round((header.hot_x ?? 0) * scale));
+          const y = Math.min(cursor.height - 1, Math.round((header.hot_y ?? 0) * scale));
+          this.canvas.style.setProperty('--floe-desktop-cursor', `url("${cursor.toDataURL('image/png')}") ${x} ${y}, default`);
+        } catch { if (epoch === this.epoch) this.fail('CURSOR_INVALID'); }
+        finally { image?.close(); }
+      }
+    } finally { this.cursorProcessing = false; }
   }
   async process() {
     if (this.processing) return;
@@ -100,9 +134,7 @@ export class HostDesktopPlayer {
         if (header.generation !== this.order.generation) continue;
         try {
           if (header.codec === 'png') {
-            const image = await createImageBitmap(new Blob([data], { type: 'image/png' }));
-            if (epoch !== this.epoch) image.close();
-            else this.schedule(image, header);
+            this.decodeRefinement(header, data);
             continue;
           }
           if (this.needsKey && !header.key) { this.fail('KEYFRAME_REQUIRED'); break; }
@@ -125,6 +157,18 @@ export class HostDesktopPlayer {
       }
     } catch { this.fail('DECODE_FAILED'); }
     finally { this.processing = false; }
+  }
+  decodeRefinement(header, data) {
+    // Refinements are independently decodable. Never hold subsequent H.264
+    // dependencies behind asynchronous PNG work, and bound retained decodes.
+    if (this.refinements.size >= 4) { this.fail('VIDEO_QUEUE_LIMIT'); return; }
+    const epoch = this.epoch;
+    this.refinements.add(header);
+    void createImageBitmap(new Blob([data], { type: 'image/png' })).then(image => {
+      if (epoch !== this.epoch) image.close();
+      else this.schedule(image, header);
+    }).catch(() => { if (epoch === this.epoch) this.fail('DECODE_FAILED'); })
+      .finally(() => this.refinements.delete(header));
   }
   scheduleDrain() {
     clearTimeout(this.idle);
@@ -172,23 +216,12 @@ export class HostDesktopPlayer {
     decoder.configure(configuration);
   }
   schedule(image, header) {
-    if (this.closed || this.recovering || !this.order.current(header) || this.pending.at(-1)?.header.frame_id >= header.frame_id) { image.close(); return; }
-    // Each presentation uses the freshest fully decoded picture. Retaining an
-    // older decoded picture adds a refresh interval to remote interaction. All
-    // encoded dependencies still pass through the decoder in order.
-    this.pending.push({ image, header });
-    if (this.pending.length > 1) this.pending.shift().image.close();
-    this.present();
+    if (this.closed || this.recovering || !this.order.current(header)) { image.close(); return; }
+    this.present(image, header);
   }
-  present() {
-    // The idle path must not wait an extra refresh before drawing. Retain at
-    // most one newer decoded image until this picture crosses a refresh, so a
-    // decode burst cannot acknowledge pictures overwritten before presentation.
-    if (this.confirmation || this.confirmationTask) return;
-    const pending = this.pending.shift();
-    if (!pending) return;
-    const { image, header } = pending;
-    if (!this.order.current(header)) { image.close(); return; }
+  present(image, header) {
+    // Decoded pixels may replace an unconfirmed canvas immediately. Only the
+    // picture that survives a rendering opportunity receives a cumulative ACK.
     try {
       if (this.canvas.width !== header.width || this.canvas.height !== header.height) {
         this.canvas.width = header.width; this.canvas.height = header.height;
@@ -211,22 +244,24 @@ export class HostDesktopPlayer {
       this.lastStatistic = now; this.draws = this.bytes = 0; this.intervals = [];
     }
     this.lastPaintHeader = header;
-    this.confirmPaint(header);
+    this.confirmPaint();
   }
-  confirmPaint(header) {
+  confirmPaint() {
     if (this.confirmation || this.confirmationTask) return;
     const epoch = this.epoch;
     this.confirmation = requestAnimationFrame(() => {
       this.confirmation = 0;
       if (this.closed || epoch !== this.epoch) return;
-      // RAF runs before rendering. A task queued from it runs after that
-      // rendering opportunity; the receipt must not authorize input inside RAF.
+      const header = this.lastPaintHeader;
+      // RAF precedes rendering. A later RAF callback may still replace these
+      // pixels; conservatively confirm only a picture unchanged through the
+      // following task. Neither decoding nor drawing alone grants authority.
       this.confirmationTask = setTimeout(() => {
         this.confirmationTask = 0;
-        if (this.closed || epoch !== this.epoch || header.generation !== this.order.generation) return;
+        if (this.closed || epoch !== this.epoch || !header || header.generation !== this.order.generation) return;
+        if (this.lastPaintHeader !== header) { this.confirmPaint(); return; }
         this.acknowledge(header.generation, header.frame_id);
         this.painted(header.generation, header.frame_id);
-        if (this.pending.length) this.present();
       }, 0);
     });
   }

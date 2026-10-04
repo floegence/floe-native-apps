@@ -838,5 +838,153 @@
         "executable": true
       }
     }
+  },
+  {
+    "version": "v0.22.9",
+    "architecture": "amd64",
+    "digest": "1225d3d8d04e1db93b6916d0635dd29374e36da1827a589a9f56c5ff328ad93f",
+    "id": "alpine-3.23-host-desktop-1-amd64",
+    "files": {
+      "host_desktop_contract.py": {
+        "sha256": "49dcdb8c480be4b08043f314fb46fd8cc051f8fa970e759f7b2181910b4e6442",
+        "size_bytes": 3145,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_helper.py": {
+        "sha256": "72dcd1456fb08535acbc235b526bd0958b89f5e227a4d8f9315e05ebf83e87fc",
+        "size_bytes": 25081,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_identity.py": {
+        "sha256": "2a19207530ef0d178c78934f8103f45a8b1e54b53905dd91b8d70eaa29c8d945",
+        "size_bytes": 7240,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_input.py": {
+        "sha256": "f45bc4ab354cc926fbf114b5c131c64fb669bcb4db76fc4ece9cec5813a0784f",
+        "size_bytes": 3113,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_media.py": {
+        "sha256": "464290ad56d2208e6062ef368b8d5b59994ac228f948fc88d21418d6345508b0",
+        "size_bytes": 20666,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_portal.py": {
+        "sha256": "6c258a218ce215d3b6ae1345e64734a9b6faaab6498a601db9b4ebbd5f37c970",
+        "size_bytes": 24658,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_selfcheck.py": {
+        "sha256": "304abedc5c2168364138bce17749a150deabc9abec9b1ffa506f794ced05b143",
+        "size_bytes": 5431,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_wire.py": {
+        "sha256": "6729da1deed9728acf2e902239ea7c25bd78b69281e5f534eaaf7e5cd640e2b4",
+        "size_bytes": 3421,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_x11.py": {
+        "sha256": "be28d0c2e72a1e6e1fd878bfc3e40d723db985ce2f2e4b45507e9c3d44b9bfe5",
+        "size_bytes": 4762,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_xcapture.py": {
+        "sha256": "38cd5592087b6439d3bdf39ff72921c65549762d93b8a28d27b03e0772e3f4e2",
+        "size_bytes": 16172,
+        "common": false,
+        "executable": false
+      },
+      "python3": {
+        "sha256": "a93c466ebc9ed28634dc7439b9dba55696a2e5901a9e9327e99c266a9a19cca7",
+        "size_bytes": 812,
+        "common": false,
+        "executable": true
+      }
+    }
+  },
+  {
+    "version": "v0.22.9",
+    "architecture": "arm64",
+    "digest": "25e82a8097d38d7d8de16e2590c0fcc29f05450d28f8388dce8bc43173fb057e",
+    "id": "alpine-3.23-host-desktop-1-arm64",
+    "files": {
+      "host_desktop_contract.py": {
+        "sha256": "49dcdb8c480be4b08043f314fb46fd8cc051f8fa970e759f7b2181910b4e6442",
+        "size_bytes": 3145,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_helper.py": {
+        "sha256": "72dcd1456fb08535acbc235b526bd0958b89f5e227a4d8f9315e05ebf83e87fc",
+        "size_bytes": 25081,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_identity.py": {
+        "sha256": "2a19207530ef0d178c78934f8103f45a8b1e54b53905dd91b8d70eaa29c8d945",
+        "size_bytes": 7240,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_input.py": {
+        "sha256": "f45bc4ab354cc926fbf114b5c131c64fb669bcb4db76fc4ece9cec5813a0784f",
+        "size_bytes": 3113,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_media.py": {
+        "sha256": "464290ad56d2208e6062ef368b8d5b59994ac228f948fc88d21418d6345508b0",
+        "size_bytes": 20666,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_portal.py": {
+        "sha256": "6c258a218ce215d3b6ae1345e64734a9b6faaab6498a601db9b4ebbd5f37c970",
+        "size_bytes": 24658,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_selfcheck.py": {
+        "sha256": "304abedc5c2168364138bce17749a150deabc9abec9b1ffa506f794ced05b143",
+        "size_bytes": 5431,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_wire.py": {
+        "sha256": "6729da1deed9728acf2e902239ea7c25bd78b69281e5f534eaaf7e5cd640e2b4",
+        "size_bytes": 3421,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_x11.py": {
+        "sha256": "be28d0c2e72a1e6e1fd878bfc3e40d723db985ce2f2e4b45507e9c3d44b9bfe5",
+        "size_bytes": 4762,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_xcapture.py": {
+        "sha256": "38cd5592087b6439d3bdf39ff72921c65549762d93b8a28d27b03e0772e3f4e2",
+        "size_bytes": 16172,
+        "common": false,
+        "executable": false
+      },
+      "python3": {
+        "sha256": "f8fdd44e9bed7ff338e69e49e708196cbb30dfed86470ac5141d831780e5ad15",
+        "size_bytes": 813,
+        "common": false,
+        "executable": true
+      }
+    }
   }
 ]

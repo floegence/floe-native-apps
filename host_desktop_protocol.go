@@ -113,6 +113,8 @@ type HostDesktopMessage struct {
 	Encoder       string                   `json:"encoder,omitempty"`
 	Width         int                      `json:"width,omitempty"`
 	Height        int                      `json:"height,omitempty"`
+	HotX          int                      `json:"hot_x,omitempty"`
+	HotY          int                      `json:"hot_y,omitempty"`
 	Key           bool                     `json:"key,omitempty"`
 	SampleRate    int                      `json:"sample_rate,omitempty"`
 	Channels      int                      `json:"channels,omitempty"`
@@ -285,6 +287,8 @@ func (message HostDesktopMessage) valid() bool {
 	switch message.Type {
 	case "frame":
 		return desktopID(message.Generation) && desktopID(message.FrameID) && message.Width >= 2 && message.Width <= 8192 && message.Height >= 2 && message.Height <= 8192 && message.Width*message.Height <= 16<<20 && message.Bytes > 0 && (message.Codec == "h264" || message.Codec == "png") && message.Timestamp >= 0
+	case "cursor":
+		return desktopID(message.Generation) && message.Codec == "png" && message.Width >= 1 && message.Width <= 512 && message.Height >= 1 && message.Height <= 512 && message.HotX >= 0 && message.HotX < message.Width && message.HotY >= 0 && message.HotY < message.Height && message.Bytes > 0 && message.Bytes <= 2<<20
 	case "audio":
 		return desktopID(message.Generation) && message.Codec == "opus" && message.SampleRate == 48000 && message.Channels == 2 && message.Bytes > 0 && message.Bytes <= 64<<10 && message.Timestamp >= 0
 	case "result", "error", "state", "capabilities", "displays", "clipboard":

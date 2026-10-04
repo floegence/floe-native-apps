@@ -2,6 +2,8 @@ package nativeapps
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -105,5 +107,49 @@ func TestHostDesktopPreparationDetectsModifiedNativeInputCode(t *testing.T) {
 	}
 	if _, err := ResolveHostDesktopTools(root, "amd64"); err == nil {
 		t.Fatal("changed helper was considered verified")
+	}
+}
+
+func TestHostDesktopNVENCArtifactsMatchReviewedBuild(t *testing.T) {
+	for _, architecture := range []string{"amd64", "arm64"} {
+		base := "native/host-desktop/dist/" + architecture + "/"
+		data, err := os.ReadFile(base + "manifest.json")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var manifest struct {
+			Architecture string                 `json:"architecture"`
+			Sources      map[string]string      `json:"sources"`
+			Files        map[string]desktopFile `json:"files"`
+		}
+		if err := json.Unmarshal(data, &manifest); err != nil {
+			t.Fatal(err)
+		}
+		if manifest.Architecture != architecture || len(manifest.Sources) != 5 || len(manifest.Files) != 1 {
+			t.Fatal("invalid build provenance")
+		}
+		for name, expected := range manifest.Sources {
+			data, err := os.ReadFile(name)
+			if err != nil {
+				t.Fatal(err)
+			}
+			digest := sha256.Sum256(data)
+			if hex.EncodeToString(digest[:]) != expected {
+				t.Fatalf("rebuild native encoder after changing %s", name)
+			}
+		}
+		files, err := hostDesktopFiles(architecture)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for name, expected := range manifest.Files {
+			if err := verifyDesktopFile(base+name, expected); err != nil {
+				t.Fatal(err)
+			}
+			data, err := os.ReadFile(base + name)
+			if err != nil || !bytes.Equal(files[name], data) || !expected.Executable {
+				t.Fatal("worker escaped preparation identity")
+			}
+		}
 	}
 }

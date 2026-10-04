@@ -12,7 +12,7 @@ import gi
 
 gi.require_version('Gst', '1.0')
 from gi.repository import Gst, GLib
-from host_desktop_media import DesktopMedia, select_encoder
+from host_desktop_media import DesktopMedia, select_encoder, ENCODERS
 
 # The client-node module depends on protocol-native by soname. Finding the
 # GStreamer element alone does not prove that the private loader can resolve
@@ -26,9 +26,11 @@ for name in ('pipewiresrc', 'pulsesrc', 'h264parse', 'pngenc', 'opusenc', 'opusd
     if not Gst.ElementFactory.find(name):
         raise RuntimeError('required media element missing: ' + name)
 encoder, specification = select_encoder(Gst)
+# Always prove the portable codec closure as well as the selected production path.
+portable_specification = next(spec for name, spec in ENCODERS if name == 'x264enc')
 for label, description, minimum in (
     ('video', 'videotestsrc num-buffers=8 pattern=smpte ! video/x-raw,width=320,height=180,framerate=60/1 ! '
-        'videoconvert ! video/x-raw,format=I420 ! ' + specification + ' ! h264parse ! openh264dec ! '
+        'videoconvert ! video/x-raw,format=I420 ! ' + portable_specification + ' ! h264parse ! openh264dec ! '
         'videoconvert ! video/x-raw,format=BGRA ! appsink name=decoded sync=false', 320 * 180 * 4),
     ('audio', 'audiotestsrc num-buffers=8 wave=sine ! audioconvert ! audioresample ! '
         'audio/x-raw,rate=48000,channels=2 ! opusenc frame-size=20 ! opusdec ! '

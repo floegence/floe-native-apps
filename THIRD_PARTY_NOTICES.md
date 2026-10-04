@@ -130,3 +130,16 @@ debugging such library modifications is not prohibited by this project.
 Complete corresponding source accompanies the binary files at the same module
 location; this distribution does not rely on a future source offer. The original
 runtime APKs retain their own publisher-provided source and license metadata.
+
+
+## NVIDIA video encoding API headers
+
+`native/host-desktop/vendor/nvEncodeAPI.h` and `dynlink_cuda.h` are unchanged
+headers from FFmpeg/nv-codec-headers tag `n12.1.14.0`:
+https://github.com/FFmpeg/nv-codec-headers/tree/n12.1.14.0/include/ffnvcodec
+
+Their NVIDIA and contributor copyright notices and permissive MIT-style license
+terms are retained in full in each file and included in the prepared component.
+The native build manifests pin their exact SHA-256 values. No NVIDIA driver or
+CUDA toolkit binaries are distributed; a compatible user-installed system driver
+is required for this optional encoding capability.

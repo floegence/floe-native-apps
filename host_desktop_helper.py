@@ -312,7 +312,7 @@ class HostDesktop:
             if self.identity.backend == 'wayland':
                 media.start_pipewire(self.backend.fd, self.streams[display_id])
             else:
-                media.start_x11(self.backend.name, (selected['x'], selected['y'], selected['width'], selected['height']))
+                media.start_x11(self.backend.name, (selected['x'], selected['y'], selected['width'], selected['height']), local_cursor=mode == 'control')
             self.status('active')
         except DesktopError:
             self.suspend('capture_failed')

@@ -63,3 +63,46 @@ class AcquisitionTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+class LocalCursorTests(unittest.TestCase):
+    def test_png_unpremultiplies_xfixes_pixels(self):
+        import struct
+        import zlib
+        from host_desktop_xcapture import cursor_png
+        png = cursor_png(bytes([16, 32, 64, 128]), 1, 1)
+        self.assertEqual(png[:8], b'\x89PNG\r\n\x1a\n')
+        offset = 8
+        while offset < len(png):
+            size = struct.unpack('!I', png[offset:offset + 4])[0]
+            if png[offset + 4:offset + 8] == b'IDAT':
+                self.assertEqual(zlib.decompress(png[offset + 8:offset + 8 + size]), bytes([0, 127, 63, 31, 128]))
+                return
+            offset += size + 12
+        self.fail('PNG has no pixels')
+
+    def test_cursor_only_motion_does_not_encode_desktop_in_control_mode(self):
+        from types import SimpleNamespace
+        captured, cursors, failures = [], [], []
+        stopped = threading.Event()
+        surface = Mock(width=2, height=2)
+        surface.cursor = (1, 0, 0, 1, 1)
+        surface.painter.pixels = bytes([0, 0, 0, 255])
+        reads = 0
+        def read():
+            nonlocal reads
+            reads += 1
+            if reads == 4:
+                stopped.set()
+                raise DesktopError('CAPTURE_UNAVAILABLE')
+            return memoryview(bytes(16)), (1, reads, 0, 1, 1, True)
+        surface.read.side_effect = read
+        gst = SimpleNamespace(Buffer=SimpleNamespace(new_wrapped=lambda data: data))
+        with patch('host_desktop_xcapture.Surface', return_value=surface):
+            capture = X11Capture(gst, ':0', (0, 0, 2, 2), 60,
+                lambda *args: captured.append(args), failures.append, lambda a, b: a == b,
+                lambda *args: cursors.append(args))
+            self.assertTrue(stopped.wait(1))
+            capture.close()
+        self.assertEqual(len(captured), 1)
+        self.assertEqual(len(cursors), 1)
+        surface.painter.compose.assert_not_called()

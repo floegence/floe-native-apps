@@ -13,6 +13,7 @@ import select
 import struct
 import threading
 import time
+import zlib
 
 from host_desktop_contract import DesktopError
 
@@ -306,14 +307,28 @@ class Surface:
             self.mapping = None
 
 
+def cursor_png(pixels, width, height):
+    # XFixes is premultiplied native-endian BGRA; PNG requires straight RGBA.
+    rgba = bytearray(len(pixels))
+    for offset in range(0, len(pixels), 4):
+        b, g, r, a = pixels[offset:offset + 4]
+        rgba[offset:offset + 4] = bytes((min(255, r * 255 // a) if a else 0,
+            min(255, g * 255 // a) if a else 0, min(255, b * 255 // a) if a else 0, a))
+    def chunk(kind, data):
+        return struct.pack('!I', len(data)) + kind + data + struct.pack('!I', zlib.crc32(kind + data))
+    rows = b''.join(b'\0' + rgba[y * width * 4:(y + 1) * width * 4] for y in range(height))
+    return (b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('!2I5B', width, height, 8, 6, 0, 0, 0)) +
+            chunk(b'IDAT', zlib.compress(rows)) + chunk(b'IEND', b''))
+
+
 class X11Capture:
-    def __init__(self, Gst, display, rectangle, fps, captured, failed, equal_pixels):
+    def __init__(self, Gst, display, rectangle, fps, captured, failed, equal_pixels, cursor_changed=None):
         self.stopped = threading.Event()
         def run():
             source = view = None
             try:
                 source = Surface(display, rectangle, self.stopped)
-                prior = prior_cursor = None
+                prior = prior_cursor = prior_shape = None
                 next_sample = time.monotonic()
                 while not self.stopped.is_set():
                     if self.stopped.wait(max(0, next_sample - time.monotonic())):
@@ -324,10 +339,24 @@ class X11Capture:
                     view, cursor = source.read()
                     timestamp = time.monotonic()
                     changed = prior is None or not equal_pixels(view, prior)
-                    if changed or cursor != prior_cursor:
+                    if cursor_changed:
+                        serial, hot_x, hot_y, cursor_width, cursor_height = source.cursor
+                        shape = (serial, cursor[-1])
+                        if shape != prior_shape:
+                            visible = cursor[-1] and bool(source.painter.pixels)
+                            cursor_changed(cursor_width if visible else 1, cursor_height if visible else 1,
+                                min(hot_x, cursor_width - 1) if visible else 0,
+                                min(hot_y, cursor_height - 1) if visible else 0,
+                                cursor_png(source.painter.pixels, cursor_width, cursor_height) if visible else
+                                cursor_png(bytes(4), 1, 1))
+                            prior_shape = shape
+                    if changed or (not cursor_changed and cursor != prior_cursor):
                         if changed:
                             prior = bytes(view)
-                        buffer = source.painter.compose(Gst, prior, source.width, source.height, cursor)
+                        if cursor_changed:
+                            buffer = Gst.Buffer.new_wrapped(prior)
+                        else:
+                            buffer = source.painter.compose(Gst, prior, source.width, source.height, cursor)
                         prior_cursor = cursor
                         if not self.stopped.is_set():
                             captured(buffer, source.width, source.height, timestamp)

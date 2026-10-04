@@ -1258,11 +1258,18 @@ frame credits. Linux replaces only its encoder; macOS forces a new keyframe on
 its existing encoder. Queued video, audio and refinements retain their original
 generation and cannot authorize or overwrite the successor. Recovery starts a
 fresh H.264 dependency chain.
-An idle decoded picture draws immediately, then crosses an animation refresh
-and its following task before its paint receipt can authorize input. Until that
-receipt, at most one newer decoded picture awaits presentation; arrivals replace
-only that decoded picture, never encoded dependencies. Reset closes pending images and cancels
-retired paint receipts before a successor generation can draw. Video and refinement
+Decoded pictures draw immediately, including while an earlier paint receipt is
+pending. A receipt names only the latest picture unchanged between an animation
+refresh and its following task; overwritten pictures receive no individual
+receipt. The newest cumulative receipt releases older frame credits. Reset
+retires every outstanding receipt. PNG decoding runs independently of ordered
+H.264 dependencies, with at most four retained refinements.
+Linux X11 control sessions send bounded cursor PNG/shape/hotspot messages instead
+of burning the host cursor into video. Cursor-only motion does not encode a frame.
+The browser uses the local system pointer with that image; cursor messages never
+grant input authority. View sessions retain the captured cursor. Wayland and
+macOS retain their current embedded-cursor contract.
+Video and refinement
 `timestamp` values identify the latest changed source pixels on the host's
 monotonic clock. They are telemetry, not a cross-host clock or decode ordering
 key. Qualification must distinguish canvas drawing from a later animation-frame
@@ -1304,9 +1311,30 @@ rewriting it and activates the new digest only after its own installed check.
 Public `ResolveHostDesktopTools` still accepts only the current helper contract;
 an older installation remains identifiable without becoming new session code.
 
-The isolated musl media stack can use only drivers compatible with that ABI.
-An NVIDIA device with a glibc-only CUDA driver is not evidence of a usable
-hardware encoder in this stack. Codec probing exercises each available factory
-and explicitly reports the selected software encoder when no hardware candidate
-works. Neither graphics hardware discovery nor synthetic codecs establish real
-desktop performance; record the actual capture backend, resolution and encoder.
+The portable media stack retains its isolated musl ABI. NVIDIA encoding uses a
+separate, verified `desktop-nvenc` worker built natively for amd64/arm64 against
+glibc 2.31. It loads only the installed system CUDA/NVENC driver through its
+standard loader; no NVIDIA binaries, CUDA toolkit or host media tools are
+installed. The pinned nv-codec-headers 12.1 API requires a compatible driver
+(Linux minimum 530.41.03); runtime version and synthetic encode checks determine
+availability. A failed pre-session probe selects the existing explicit software
+candidate. An active NVENC failure suspends media and never silently changes the
+reference chain. Actual session dimensions must also encode successfully.
+
+`native/host-desktop/Dockerfile` and `scripts/build_host_desktop_nvenc.sh` own the
+native build. Pinned Debian images and signed snapshot archives establish the
+compiler baseline. The committed manifest records source/header hashes, ELF
+architecture, system dependencies and GLIBC versions. Binary, manifest and full
+licensed headers enter the existing host-desktop preparation identity; they do
+not enter the private-application desktop package. Installed workers inherit only
+private pipes and a minimal environment. They cannot discover a display or inject
+input. One request is outstanding, with bounded lengths, sequence validation and
+a three-second deadline; cancellation kills/reaps only that owned child. Blocking
+GPU work runs off the GLib input dispatcher. Four preallocated NVENC resources
+satisfy the SDK allocation requirement without queuing four pictures.
+
+NVENC uses synchronous Linux completion, P1 ultra-low-latency tuning, no B frames
+or lookahead and one-frame CBR VBV. X11 readback, scaling and raw-pixel IPC remain
+CPU-visible; this is not a zero-copy capture claim. Record the actual encoder,
+resolution, capture backend and measured client response. GPU availability or
+synthetic encoder throughput alone cannot establish desktop latency.
