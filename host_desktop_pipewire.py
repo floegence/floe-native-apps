@@ -321,6 +321,8 @@ class PipeWireCapture:
         self.cursor.update(cursor_meta)
         pixels = self.previous
         changed = False
+        continuous = (sequence is not None and self.previous_sequence is not None and
+            sequence == self.previous_sequence + 1 and not discontinuous)
         if chunk.size:
             row = self.width * 4
             stride = chunk.stride or row
@@ -332,8 +334,7 @@ class PipeWireCapture:
             # retained buffer. Missing metadata, sequence gaps and discontinuity
             # force a complete comparison. Never infer unchanged pixels from a
             # skipped/corrupt frame or an uninitialized baseline.
-            trusted_damage = (self.previous is not None and sequence is not None and
-                self.previous_sequence is not None and sequence == self.previous_sequence + 1 and not discontinuous)
+            trusted_damage = self.previous is not None and continuous
             regions = damage if trusted_damage else None
             address = data.data + chunk.offset
             unchanged = regions == []
@@ -379,7 +380,9 @@ class PipeWireCapture:
                     (0, x, y, cursor.width, cursor.height, cursor.visible))
             self.captured(image, self.width, self.height, time.monotonic())
         self.previous, self.previous_cursor, self.previous_shape = pixels, placement, shape
-        self.previous_sequence = sequence
+        # A cursor-only update cannot reconstruct pixels lost before it. Keep
+        # the baseline invalid until a complete pixel buffer has been inspected.
+        self.previous_sequence = sequence if chunk.size or continuous else None
 
     def close(self):
         if self.closed:

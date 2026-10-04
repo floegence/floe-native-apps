@@ -117,6 +117,13 @@ class PipeWireBufferTests(unittest.TestCase):
         self.deliver(capture, bytes([7]) * 16, bytes(28), sequence=3, damage=bytes(16))
         self.assertEqual(frames[-1], bytes([7]) * 16)
 
+    def test_cursor_only_buffer_cannot_restore_pixels_lost_in_a_sequence_gap(self):
+        capture, frames, _ = self.fixture()
+        self.deliver(capture, bytes(16), bytes(28), sequence=1)
+        self.deliver(capture, b'', bytes(28), sequence=3)
+        self.deliver(capture, bytes([7]) * 16, bytes(28), sequence=4, damage=bytes(16))
+        self.assertEqual(frames[-1], bytes([7]) * 16)
+
     def test_missing_cursor_metadata_never_claims_embedded_pixels(self):
         from host_desktop_pipewire import _Buffer, _Data, _Meta, _Chunk
         capture, frames, _ = self.fixture()
