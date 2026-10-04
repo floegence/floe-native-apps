@@ -1,6 +1,7 @@
 """Low-delay desktop media with bounded pre-encode and encoded work.
 
-GStreamer owns PipeWire acquisition and codecs; XCB owns authenticated X11
+PipeWire owns cursor metadata acquisition; GStreamer owns embedded capture and
+codecs; XCB owns authenticated X11
 acquisition. Only a latest unencoded sample may be replaced; already encoded
 H.264 references are delivered in order until reset.
 """
@@ -102,6 +103,8 @@ class DesktopMedia:
         self.credit = FrameCredit()
         self.capture = self.encoding = self.audio = None
         self.x11_capture = None
+        self.pipewire_capture = None
+        self.cursor_presentation = 'embedded'
         self.nvenc = None
         self.cursor_latest = None
         self.cursor_source = None
@@ -143,7 +146,15 @@ class DesktopMedia:
         else:
             self._fail('MEDIA_PIPELINE_FAILED')
 
-    def start_pipewire(self, fd, node):
+    def start_pipewire(self, fd, node, metadata_cursor=False, local_cursor=False):
+        if metadata_cursor:
+            from host_desktop_pipewire import PipeWireCapture
+            self.pixel_format = 'BGRx'
+            self.cursor_presentation = 'separate' if local_cursor else 'embedded'
+            self.pipewire_capture = PipeWireCapture(self.Gst, fd, node, self.picture['frame_rate'],
+                self._changed, self._capture_failed, equal_pixels, self._cursor_changed if local_cursor else None)
+            self._start_audio()
+            return
         self.capture = self._pipeline('pipewiresrc name=desktop do-timestamp=true ! videoconvert ! '
             'video/x-raw,format=BGRA ! appsink name=frames max-buffers=1 drop=true emit-signals=true sync=false', 'capture')
         source = self.capture.get_by_name('desktop')
@@ -154,9 +165,15 @@ class DesktopMedia:
     def start_x11(self, display, rectangle, local_cursor=False):
         from host_desktop_xcapture import X11Capture
         self.pixel_format = 'BGRx'
+        self.cursor_presentation = 'separate' if local_cursor else 'embedded'
         self.x11_capture = X11Capture(self.Gst, display, rectangle, self.picture['frame_rate'],
                                       self._changed, self._fail, equal_pixels, self._cursor_changed if local_cursor else None)
         self._start_audio()
+
+    def _capture_failed(self, code):
+        if code in ('DISPLAY_STREAM_LOST', 'DISPLAY_GEOMETRY_CHANGED'):
+            self.target_valid = False
+        return self._fail(code)
 
     def _cursor_changed(self, width, height, hot_x, hot_y, png):
         with self.lock:
@@ -365,7 +382,7 @@ class DesktopMedia:
             self.encoding_busy = False
             metadata = {'type': 'frame', 'generation': self.generation, 'frame_id': frame,
                 'timestamp': timestamp, 'width': self.encoding_size[2], 'height': self.encoding_size[3],
-                'codec': 'h264', 'key': key, 'encoder': self.encoder_name}
+                'codec': 'h264', 'key': key, 'encoder': self.encoder_name, 'cursor': self.cursor_presentation}
             if key:
                 metadata.update(description=base64.b64encode(config).decode(), profile='avc1.' + config[1:4].hex())
             self.emit(metadata, data)
@@ -467,6 +484,7 @@ class DesktopMedia:
                     self.refined_sequence = sequence
                     frame = self.credit.reserve()
                     self.emit({'type': 'frame', 'codec': 'png', 'key': True, 'generation': self.generation,
+                        'cursor': self.cursor_presentation,
                         'frame_id': frame, 'width': size[0], 'height': size[1], 'timestamp': int(captured_at * 1_000_000)}, pixels)
                     return False
                 self.GLib.idle_add(publish)
@@ -491,6 +509,9 @@ class DesktopMedia:
             encoder, self.nvenc = self.nvenc, None
             encoder.close()
         self.GLib.source_remove(self.deadline)
+        if self.pipewire_capture:
+            self.pipewire_capture.close()
+            self.pipewire_capture = None
         if self.x11_capture:
             self.x11_capture.close()
             self.x11_capture = None

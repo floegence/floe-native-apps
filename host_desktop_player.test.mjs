@@ -53,7 +53,10 @@ async function playerFixture() {
   globalThis.setTimeout = (callback, delay, ...args) => delay === 0 ? (tasks.set(++next, callback), next) : nativeSetTimeout(callback, delay, ...args);
   globalThis.clearTimeout = id => { tasks.delete(id); nativeClearTimeout(id); };
   const draws = [], acknowledgements = [];
-  const canvas = { width:2, height:2, getContext:()=>({drawImage:image=>draws.push(image.id)}) };
+  const attributes = new Map();
+  const canvas = { width:2, height:2, getContext:()=>({drawImage:image=>draws.push(image.id)}),
+    setAttribute: (name, value) => attributes.set(name, value), removeAttribute: name => attributes.delete(name),
+    getAttribute: name => attributes.get(name) };
   const player = new HostDesktopPlayer(canvas, { acknowledge:(generation,id)=>acknowledgements.push([generation,id]), recover:code=>{throw Error(code);} });
   player.reset(1);
   const frame = id => ({ id, close(){} });
@@ -62,6 +65,26 @@ async function playerFixture() {
   const tick = () => { refresh(); afterRender(); };
   return { player, frame, tick, refresh, afterRender, draws, acknowledgements };
 }
+
+test('only current painted frames select separate cursor presentation', async () => {
+  const f = await playerFixture();
+  const cursor = () => f.player.canvas.getAttribute('data-floe-desktop-cursor');
+  assert.equal(cursor(), undefined);
+  f.player.schedule(f.frame(1), { generation: 1, frame_id: 1, width: 2, height: 2, cursor: 'separate' });
+  assert.equal(cursor(), 'separate');
+  f.player.schedule(f.frame(2), { generation: 1, frame_id: 2, width: 2, height: 2, cursor: 'embedded' });
+  assert.equal(cursor(), 'embedded');
+  f.player.schedule(f.frame(1), { generation: 1, frame_id: 1, width: 2, height: 2, cursor: 'separate' });
+  assert.equal(cursor(), 'embedded');
+  f.player.reset(2);
+  assert.equal(cursor(), undefined);
+  f.player.schedule(f.frame(3), { generation: 1, frame_id: 3, width: 2, height: 2, cursor: 'separate' });
+  assert.equal(cursor(), undefined);
+  f.player.schedule(f.frame(1), { generation: 2, frame_id: 1, width: 2, height: 2 });
+  assert.equal(cursor(), 'embedded', 'legacy frames never promise cursor-free pixels');
+  assert.throws(() => unpackDesktopMedia(packet({ cursor: 'guess' })), /MEDIA_INVALID/);
+  f.player.close();
+});
 
 test('frames replaced before rendering grant only the newest cumulative receipt', async () => {
   const f=await playerFixture();

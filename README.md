@@ -469,6 +469,23 @@ X server. Cursor shapes are cached until XFixes reports a change, and pointer
 positions remain fresh. Unsupported layouts and protocol failures stop capture;
 there is no switch to another graphical session.
 
+Each desktop frame declares `cursor: separate` or `cursor: embedded`. The player
+sets `data-floe-desktop-cursor` only after drawing a current frame; consumers show
+the local pointer only for separate control frames and hide it for embedded or
+view-only frames. Reset removes presentation and shape together. Cursor packets
+never grant painted input authority. Missing legacy presentation is treated as
+embedded, since those frames cannot promise cursor-free pixels.
+
+X11 control streams send XFixes shapes separately. Wayland selects portal cursor
+metadata only when advertised, consumes pixels and bounded `SPA_META_Cursor`
+through one public PipeWire stream, and uses the existing shape channel for
+control. View-only capture composites that same shape at its remote position.
+Position-only updates retain the current bitmap; hidden cursors remain hidden.
+An unavailable metadata capability retains embedded capture. macOS display
+capture also declares embedded presentation. These paths display one cursor;
+embedded capture does not promise immediate local movement. Metadata layout or
+capture failure stops the affected stream instead of silently losing its cursor.
+
 GStreamer encodes H.264 and system-output Opus from the selected backend.
 Acquisition may sample twice per negotiated frame interval to observe compositor
 commits, but unchanged pixels are discarded before encoding. Only the latest

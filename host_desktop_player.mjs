@@ -10,6 +10,7 @@ export function unpackDesktopMedia(buffer) {
   if (header.type === 'frame') {
     if (!Number.isSafeInteger(header.frame_id) || header.frame_id < 1 ||
         !['h264', 'png'].includes(header.codec) ||
+        (header.cursor !== undefined && !['embedded', 'separate'].includes(header.cursor)) ||
         !Number.isInteger(header.width) || header.width < 2 || header.width > 8192 ||
         !Number.isInteger(header.height) || header.height < 2 || header.height > 8192 ||
         header.width * header.height > 16 * 1024 * 1024) throw new Error('MEDIA_INVALID');
@@ -78,6 +79,7 @@ export class HostDesktopPlayer {
     this.lastPaintHeader = null;
     this.cursorPending = null;
     this.canvas.style?.removeProperty('--floe-desktop-cursor');
+    this.canvas.removeAttribute('data-floe-desktop-cursor');
     if (this.decoder && this.decoder.state !== 'closed') this.decoder.close();
     this.decoder = null;
     if (this.audioDecoder && this.audioDecoder.state !== 'closed') this.audioDecoder.close();
@@ -231,6 +233,9 @@ export class HostDesktopPlayer {
       this.fail('RENDER_FAILED'); return;
     } finally { image.close(); }
     if (!this.order.paint(header)) return;
+    // Cursor packets provide shape only. Pixel ownership changes only with a
+    // successfully drawn, current frame; unlabelled legacy pixels embed it.
+    this.canvas.setAttribute('data-floe-desktop-cursor', header.cursor ?? 'embedded');
     const now = performance.now();
     if (this.lastDraw) { this.intervals.push(now - this.lastDraw); this.draws++; }
     else { this.lastStatistic = now; this.draws = 0; }

@@ -208,6 +208,7 @@ class PortalSession:
         self.start_lease = None
         self.clipboard = False
         self.devices = 0
+        self.cursor_mode = 2
         self.clipboard_changed = clipboard_changed
         self.clipboard_enabled = False
         self.clipboard_epoch = 0
@@ -226,14 +227,17 @@ class PortalSession:
         self.subscriptions.append(bus.signal_subscribe(self.NAME, self.CLIPBOARD, 'SelectionTransfer',
             self.PATH, None, Gio.DBusSignalFlags.NONE, self._selection_transfer))
 
-    def version(self, interface):
+    def property(self, interface, name):
         try:
             value = self.bus.call_sync(self.NAME, self.PATH, 'org.freedesktop.DBus.Properties',
-                'Get', self.GLib.Variant('(ss)', (interface, 'version')),
+                'Get', self.GLib.Variant('(ss)', (interface, name)),
                 self.GLib.VariantType.new('(v)'), self.Gio.DBusCallFlags.NONE, 3000, None)
             return value.unpack()[0]
         except self.GLib.Error:
             return 0
+
+    def version(self, interface):
+        return self.property(interface, 'version')
 
     def _closed(self, _bus, _sender, path, _interface, _signal, _parameters):
         if path == self.session and not self.closed:
@@ -334,8 +338,10 @@ class PortalSession:
             if error:
                 done(None, error)
                 return
+            available = self.property(self.SCREEN, 'AvailableCursorModes')
+            self.cursor_mode = 4 if type(available) is int and available & 4 else 2
             sources = {'types': self.GLib.Variant('u', 1), 'multiple': self.GLib.Variant('b', True),
-                'cursor_mode': self.GLib.Variant('u', 2)}
+                'cursor_mode': self.GLib.Variant('u', self.cursor_mode)}
             self._request(self.SCREEN, 'SelectSources', ('o', (self.session,)), sources, selected_sources)
 
         def selected_sources(_result, error):

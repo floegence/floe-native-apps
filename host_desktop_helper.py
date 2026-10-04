@@ -310,7 +310,8 @@ class HostDesktop:
         self.media = media
         try:
             if self.identity.backend == 'wayland':
-                media.start_pipewire(self.backend.fd, self.streams[display_id])
+                media.start_pipewire(self.backend.fd, self.streams[display_id],
+                    metadata_cursor=self.backend.cursor_mode == 4, local_cursor=mode == 'control')
             else:
                 media.start_x11(self.backend.name, (selected['x'], selected['y'], selected['width'], selected['height']), local_cursor=mode == 'control')
             self.status('active')

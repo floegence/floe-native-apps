@@ -12,7 +12,7 @@ import (
 
 func TestHostDesktopFramingKeepsControlAndMediaBoundaries(t *testing.T) {
 	var stream bytes.Buffer
-	frame := HostDesktopMessage{Version: 1, Type: "frame", Generation: 2, FrameID: 3, Codec: "h264", Width: 1920, Height: 1080, Key: true, Data: []byte{0, 0, 0, 1, 0x65}}
+	frame := HostDesktopMessage{Version: 1, Type: "frame", Generation: 2, FrameID: 3, Codec: "h264", Width: 1920, Height: 1080, Key: true, Cursor: "separate", Data: []byte{0, 0, 0, 1, 0x65}}
 	if err := WriteHostDesktopMessage(&stream, frame); err != nil {
 		t.Fatal(err)
 	}
@@ -20,7 +20,7 @@ func TestHostDesktopFramingKeepsControlAndMediaBoundaries(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, err := ReadHostDesktopMessage(&stream)
-	if err != nil || !bytes.Equal(got.Data, frame.Data) || got.FrameID != 3 {
+	if err != nil || !bytes.Equal(got.Data, frame.Data) || got.FrameID != 3 || got.Cursor != "separate" {
 		t.Fatalf("frame boundary: %#v, %v", got, err)
 	}
 	got, err = ReadHostDesktopMessage(&stream)
@@ -121,5 +121,12 @@ func TestHostDesktopAuthorizationMetadataAndExplicitForget(t *testing.T) {
 	}
 	if _, err := ParseHostDesktopCommand([]byte(`{"version":1,"id":1,"method":"forget_authorization","generation":1}`)); err == nil {
 		t.Fatal("live-session forget accepted")
+	}
+}
+
+func TestHostDesktopRejectsUnknownCursorPresentation(t *testing.T) {
+	frame := HostDesktopMessage{Version: 1, Type: "frame", Generation: 1, FrameID: 1, Codec: "png", Width: 2, Height: 2, Data: []byte("pixels"), Cursor: "guess"}
+	if err := WriteHostDesktopMessage(&bytes.Buffer{}, frame); !errors.Is(err, ErrHostDesktopProtocol) {
+		t.Fatalf("accepted unknown cursor presentation: %v", err)
 	}
 }

@@ -115,7 +115,7 @@ class PortalGrantTests(unittest.TestCase):
 
 
 class PortalRecoveryTests(unittest.TestCase):
-    def run_portal(self, directory, failure=None, version=2, replacement='new-token'):
+    def run_portal(self, directory, failure=None, version=2, replacement='new-token', cursor_modes=7):
         grant = PortalGrant(directory)
         gio = SimpleNamespace(DBusSignalFlags=SimpleNamespace(NONE=0), DBusCallFlags=SimpleNamespace(NONE=0))
         loop = SimpleNamespace(Error=RuntimeError, Variant=lambda signature, value: (signature, value), VariantType=SimpleNamespace(new=lambda v: v))
@@ -125,7 +125,7 @@ class PortalRecoveryTests(unittest.TestCase):
                 raise RuntimeError('fixture')
             return SimpleNamespace(unpack=lambda: (0,)), SimpleNamespace(get=lambda _: os.open(os.devnull, os.O_RDONLY))
         bus = SimpleNamespace(signal_subscribe=lambda *_: 1, signal_unsubscribe=lambda _: None,
-            call_sync=lambda *_: None, call_with_unix_fd_list_sync=pipewire)
+            call_sync=lambda *_: SimpleNamespace(unpack=lambda: (cursor_modes,)), call_with_unix_fd_list_sync=pipewire)
         portal = PortalSession(bus, gio, loop, grant, states.append)
         portal.version = lambda interface: 0 if interface == portal.CLIPBOARD else version
         def request(_interface, method, _prefix, options, done):
@@ -142,6 +142,13 @@ class PortalRecoveryTests(unittest.TestCase):
         portal.start(True, lambda streams, error: results.append(error))
         portal.close()
         return calls, results, states
+
+    def test_metadata_cursor_is_selected_only_when_advertised(self):
+        for available, expected in ((7, 4), (4, 4), (3, 2), (2, 2), (0, 2), (True, 2)):
+            with self.subTest(available=available), tempfile.TemporaryDirectory() as directory:
+                calls, results, _ = self.run_portal(directory, cursor_modes=available)
+                self.assertEqual(results, [None])
+                self.assertEqual(dict(calls)['SelectSources']['cursor_mode'], ('u', expected))
 
     def test_request_failures_never_erase_evidence_or_replay_submitted_tokens(self):
         for failure in ('CreateSession', 'SelectDevices', 'SelectSources', 'Start'):

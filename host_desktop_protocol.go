@@ -111,6 +111,7 @@ type HostDesktopMessage struct {
 	Profile       string                   `json:"profile,omitempty"`
 	Description   string                   `json:"description,omitempty"`
 	Encoder       string                   `json:"encoder,omitempty"`
+	Cursor        string                   `json:"cursor,omitempty"`
 	Width         int                      `json:"width,omitempty"`
 	Height        int                      `json:"height,omitempty"`
 	HotX          int                      `json:"hot_x,omitempty"`
@@ -286,6 +287,9 @@ func (message HostDesktopMessage) valid() bool {
 	}
 	switch message.Type {
 	case "frame":
+		if message.Cursor != "" && message.Cursor != "embedded" && message.Cursor != "separate" {
+			return false
+		}
 		return desktopID(message.Generation) && desktopID(message.FrameID) && message.Width >= 2 && message.Width <= 8192 && message.Height >= 2 && message.Height <= 8192 && message.Width*message.Height <= 16<<20 && message.Bytes > 0 && (message.Codec == "h264" || message.Codec == "png") && message.Timestamp >= 0
 	case "cursor":
 		return desktopID(message.Generation) && message.Codec == "png" && message.Width >= 1 && message.Width <= 512 && message.Height >= 1 && message.Height <= 512 && message.HotX >= 0 && message.HotX < message.Width && message.HotY >= 0 && message.HotY < message.Height && message.Bytes > 0 && message.Bytes <= 2<<20

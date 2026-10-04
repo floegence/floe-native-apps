@@ -138,7 +138,8 @@ class CursorPainter:
         self.close()
         if not width or not height:
             return
-        # XFixes ARGB32 pixels are premultiplied, matching Cairo ARGB32.
+        # XFixes and converted PipeWire cursor pixels use premultiplied BGRA,
+        # matching Cairo ARGB32 on the supported little-endian hosts.
         self.pixels = bytearray(pixels)
         self.surface = self.image(self.pixels, 0, width, height)
 
@@ -150,7 +151,7 @@ class CursorPainter:
         target = context = None
         try:
             mapped.data[:] = pixels
-            # RGB24 on these explicitly validated little-endian X11 visuals is
+            # RGB24 on these explicitly validated little-endian desktop pixels is
             # BGRx. Never describe its unused byte as meaningful alpha.
             target = self.image(mapped.data, 1, width, height)
             context = self.library.cairo_create(target)
@@ -308,7 +309,7 @@ class Surface:
 
 
 def cursor_png(pixels, width, height):
-    # XFixes is premultiplied native-endian BGRA; PNG requires straight RGBA.
+    # Capture cursors are premultiplied BGRA; PNG requires straight RGBA.
     rgba = bytearray(len(pixels))
     for offset in range(0, len(pixels), 4):
         b, g, r, a = pixels[offset:offset + 4]

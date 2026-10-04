@@ -268,6 +268,7 @@ public final class NativeDesktopSession {
                               message["generation"] as? Int == self.generation, Self.consoleReadiness == "ready" else { return }
                         var packet = message
                         packet["display_id"] = String(target)
+                        if message["type"] as? String == "frame" { packet["cursor"] = "embedded" }
                         if let frame = message["frame_id"] as? Int { self.sentFrames.insert(frame) }
                         self.emit(packet)
                     }
