@@ -1,5 +1,7 @@
 import ctypes as C
+import mmap
 import struct
+import tempfile
 import unittest
 
 from host_desktop_contract import DesktopError
@@ -58,6 +60,7 @@ class PipeWireBufferTests(unittest.TestCase):
         capture.previous = capture.previous_cursor = capture.previous_shape = None
         capture.previous_sequence = None
         capture.painter = None
+        capture.mappings = {}
         frames, shapes = [], []
         capture.Gst = SimpleNamespace(Buffer=SimpleNamespace(new_wrapped=lambda pixels: pixels))
         capture.captured = lambda pixels, width, height, timestamp: frames.append(pixels)
@@ -165,6 +168,71 @@ class PipeWireBufferTests(unittest.TestCase):
         for pixels, stride, offset in ((bytes(15), 8, 0), (bytes(16), -8, 0), (bytes(16), 8, 1)):
             with self.subTest(stride=stride, offset=offset), self.assertRaisesRegex(DesktopError, 'CAPTURE_LAYOUT_UNSUPPORTED'):
                 self.deliver(capture, pixels, bytes(28), stride=stride, offset=offset)
+
+    def test_producer_memfd_without_mappable_flag_uses_bounded_readonly_mapping(self):
+        from host_desktop_pipewire import _Buffer, _Data, _Meta, _Chunk, _PWBuffer
+        capture, frames, _ = self.fixture()
+        cursor = C.create_string_buffer(bytes(28))
+        metas = (_Meta * 1)(_Meta(5, 28, C.addressof(cursor)))
+        chunk = _Chunk(4, 16, 8, 0)
+        with tempfile.TemporaryFile() as source:
+            prefix = mmap.ALLOCATIONGRANULARITY + 7
+            source.write(bytes(prefix) + b'pad!' + bytes([17]) * 16)
+            source.flush()
+            # Mutter 46 with PipeWire 1.0.5 supplies READWRITE (3), without
+            # MAPPABLE (8). PipeWire 1.4 leaves its data pointer unset.
+            datas = (_Data * 1)(_Data(2, 3, source.fileno(), prefix, 20, None, C.pointer(chunk)))
+            buffer = _Buffer(1, 1, metas, datas)
+            capture._buffer(buffer)
+            self.assertEqual(frames, [bytes([17]) * 16])
+            self.assertEqual(len(capture.mappings), 1)
+            mapping = next(iter(capture.mappings.values()))[1]
+            with self.assertRaises(TypeError):
+                mapping[0] = 0
+            source.seek(prefix + 4)
+            source.write(bytes([29]) * 16)
+            source.flush()
+            capture._buffer(buffer)
+            self.assertEqual(frames, [bytes([17]) * 16, bytes([29]) * 16])
+            self.assertIs(next(iter(capture.mappings.values()))[1], mapping)
+            datas[0].mapoffset += 1
+            with self.assertRaisesRegex(DesktopError, 'CAPTURE_LAYOUT_UNSUPPORTED'):
+                capture._buffer(buffer)
+            datas[0].mapoffset -= 1
+            received = _PWBuffer(C.pointer(buffer))
+            capture._remove_buffer(None, C.pointer(received))
+            self.assertTrue(mapping.closed)
+            self.assertEqual(capture.mappings, {})
+            self.assertFalse(source.closed, 'Capture must not close the producer descriptor')
+            # A removed buffer address may be reused by a successor allocation.
+            capture._buffer(buffer)
+            replacement = next(iter(capture.mappings.values()))[1]
+            self.assertIsNot(replacement, mapping)
+            capture.closed = capture.started = capture.initialized = False
+            capture.loop = capture.stream = capture.core = capture.context = None
+            capture.close()
+            capture.close()
+            self.assertTrue(replacement.closed)
+            self.assertEqual(capture.mappings, {})
+            self.assertFalse(source.closed)
+
+    def test_unmapped_memfd_rejects_invalid_backing_size_before_reading(self):
+        from host_desktop_pipewire import _Buffer, _Data, _Meta, _Chunk
+        capture, frames, _ = self.fixture()
+        cursor = C.create_string_buffer(bytes(28))
+        metas = (_Meta * 1)(_Meta(5, 28, C.addressof(cursor)))
+        chunk = _Chunk(0, 16, 8, 0)
+        with tempfile.TemporaryFile() as source:
+            source.write(bytes(16))
+            source.flush()
+            for kind, fd, offset, maximum in ((2, -1, 0, 16), (2, source.fileno(), 1, 16),
+                    (2, source.fileno(), 0, 268435457), (1, source.fileno(), 0, 16)):
+                with self.subTest(kind=kind, offset=offset, maximum=maximum):
+                    datas = (_Data * 1)(_Data(kind, 3, fd, offset, maximum, None, C.pointer(chunk)))
+                    with self.assertRaisesRegex(DesktopError, 'CAPTURE_LAYOUT_UNSUPPORTED'):
+                        capture._buffer(_Buffer(1, 1, metas, datas))
+            self.assertEqual(frames, [])
+            self.assertEqual(capture.mappings, {})
 
     def test_view_mode_composites_cursor_movement_over_retained_pixels(self):
         capture, frames, _ = self.fixture(local=False)

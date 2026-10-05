@@ -42,14 +42,18 @@ def capture(args):
                     time.sleep(0.02)
                 if errors or not frames:
                     raise RuntimeError({'errors': errors, 'frames': len(frames)})
+                if args.memfd:
+                    assert stream.mappings, 'Producer-owned MemFd was not mapped by the capture client'
                 if mode == 'control':
                     assert len(frames) == 1 and frames[0]['background'] and len(shapes) > 1
                 else:
                     assert len(frames) > 1 and not any(f['background'] for f in frames) and not shapes
                 print(json.dumps({'mode': mode, 'frames': len(frames), 'shapes': len(shapes),
-                    'size': frames[0]['size'], 'errors': errors}), flush=True)
+                    'size': frames[0]['size'], 'errors': errors,
+                    'allocation': 'memfd' if args.memfd else 'mapped'}), flush=True)
             finally:
                 stream.close()
+                assert not stream.mappings, 'Capture mappings survived stream closure'
     finally:
         connection.close()
 
@@ -71,14 +75,14 @@ def run(args):
                 if daemon.poll() is not None or time.monotonic() > deadline:
                     raise RuntimeError(Path(directory, 'daemon.log').read_text())
                 time.sleep(0.05)
-            source = subprocess.Popen([str(Path(args.source).resolve())], env=env,
+            source = subprocess.Popen([str(Path(args.source).resolve())] + (['--memfd'] if args.memfd else []), env=env,
                 stdout=subprocess.PIPE, text=True, bufsize=1)
             processes.append(source)
             if not select.select([source.stdout], [], [], 10)[0]:
                 raise RuntimeError('Synthetic source did not register')
             node = int(source.stdout.readline())
             client = subprocess.Popen([helper + '/python3', str(Path(__file__).resolve()),
-                '--helper', helper, '--node', str(node)], env=env, stdout=subprocess.PIPE,
+                '--helper', helper, '--node', str(node)] + (['--memfd'] if args.memfd else []), env=env, stdout=subprocess.PIPE,
                 text=True, bufsize=1)
             processes.append(client)
             results = []
@@ -126,5 +130,6 @@ if __name__ == '__main__':
     parser.add_argument('--helper', required=True)
     parser.add_argument('--source')
     parser.add_argument('--node', type=int)
+    parser.add_argument('--memfd', action='store_true')
     arguments = parser.parse_args()
     capture(arguments) if arguments.node is not None else run(arguments)

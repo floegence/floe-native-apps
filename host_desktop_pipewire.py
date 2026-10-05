@@ -2,10 +2,12 @@
 
 GStreamer's pipewiresrc does not expose SPA_META_Cursor. One native stream owns
 both pixels and metadata; no second portal grant or private Gst layout is used.
-The pinned libpipewire client maps negotiated system-memory buffers. All bytes
-are copied before returning each buffer to PipeWire.
+System-memory buffers are mapped by libpipewire or by this client when older
+producers omit the MAPPABLE flag on MemFd. All bytes are copied before returning
+each buffer to PipeWire.
 """
 import ctypes as C
+import mmap
 import os
 import struct
 import time
@@ -154,6 +156,7 @@ class PipeWireCapture:
         self.initialized = False
         self.loop = self.context = self.core = self.stream = None
         self.painter = None
+        self.mappings = {}
         self.pw = C.CDLL('libpipewire-0.3.so.0')
         p, i, u = C.c_void_p, C.c_int, C.c_uint32
         for name, result, arguments in [
@@ -173,9 +176,11 @@ class PipeWireCapture:
             _bind(self.pw, name, result, *arguments)
         self.callbacks = [C.CFUNCTYPE(None, p, i, i, C.c_char_p)(self._state),
                           C.CFUNCTYPE(None, p, u, p)(self._format),
-                          C.CFUNCTYPE(None, p)(self._process)]
+                          C.CFUNCTYPE(None, p)(self._process),
+                          C.CFUNCTYPE(None, p, C.POINTER(_PWBuffer))(self._remove_buffer)]
         self.events = _Events(version=2, state_changed=C.cast(self.callbacks[0], p),
-            param_changed=C.cast(self.callbacks[1], p), process=C.cast(self.callbacks[2], p))
+            param_changed=C.cast(self.callbacks[1], p), process=C.cast(self.callbacks[2], p),
+            remove_buffer=C.cast(self.callbacks[3], p))
         # spa_hook contains list, callbacks, removed and private pointers (48 bytes).
         self.hook = (C.c_void_p * 6)()
         try:
@@ -271,6 +276,38 @@ class PipeWireCapture:
             finally:
                 self.pw.pw_stream_queue_buffer(self.stream, received)
 
+    def _remove_buffer(self, _data, received):
+        entry = self.mappings.pop(C.addressof(received.contents.buffer.contents), None)
+        if entry:
+            entry[1].close()
+
+    def _pixel_view(self, buffer, data, offset, length):
+        if data.data:
+            return memoryview((C.c_ubyte * length).from_address(data.data + offset)).cast('B')
+        # Older producers supply MemFd without SPA_DATA_FLAG_MAPPABLE, so newer
+        # libpipewire leaves data unset even with MAP_BUFFERS. Map only that
+        # system-memory plane, read-only, for the owned buffer's lifetime.
+        if (data.type != 2 or not data.flags & 1 or data.fd < 0 or
+                not 0 < data.maxsize <= 256 * 1024 * 1024):
+            raise DesktopError('CAPTURE_LAYOUT_UNSUPPORTED')
+        key = C.addressof(buffer)
+        identity = (data.fd, data.mapoffset, data.maxsize)
+        entry = self.mappings.get(key)
+        if entry is None:
+            try:
+                if data.mapoffset + data.maxsize > os.fstat(data.fd).st_size:
+                    raise DesktopError('CAPTURE_LAYOUT_UNSUPPORTED')
+                aligned = data.mapoffset // mmap.ALLOCATIONGRANULARITY * mmap.ALLOCATIONGRANULARITY
+                mapping = mmap.mmap(data.fd, data.mapoffset - aligned + data.maxsize,
+                                    access=mmap.ACCESS_READ, offset=aligned)
+            except (OSError, ValueError, OverflowError) as error:
+                raise DesktopError('CAPTURE_LAYOUT_UNSUPPORTED') from error
+            entry = self.mappings[key] = (identity, mapping)
+        elif entry[0] != identity:
+            raise DesktopError('CAPTURE_LAYOUT_UNSUPPORTED')
+        start = data.mapoffset % mmap.ALLOCATIONGRANULARITY + offset
+        return memoryview(entry[1])[start:start + length]
+
     def _buffer(self, buffer):
         if (not self.width or not 1 <= buffer.n_metas <= 64 or not buffer.metas or
                 buffer.n_datas != 1 or not buffer.datas):
@@ -327,7 +364,7 @@ class PipeWireCapture:
             row = self.width * 4
             stride = chunk.stride or row
             length = (self.height - 1) * stride + row
-            if (data.type not in (1, 2) or not data.data or stride < row or stride > row + 65536 or
+            if (data.type not in (1, 2) or stride < row or stride > row + 65536 or
                     length > 256 * 1024 * 1024 or chunk.offset + length > data.maxsize or length > chunk.size):
                 raise DesktopError('CAPTURE_LAYOUT_UNSUPPORTED')
             # Damage is relative to the preceding frame, not to an arbitrary
@@ -336,25 +373,23 @@ class PipeWireCapture:
             # skipped/corrupt frame or an uninitialized baseline.
             trusted_damage = self.previous is not None and continuous
             regions = damage if trusted_damage else None
-            address = data.data + chunk.offset
             unchanged = regions == []
-            if not unchanged and self.previous is not None and self.format in (8, 12):
-                mapped = memoryview((C.c_ubyte * length).from_address(address)).cast('B')
-                prior = memoryview(self.previous)
-                if regions is not None and sum(h for _, _, _, h in regions) <= 128:
-                    unchanged = all(self.equal(mapped[y * stride + x * 4:y * stride + (x + w) * 4],
-                        prior[y * row + x * 4:y * row + (x + w) * 4])
-                        for x, top, w, h in regions for y in range(top, top + h))
-                elif stride == row:
-                    unchanged = self.equal(mapped, prior)
-            if not unchanged:
-                raw = C.string_at(address, length)
-                pixels = raw if stride == row else b''.join(raw[y * stride:y * stride + row] for y in range(self.height))
-                if self.format in (7, 11):
-                    converted = bytearray(pixels)
-                    converted[0::4], converted[2::4] = pixels[2::4], pixels[0::4]
-                    pixels = bytes(converted)
-                changed = self.previous is None or not self.equal(pixels, self.previous)
+            with self._pixel_view(buffer, data, chunk.offset, length) as mapped:
+                if not unchanged and self.previous is not None and self.format in (8, 12):
+                    with memoryview(self.previous) as prior:
+                        if regions is not None and sum(h for _, _, _, h in regions) <= 128:
+                            unchanged = all(self.equal(mapped[y * stride + x * 4:y * stride + (x + w) * 4],
+                                prior[y * row + x * 4:y * row + (x + w) * 4])
+                                for x, top, w, h in regions for y in range(top, top + h))
+                        elif stride == row:
+                            unchanged = self.equal(mapped, prior)
+                if not unchanged:
+                    pixels = mapped.tobytes() if stride == row else b''.join(mapped[y * stride:y * stride + row] for y in range(self.height))
+                    if self.format in (7, 11):
+                        converted = bytearray(pixels)
+                        converted[0::4], converted[2::4] = pixels[2::4], pixels[0::4]
+                        pixels = bytes(converted)
+                    changed = self.previous is None or not self.equal(pixels, self.previous)
         cursor = self.cursor
         shape = (cursor.visible, cursor.width, cursor.height, cursor.hotspot, cursor.pixels)
         placement = (cursor.visible, cursor.position, shape)
@@ -393,6 +428,9 @@ class PipeWireCapture:
         if self.stream:
             self.pw.pw_stream_destroy(self.stream)
             self.stream = None
+        for _, mapping in self.mappings.values():
+            mapping.close()
+        self.mappings.clear()
         if self.core:
             self.pw.pw_core_disconnect(self.core)
             self.core = None

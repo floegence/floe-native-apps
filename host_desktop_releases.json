@@ -1414,5 +1414,225 @@
         "executable": true
       }
     }
+  },
+  {
+    "version": "v0.22.12",
+    "id": "alpine-3.23-host-desktop-1-amd64",
+    "digest": "9a02cad8da1243bff57989b7920d541a1ed7a147b5877e83ed8781777c8a16de",
+    "architecture": "amd64",
+    "files": {
+      "desktop-nvenc": {
+        "sha256": "0d7628f6d06c35653c92714e5b275a3369c5e1b6278736b52bed5e00ca4a69eb",
+        "size_bytes": 14232,
+        "common": false,
+        "executable": true
+      },
+      "dynlink_cuda.h": {
+        "sha256": "2c74cf9b0ace0503ca18d2c43645d6cb1ec0dd7ea7163f7880bba5141586f275",
+        "size_bytes": 21936,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_contract.py": {
+        "sha256": "49dcdb8c480be4b08043f314fb46fd8cc051f8fa970e759f7b2181910b4e6442",
+        "size_bytes": 3145,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_helper.py": {
+        "sha256": "42ab2e13befae24180bed269678a4543aab289988e2aa8d5c78c53a21ff20d77",
+        "size_bytes": 25457,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_identity.py": {
+        "sha256": "2a19207530ef0d178c78934f8103f45a8b1e54b53905dd91b8d70eaa29c8d945",
+        "size_bytes": 7240,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_input.py": {
+        "sha256": "f45bc4ab354cc926fbf114b5c131c64fb669bcb4db76fc4ece9cec5813a0784f",
+        "size_bytes": 3113,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_media.py": {
+        "sha256": "8fd41a6f1477cfaa459db300d625ec88c26f8b82f643cb2ab4bbd0614d1eaa37",
+        "size_bytes": 26059,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_nvenc.py": {
+        "sha256": "d86783f0122a177d2cd547d580e5a0b68b2fa624f2f2f414f932a85163bdc705",
+        "size_bytes": 4216,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_pipewire.py": {
+        "sha256": "89e8f202e8a03de2e07b8b021a9c3031b27edbc3b0fe3ae03defec03a459bda6",
+        "size_bytes": 20449,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_portal.py": {
+        "sha256": "b076fd1bfae3dfa22de3bf5a535dd02a67e9797221c475b63f5d32beabdb22be",
+        "size_bytes": 26485,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_selfcheck.py": {
+        "sha256": "f06df3621116255468b60f1b8be05b57a6e1293bcd8b6e39dc76cda162be4931",
+        "size_bytes": 5617,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_wire.py": {
+        "sha256": "6729da1deed9728acf2e902239ea7c25bd78b69281e5f534eaaf7e5cd640e2b4",
+        "size_bytes": 3421,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_x11.py": {
+        "sha256": "be28d0c2e72a1e6e1fd878bfc3e40d723db985ce2f2e4b45507e9c3d44b9bfe5",
+        "size_bytes": 4762,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_xcapture.py": {
+        "sha256": "d439657a071ae29610499d8e24184de74c456f6f0c15c5ecf0588b9896c59325",
+        "size_bytes": 18068,
+        "common": false,
+        "executable": false
+      },
+      "nvEncodeAPI.h": {
+        "sha256": "dbdaa8bcbc2b9325bd24bc68b36170a8432411518040e8d4c8421608cf217425",
+        "size_bytes": 291178,
+        "common": false,
+        "executable": false
+      },
+      "nvenc-build.json": {
+        "sha256": "7b4b0e14b2ad503d957ebc09d581dafa3fd19bc5b93ae411dfb688842296fb75",
+        "size_bytes": 12587,
+        "common": false,
+        "executable": false
+      },
+      "python3": {
+        "sha256": "a93c466ebc9ed28634dc7439b9dba55696a2e5901a9e9327e99c266a9a19cca7",
+        "size_bytes": 812,
+        "common": false,
+        "executable": true
+      }
+    }
+  },
+  {
+    "version": "v0.22.12",
+    "id": "alpine-3.23-host-desktop-1-arm64",
+    "digest": "a0dbeb611dfebd5f4c3594c45042f3352f614066fef5cd03db0364af6c6f933c",
+    "architecture": "arm64",
+    "files": {
+      "desktop-nvenc": {
+        "sha256": "84b5939d95510f18b221b4d72fe3c1b759561c1843c6ca8d03de968aab1e8cc1",
+        "size_bytes": 14160,
+        "common": false,
+        "executable": true
+      },
+      "dynlink_cuda.h": {
+        "sha256": "2c74cf9b0ace0503ca18d2c43645d6cb1ec0dd7ea7163f7880bba5141586f275",
+        "size_bytes": 21936,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_contract.py": {
+        "sha256": "49dcdb8c480be4b08043f314fb46fd8cc051f8fa970e759f7b2181910b4e6442",
+        "size_bytes": 3145,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_helper.py": {
+        "sha256": "42ab2e13befae24180bed269678a4543aab289988e2aa8d5c78c53a21ff20d77",
+        "size_bytes": 25457,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_identity.py": {
+        "sha256": "2a19207530ef0d178c78934f8103f45a8b1e54b53905dd91b8d70eaa29c8d945",
+        "size_bytes": 7240,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_input.py": {
+        "sha256": "f45bc4ab354cc926fbf114b5c131c64fb669bcb4db76fc4ece9cec5813a0784f",
+        "size_bytes": 3113,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_media.py": {
+        "sha256": "8fd41a6f1477cfaa459db300d625ec88c26f8b82f643cb2ab4bbd0614d1eaa37",
+        "size_bytes": 26059,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_nvenc.py": {
+        "sha256": "d86783f0122a177d2cd547d580e5a0b68b2fa624f2f2f414f932a85163bdc705",
+        "size_bytes": 4216,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_pipewire.py": {
+        "sha256": "89e8f202e8a03de2e07b8b021a9c3031b27edbc3b0fe3ae03defec03a459bda6",
+        "size_bytes": 20449,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_portal.py": {
+        "sha256": "b076fd1bfae3dfa22de3bf5a535dd02a67e9797221c475b63f5d32beabdb22be",
+        "size_bytes": 26485,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_selfcheck.py": {
+        "sha256": "f06df3621116255468b60f1b8be05b57a6e1293bcd8b6e39dc76cda162be4931",
+        "size_bytes": 5617,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_wire.py": {
+        "sha256": "6729da1deed9728acf2e902239ea7c25bd78b69281e5f534eaaf7e5cd640e2b4",
+        "size_bytes": 3421,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_x11.py": {
+        "sha256": "be28d0c2e72a1e6e1fd878bfc3e40d723db985ce2f2e4b45507e9c3d44b9bfe5",
+        "size_bytes": 4762,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_xcapture.py": {
+        "sha256": "d439657a071ae29610499d8e24184de74c456f6f0c15c5ecf0588b9896c59325",
+        "size_bytes": 18068,
+        "common": false,
+        "executable": false
+      },
+      "nvEncodeAPI.h": {
+        "sha256": "dbdaa8bcbc2b9325bd24bc68b36170a8432411518040e8d4c8421608cf217425",
+        "size_bytes": 291178,
+        "common": false,
+        "executable": false
+      },
+      "nvenc-build.json": {
+        "sha256": "6a086f106a89897c7b1f00a89f5f3b104676800b16983a3baea357075978c054",
+        "size_bytes": 12322,
+        "common": false,
+        "executable": false
+      },
+      "python3": {
+        "sha256": "f8fdd44e9bed7ff338e69e49e708196cbb30dfed86470ac5141d831780e5ad15",
+        "size_bytes": 813,
+        "common": false,
+        "executable": true
+      }
+    }
   }
 ]

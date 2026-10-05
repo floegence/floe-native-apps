@@ -384,6 +384,9 @@ jobs:
           python3 qualification/host_desktop_pipewire.py \
             --helper "$root/floe/host-desktop" --source "$RUNNER_TEMP/pipewire-source" \
             2>&1 | tee "$RUNNER_TEMP/host-desktop-evidence/pipewire.log"
+          python3 qualification/host_desktop_pipewire.py --memfd \
+            --helper "$root/floe/host-desktop" --source "$RUNNER_TEMP/pipewire-source" \
+            2>&1 | tee "$RUNNER_TEMP/host-desktop-evidence/pipewire-memfd.log"
           python3 qualification/host_desktop_portal_input.py --helper "$root/floe/host-desktop" \
             2>&1 | tee "$RUNNER_TEMP/host-desktop-evidence/portal-input.log"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

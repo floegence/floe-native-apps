@@ -1280,6 +1280,11 @@ does not claim compositor/application delivery. The same connection orders
 releases before session closure. SPA VideoDamage reduces mapped comparisons and
 skips unchanged copies only across contiguous header sequences with a retained
 baseline. Missing metadata, corruption and discontinuity require full pixels.
+Older producers such as Mutter 46 omit `SPA_DATA_FLAG_MAPPABLE` on MemFd.
+When the pinned PipeWire client leaves that system-memory plane unmapped, capture
+maps its bounded backing file read-only, retains the mapping for that buffer's
+lifetime, and releases it on removal or stream closure. The producer keeps its
+file descriptor; DMA-BUF remains outside this CPU capture contract.
 Static refinements wait for both changed pixels and input to settle; an input
 event during PNG encoding retires the candidate before transport admission.
 Already admitted H.264 dependencies and binary packets remain ordered. This is
@@ -1315,7 +1320,9 @@ require dedicated real-host evidence. No synthetic test certifies those claims.
 `qualification/host_desktop_pipewire.py` runs the installed client against a
 private synthetic PipeWire daemon on both native Linux architectures. It checks
 control/view/control transitions, retained portal-FD reuse, metadata negotiation,
-cursor-free control pixels and composited view pixels without requesting OS
+cursor-free control pixels and composited view pixels with both library-mapped
+buffers and producer-allocated MemFd lacking MAPPABLE. The latter uses Mutter 46's
+384-pixel cursor metadata allocation and verifies mapping cleanup, without requesting OS
 screen sharing or reading any user desktop. Weak-VM performance is observational,
 not a functional or distribution release threshold.
 `qualification/host_desktop_portal_input.py` uses a private synthetic D-Bus service

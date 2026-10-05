@@ -3,6 +3,10 @@
  * SPDX-License-Identifier: MIT
  * Adapted from PipeWire's src/examples/video-src.c. Synthetic pixels only.
  */
+#define _GNU_SOURCE
+#include <errno.h>
+#include <sys/mman.h>
+#include <unistd.h>
 #include <signal.h>
 #include <stdio.h>
 #include <string.h>
@@ -16,6 +20,8 @@ struct fixture {
     struct spa_source *timer;
     struct spa_video_info_raw format;
     uint64_t sequence;
+    bool memfd;
+    bool failed;
 };
 
 static void process(void *userdata) {
@@ -90,7 +96,8 @@ static void format(void *userdata, uint32_t id, const struct spa_pod *param) {
         SPA_PARAM_BUFFERS_buffers, SPA_POD_CHOICE_RANGE_Int(4, 2, 8),
         SPA_PARAM_BUFFERS_blocks, SPA_POD_Int(1),
         SPA_PARAM_BUFFERS_size, SPA_POD_Int(f->format.size.width * f->format.size.height * 4),
-        SPA_PARAM_BUFFERS_stride, SPA_POD_Int(f->format.size.width * 4));
+        SPA_PARAM_BUFFERS_stride, SPA_POD_Int(f->format.size.width * 4),
+        SPA_PARAM_BUFFERS_dataType, SPA_POD_CHOICE_FLAGS_Int(1 << SPA_DATA_MemFd));
     params[1] = spa_pod_builder_add_object(&builder, SPA_TYPE_OBJECT_ParamMeta, SPA_PARAM_Meta,
         SPA_PARAM_META_type, SPA_POD_Id(SPA_META_Header),
         SPA_PARAM_META_size, SPA_POD_Int(sizeof(struct spa_meta_header)));
@@ -99,8 +106,38 @@ static void format(void *userdata, uint32_t id, const struct spa_pod *param) {
         SPA_PARAM_META_size, SPA_POD_Int(sizeof(struct spa_meta_region) * 16));
     params[3] = spa_pod_builder_add_object(&builder, SPA_TYPE_OBJECT_ParamMeta, SPA_PARAM_Meta,
         SPA_PARAM_META_type, SPA_POD_Id(SPA_META_Cursor),
-        SPA_PARAM_META_size, SPA_POD_Int(sizeof(struct spa_meta_cursor) + sizeof(struct spa_meta_bitmap) + 16 * 16 * 4));
+        SPA_PARAM_META_size, /* Match Mutter 46's fixed cursor metadata allocation for producer-owned buffers. */
+        SPA_POD_Int(sizeof(struct spa_meta_cursor) + sizeof(struct spa_meta_bitmap) +
+            (f->memfd ? 384 * 384 : 16 * 16) * 4));
     pw_stream_update_params(f->stream, params, 4);
+}
+
+static void add_buffer(void *userdata, struct pw_buffer *b) {
+    struct fixture *f = userdata;
+    if (!f->memfd) return;
+    struct spa_data *data = &b->buffer->datas[0];
+    data->type = SPA_DATA_MemFd;
+    /* Reproduce older compositors: READWRITE without MAPPABLE. */
+    data->flags = SPA_DATA_FLAG_READWRITE;
+    data->mapoffset = 0;
+    data->maxsize = f->format.size.width * f->format.size.height * 4;
+    data->data = NULL;
+    data->fd = memfd_create("floe-qualification-pixels", MFD_CLOEXEC);
+    if (data->fd < 0 || ftruncate(data->fd, data->maxsize) < 0) goto error;
+    data->data = mmap(NULL, data->maxsize, PROT_READ | PROT_WRITE, MAP_SHARED, data->fd, 0);
+    if (data->data == MAP_FAILED) { data->data = NULL; goto error; }
+    return;
+error:
+    pw_stream_set_error(f->stream, -errno, "Synthetic buffer allocation failed");
+    f->failed = true;
+    pw_main_loop_quit(f->loop);
+}
+
+static void remove_buffer(void *userdata, struct pw_buffer *b) {
+    if (!((struct fixture *)userdata)->memfd) return;
+    struct spa_data *data = &b->buffer->datas[0];
+    if (data->data) munmap(data->data, data->maxsize);
+    if (data->fd >= 0) close(data->fd);
 }
 
 static void quit(void *userdata, int signal) {
@@ -110,7 +147,8 @@ static void quit(void *userdata, int signal) {
 int main(int argc, char **argv) {
     setbuf(stdout, NULL);
     pw_init(&argc, &argv);
-    struct fixture f = {0};
+    struct fixture f = {.memfd = argc == 2 && strcmp(argv[1], "--memfd") == 0};
+    if (argc > 1 && !f.memfd) return 2;
     f.loop = pw_main_loop_new(NULL);
     struct pw_loop *loop = pw_main_loop_get_loop(f.loop);
     f.timer = pw_loop_add_timer(loop, tick, &f);
@@ -122,7 +160,8 @@ int main(int argc, char **argv) {
     f.stream = pw_stream_new(core, "floe-qualification-source", pw_properties_new(
         PW_KEY_NODE_NAME, "floe-qualification-source", PW_KEY_MEDIA_CLASS, "Video/Source", NULL));
     const struct pw_stream_events events = {.version = PW_VERSION_STREAM_EVENTS,
-        .process = process, .state_changed = state, .param_changed = format};
+        .process = process, .state_changed = state, .param_changed = format,
+        .add_buffer = add_buffer, .remove_buffer = remove_buffer};
     pw_stream_add_listener(f.stream, &f.listener, &events, &f);
     uint8_t bytes[1024];
     struct spa_pod_builder builder = SPA_POD_BUILDER_INIT(bytes, sizeof(bytes));
@@ -133,12 +172,12 @@ int main(int argc, char **argv) {
         SPA_FORMAT_VIDEO_size, SPA_POD_Rectangle(&SPA_RECTANGLE(320, 240)),
         SPA_FORMAT_VIDEO_framerate, SPA_POD_Fraction(&SPA_FRACTION(0, 1)));
     if (pw_stream_connect(f.stream, PW_DIRECTION_OUTPUT, PW_ID_ANY,
-        PW_STREAM_FLAG_DRIVER | PW_STREAM_FLAG_MAP_BUFFERS, &param, 1) < 0) return 1;
+        PW_STREAM_FLAG_DRIVER | (f.memfd ? PW_STREAM_FLAG_ALLOC_BUFFERS : PW_STREAM_FLAG_MAP_BUFFERS), &param, 1) < 0) return 1;
     pw_main_loop_run(f.loop);
     pw_stream_destroy(f.stream);
     pw_core_disconnect(core);
     pw_context_destroy(context);
     pw_main_loop_destroy(f.loop);
     pw_deinit();
-    return 0;
+    return f.failed ? 1 : 0;
 }
