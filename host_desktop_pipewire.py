@@ -10,9 +10,11 @@ import ctypes as C
 import mmap
 import os
 import struct
+import threading
 import time
 
 from host_desktop_contract import DesktopError
+from host_desktop_pixels import FramePool, mapped_pixels
 
 
 class CursorState:
@@ -157,6 +159,8 @@ class PipeWireCapture:
         self.loop = self.context = self.core = self.stream = None
         self.painter = None
         self.mappings = {}
+        self.pool = None
+        self.pool_lock = threading.Lock()
         self.pw = C.CDLL('libpipewire-0.3.so.0')
         p, i, u = C.c_void_p, C.c_int, C.c_uint32
         for name, result, arguments in [
@@ -265,7 +269,7 @@ class PipeWireCapture:
     def _process(self, _data):
         if self.closed or self.broken:
             return
-        while True:
+        while not self.closed and not self.broken:
             received = self.pw.pw_stream_dequeue_buffer(self.stream)
             if not received:
                 break
@@ -376,7 +380,7 @@ class PipeWireCapture:
             unchanged = regions == []
             with self._pixel_view(buffer, data, chunk.offset, length) as mapped:
                 if not unchanged and self.previous is not None and self.format in (8, 12):
-                    with memoryview(self.previous) as prior:
+                    with mapped_pixels(self.Gst, self.previous) as prior:
                         if regions is not None and sum(h for _, _, _, h in regions) <= 128:
                             unchanged = all(self.equal(mapped[y * stride + x * 4:y * stride + (x + w) * 4],
                                 prior[y * row + x * 4:y * row + (x + w) * 4])
@@ -384,12 +388,18 @@ class PipeWireCapture:
                         elif stride == row:
                             unchanged = self.equal(mapped, prior)
                 if not unchanged:
-                    pixels = mapped.tobytes() if stride == row else b''.join(mapped[y * stride:y * stride + row] for y in range(self.height))
-                    if self.format in (7, 11):
-                        converted = bytearray(pixels)
-                        converted[0::4], converted[2::4] = pixels[2::4], pixels[0::4]
-                        pixels = bytes(converted)
-                    changed = self.previous is None or not self.equal(pixels, self.previous)
+                    with self.pool_lock:
+                        if self.closed:
+                            return
+                        if self.pool is None:
+                            self.pool = FramePool(self.Gst, self.width, self.height, not self.cursor_changed)
+                    pixels = self.pool.capture(mapped, stride, self.format in (7, 11))
+                    if pixels is None or self.closed:
+                        return
+                    changed = self.previous is None
+                    if self.previous is not None:
+                        with mapped_pixels(self.Gst, pixels) as current, mapped_pixels(self.Gst, self.previous) as prior:
+                            changed = not self.equal(current, prior)
         cursor = self.cursor
         shape = (cursor.visible, cursor.width, cursor.height, cursor.hotspot, cursor.pixels)
         placement = (cursor.visible, cursor.position, shape)
@@ -402,7 +412,7 @@ class PipeWireCapture:
                 self.cursor_changed(1, 1, 0, 0, cursor_png(bytes(4), 1, 1))
         if pixels is not None and (changed or not self.cursor_changed and placement != self.previous_cursor):
             if self.cursor_changed:
-                image = self.Gst.Buffer.new_wrapped(pixels)
+                image = pixels
             else:
                 from host_desktop_xcapture import CursorPainter
                 if not self.painter:
@@ -411,8 +421,14 @@ class PipeWireCapture:
                     self.painter.update(cursor.pixels if cursor.visible else b'',
                                         cursor.width if cursor.visible else 0, cursor.height if cursor.visible else 0)
                 x, y = (cursor.position[i] - cursor.hotspot[i] for i in range(2))
-                image = self.painter.compose(self.Gst, pixels, self.width, self.height,
+                with mapped_pixels(self.Gst, pixels) as clean:
+                    image = self.pool.capture(clean, self.width * 4)
+                if image is None or self.closed:
+                    return
+                self.painter.paint(self.Gst, image, self.width, self.height,
                     (0, x, y, cursor.width, cursor.height, cursor.visible))
+            if self.closed:
+                return
             self.captured(image, self.width, self.height, time.monotonic())
         self.previous, self.previous_cursor, self.previous_shape = pixels, placement, shape
         # A cursor-only update cannot reconstruct pixels lost before it. Keep
@@ -423,6 +439,11 @@ class PipeWireCapture:
         if self.closed:
             return
         self.closed = True
+        # Unblock a full pool before joining its capture callback. Creation and
+        # cancellation share one lock so a just-created pool cannot miss this.
+        with self.pool_lock:
+            if self.pool:
+                self.pool.interrupt()
         if self.loop and self.started:
             self.pw.pw_thread_loop_stop(self.loop)
         if self.stream:
@@ -431,6 +452,10 @@ class PipeWireCapture:
         for _, mapping in self.mappings.values():
             mapping.close()
         self.mappings.clear()
+        self.previous = None
+        if self.pool:
+            self.pool.close()
+            self.pool = None
         if self.core:
             self.pw.pw_core_disconnect(self.core)
             self.core = None
@@ -446,4 +471,3 @@ class PipeWireCapture:
         if self.initialized:
             self.pw.pw_deinit()
             self.initialized = False
-        self.previous = None

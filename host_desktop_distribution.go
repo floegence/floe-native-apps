@@ -16,7 +16,7 @@ import (
 
 const hostDesktopContract = "host-desktop-media-v1"
 
-//go:embed host_desktop_catalog.json host_desktop_releases.json host_desktop_contract.py host_desktop_wire.py host_desktop_identity.py host_desktop_input.py host_desktop_portal.py host_desktop_pipewire.py host_desktop_x11.py host_desktop_xcapture.py host_desktop_media.py host_desktop_nvenc.py host_desktop_helper.py host_desktop_selfcheck.py native/host-desktop/dist native/host-desktop/vendor
+//go:embed host_desktop_catalog.json host_desktop_releases.json host_desktop_contract.py host_desktop_wire.py host_desktop_identity.py host_desktop_input.py host_desktop_portal.py host_desktop_pipewire.py host_desktop_x11.py host_desktop_xcapture.py host_desktop_media.py host_desktop_pixels.py host_desktop_nvenc.py host_desktop_helper.py host_desktop_selfcheck.py native/host-desktop/dist native/host-desktop/vendor
 var hostDesktopDistribution embed.FS
 
 type hostDesktopRelease struct {

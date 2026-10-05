@@ -6,58 +6,13 @@ acquisition. Only a latest unencoded sample may be replaced; already encoded
 H.264 references are delivered in order until reset.
 """
 import base64
-import ctypes
 from collections import deque
 import math
 import threading
 import time
 
 from host_desktop_contract import DesktopError, FrameCredit, capture_size
-
-
-class _BufferView(ctypes.Structure):
-    # CPython's stable Py_buffer ABI. The pinned interpreter owns both exports;
-    # no guessed GstBuffer address or native object layout is accessed.
-    _fields_ = [('buf', ctypes.c_void_p), ('obj', ctypes.c_void_p),
-                ('len', ctypes.c_ssize_t), ('itemsize', ctypes.c_ssize_t),
-                ('readonly', ctypes.c_int), ('ndim', ctypes.c_int),
-                ('format', ctypes.c_void_p), ('shape', ctypes.c_void_p),
-                ('strides', ctypes.c_void_p), ('suboffsets', ctypes.c_void_p), ('internal', ctypes.c_void_p)]
-
-
-_get_buffer = ctypes.pythonapi.PyObject_GetBuffer
-_get_buffer.argtypes = [ctypes.py_object, ctypes.POINTER(_BufferView), ctypes.c_int]
-_get_buffer.restype = ctypes.c_int
-_release_buffer = ctypes.pythonapi.PyBuffer_Release
-_release_buffer.argtypes = [ctypes.POINTER(_BufferView)]
-_release_buffer.restype = None
-_memcmp = ctypes.CDLL(None).memcmp
-_memcmp.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t]
-_memcmp.restype = ctypes.c_int
-
-
-def equal_pixels(left, right):
-    """Compare mapped bytes without copies and release the GIL during memcmp."""
-    a, b = _BufferView(), _BufferView()
-    _get_buffer(left, ctypes.byref(a), 0)
-    try:
-        _get_buffer(right, ctypes.byref(b), 0)
-        try:
-            if a.len != b.len:
-                return False
-            # Discover distributed motion before walking a large unchanged
-            # prefix. These probes only prove inequality; equality still requires
-            # every byte, including changes outside all probe spans.
-            if a.len >= 8192:
-                for index in range(32):
-                    offset = index * (a.len - 128) // 31
-                    if _memcmp(a.buf + offset, b.buf + offset, 128):
-                        return False
-            return not a.len or _memcmp(a.buf, b.buf, a.len) == 0
-        finally:
-            _release_buffer(ctypes.byref(b))
-    finally:
-        _release_buffer(ctypes.byref(a))
+from host_desktop_pixels import equal_pixels
 
 
 ENCODERS = (
@@ -353,6 +308,10 @@ class DesktopMedia:
             self.submitted.append((frame, int(captured_at * 1_000_000)))
             buffer = self.Gst.Buffer.new()
             if not buffer.copy_into(captured, self.Gst.BufferCopyFlags.MEMORY, 0, captured.get_size()):
+                raise DesktopError('CAPTURE_LAYOUT_UNSUPPORTED')
+            # Keep the pool lease until the encoder releases its shallow view;
+            # shared GstMemory alone permits pool recycling via copy-on-write.
+            if buffer.add_parent_buffer_meta(captured) is None:
                 raise DesktopError('CAPTURE_LAYOUT_UNSUPPORTED')
             buffer.duration = self.Gst.SECOND // self.picture['frame_rate']
             if self.source.emit('push-buffer', buffer) != self.Gst.FlowReturn.OK:

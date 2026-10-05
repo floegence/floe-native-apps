@@ -145,12 +145,18 @@ class CursorPainter:
 
     def compose(self, Gst, pixels, width, height, cursor):
         buffer = Gst.Buffer.new_allocate(None, len(pixels), None)
+        from host_desktop_pixels import PixelCopy, mapped_pixels
+        with mapped_pixels(Gst, buffer, write=True) as target:
+            PixelCopy().copy(target, pixels, width, height, width * 4)
+        self.paint(Gst, buffer, width, height, cursor)
+        return buffer
+
+    def paint(self, Gst, buffer, width, height, cursor):
         ok, mapped = buffer.map(Gst.MapFlags.WRITE)
         if not ok:
             raise DesktopError('CAPTURE_UNAVAILABLE')
         target = context = None
         try:
-            mapped.data[:] = pixels
             # RGB24 on these explicitly validated little-endian desktop pixels is
             # BGRx. Never describe its unused byte as meaningful alpha.
             target = self.image(mapped.data, 1, width, height)
@@ -170,7 +176,6 @@ class CursorPainter:
             if target:
                 self.library.cairo_surface_destroy(target)
             buffer.unmap(mapped)
-        return buffer
 
     def close(self):
         if self.surface:

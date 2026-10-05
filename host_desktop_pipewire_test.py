@@ -2,6 +2,7 @@ import ctypes as C
 import mmap
 import struct
 import tempfile
+import threading
 import unittest
 
 from host_desktop_contract import DesktopError
@@ -50,6 +51,29 @@ class CursorMetadataTests(unittest.TestCase):
         self.assertEqual(cursor.pixels, bytes([8, 16, 32, 128, 20, 40, 80, 255]))
 
 
+class PixelBuffer(bytearray):
+    def map(self, _flags):
+        return True, SimpleNamespace(data=memoryview(self))
+
+    def unmap(self, mapping):
+        mapping.data.release()
+
+
+class CopyPool:
+    def capture(self, pixels, stride, swap=False):
+        packed = PixelBuffer(pixels[:8]) + pixels[stride:stride + 8]
+        packed = PixelBuffer(packed)
+        if swap:
+            packed[0::4], packed[2::4] = packed[2::4], packed[0::4]
+        return packed
+
+    def interrupt(self):
+        pass
+
+    def close(self):
+        pass
+
+
 class PipeWireBufferTests(unittest.TestCase):
     def fixture(self, local=True, format=12):
         from host_desktop_pipewire import PipeWireCapture, CursorState
@@ -61,9 +85,12 @@ class PipeWireBufferTests(unittest.TestCase):
         capture.previous_sequence = None
         capture.painter = None
         capture.mappings = {}
+        capture.pool = CopyPool()
+        capture.pool_lock = threading.Lock()
+        capture.closed = False
         frames, shapes = [], []
-        capture.Gst = SimpleNamespace(Buffer=SimpleNamespace(new_wrapped=lambda pixels: pixels))
-        capture.captured = lambda pixels, width, height, timestamp: frames.append(pixels)
+        capture.Gst = SimpleNamespace(MapFlags=SimpleNamespace(READ=1, WRITE=2))
+        capture.captured = lambda pixels, width, height, timestamp: frames.append(bytes(pixels))
         capture.cursor_changed = (lambda *args: shapes.append(args)) if local else None
         capture.equal = lambda a, b: a == b
         return capture, frames, shapes
@@ -237,7 +264,7 @@ class PipeWireBufferTests(unittest.TestCase):
     def test_view_mode_composites_cursor_movement_over_retained_pixels(self):
         capture, frames, _ = self.fixture(local=False)
         placements = []
-        painter = SimpleNamespace(update=lambda *_: None, compose=lambda gst, pixels, w, h, cursor: placements.append(cursor) or pixels)
+        painter = SimpleNamespace(update=lambda *_: None, paint=lambda gst, pixels, w, h, cursor: placements.append(cursor))
         with patch('host_desktop_xcapture.CursorPainter', return_value=painter):
             bitmap = struct.pack('<IIiiiiI', 1, 0, 1, 1, 0, 0, 28) + struct.pack('<IIIiI', 12, 1, 1, 4, 20) + bytes([0, 0, 255, 255])
             self.deliver(capture, bytes(16), bitmap)

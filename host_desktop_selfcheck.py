@@ -13,6 +13,7 @@ import gi
 gi.require_version('Gst', '1.0')
 from gi.repository import Gst, GLib
 from host_desktop_media import DesktopMedia, select_encoder, ENCODERS
+from host_desktop_pixels import FramePool
 
 # The client-node module depends on protocol-native by soname. Finding the
 # GStreamer element alone does not prove that the private loader can resolve
@@ -22,6 +23,15 @@ for library in ('libxcb.so.1', 'libxcb-shm.so.0', 'libxcb-xfixes.so.0', 'libcair
     ctypes.CDLL(library)
 
 Gst.init(None)
+# Prove the new buffer owner and its public native swizzle before activation.
+pool = FramePool(Gst, 2, 2)
+try:
+    pixels = pool.capture(bytes([1, 2, 3, 128]) * 4, 8, swap=True)
+    if pixels.extract_dup(0, 16) != bytes([3, 2, 1, 128]) * 4:
+        raise RuntimeError('native pixel conversion failed')
+    del pixels
+finally:
+    pool.close()
 for name in ('pipewiresrc', 'pulsesrc', 'h264parse', 'pngenc', 'opusenc', 'opusdec', 'openh264dec'):
     if not Gst.ElementFactory.find(name):
         raise RuntimeError('required media element missing: ' + name)

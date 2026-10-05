@@ -1325,6 +1325,16 @@ buffers and producer-allocated MemFd lacking MAPPABLE. The latter uses Mutter 46
 384-pixel cursor metadata allocation and verifies mapping cleanup, without requesting OS
 screen sharing or reading any user desktop. Weak-VM performance is observational,
 not a functional or distribution release threshold.
+Wayland capture copies producer-owned pixels directly into a bounded Gst buffer
+pool (four buffers with a separate cursor, six with an embedded cursor). The
+retained clean frame is the comparison baseline; it is never painted with a
+cursor. Native memmove/pixman work releases the Python interpreter lock and
+preserves BGRA/BGRx/RGBA/RGBx, padded rows, and legacy MemFd mapping. Encoder
+views retain the parent buffer lease until release. Pool exhaustion waits on the
+capture thread without losing the final changed frame; shutdown flushes the pool
+before joining that thread. `qualification/host_desktop_pixels.py` exercises
+these lifetime, cancellation, pixel-format and cursor contracts with the
+installed native stack on both Linux architectures. It does not access a desktop.
 `qualification/host_desktop_portal_input.py` uses a private synthetic D-Bus service
 that withholds replies until every ordered input and release arrives. It proves
 nonblocking submission with the installed Gio binding without injecting OS input.

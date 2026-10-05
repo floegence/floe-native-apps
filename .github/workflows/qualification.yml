@@ -373,6 +373,9 @@ jobs:
           root=$(tail -n 1 "$RUNNER_TEMP/host-desktop-evidence/install.log")
           test -x "$root/floe/host-desktop/python3"
           "$root/floe/host-desktop/desktop-nvenc" --check
+          "$root/floe/host-desktop/python3" qualification/host_desktop_pixels.py \
+            --helper "$root/floe/host-desktop" \
+            2>&1 | tee "$RUNNER_TEMP/host-desktop-evidence/pixel-pool.log"
           # The X server belongs only to this disposable qualification runner.
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends xvfb xauth fonts-dejavu-core pipewire-bin libpipewire-0.3-dev pkg-config dbus-daemon
