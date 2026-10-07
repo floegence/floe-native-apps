@@ -133,7 +133,7 @@ class HostDesktop:
                 'get_clipboard': {'generation'}, 'release_input': {'generation'},
                 'set_clipboard_sync': {'generation', 'enabled'},
                 'keyframe': {'generation'}, 'lock': {'generation'},
-                'unlock_input': {'generation', 'frame_id', 'input'},
+                'unlock_input': {'generation', 'frame_id', 'input'}, 'unlock_cancel': {'generation'},
                 'service_status': {'service'}, 'service_install': {'service'},
                 'service_uninstall': {'service'}, 'login_session': {'service'}}
             if not isinstance(method, str) or method not in fields or set(command) - common - fields[method]:
@@ -215,6 +215,11 @@ class HostDesktop:
                         raise DesktopError('LOGIN_SERVICE_UNAVAILABLE')
                     self.authority.unlock_input(generation, command.get('frame_id'))
                     self.login_service.input(command.get('input'))
+                elif method == 'unlock_cancel':
+                    if self.authority.state != 'locked':
+                        raise DesktopError('DESKTOP_NOT_LOCKED')
+                    if self.login_service:
+                        self.login_service.cancel()
                 else:
                     self.authority.input(generation)
                     self.require_active()

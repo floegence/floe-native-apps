@@ -281,6 +281,8 @@ func (command HostDesktopCommand) Valid() bool {
 		return desktopID(command.Generation) && command.Input != nil && command.Input.valid()
 	case "unlock_input":
 		return desktopID(command.Generation) && desktopID(command.FrameID) && command.Input != nil && command.Input.valid() && command.Input.Kind != "text" && command.Input.Kind != "paste"
+	case "unlock_cancel":
+		return desktopID(command.Generation)
 	case "release_input", "get_clipboard", "lock", "keyframe":
 		return desktopID(command.Generation)
 	case "service_status":
