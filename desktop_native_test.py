@@ -2,7 +2,7 @@
 import socket
 import unittest
 
-from desktop_native import NativeChannel, NativeDesktop
+from desktop_native import NativeChannel, NativeDesktop, NativeTarget
 
 
 class Loop:
@@ -28,6 +28,15 @@ class Frames:
 
     def close(self):
         pass
+
+
+class BrokerFrames(Frames):
+    def __init__(self):
+        super().__init__()
+        self.pending = []
+
+    def capture(self, target, completed):
+        self.pending.append((target, completed))
 
 
 class Attachment:
@@ -146,6 +155,22 @@ class NativeTests(unittest.TestCase):
             self.native.observe('window-state 2 0 wayland 120 350 280 0')
         with self.assertRaises(ValueError):
             self.native.observe('window-instance 2')
+
+    def test_shared_capture_is_broadcast_without_blocking_viewers(self):
+        frames = BrokerFrames()
+        native = NativeDesktop(lambda _value: None, frames)
+        native.observe('native-version 1')
+        target = NativeTarget(1, 1)
+        native.target = target
+        first, second = object(), object()
+        native.register_attachment(first, 1)
+        native.register_attachment(second, 2)
+        received = []
+        native.capture(target, lambda *value: received.append(('first', value)), first)
+        native.capture(target, lambda *value: received.append(('second', value)), second)
+        self.assertEqual(len(frames.pending), 1)
+        frames.pending.pop()[1]({'encoding': 'png'}, b'pixels', None)
+        self.assertEqual([name for name, _value in received], ['first', 'second'])
 
     def test_close_uses_live_window_identity_while_input_scene_is_unavailable(self):
         self.native.observe('scene 2 0')

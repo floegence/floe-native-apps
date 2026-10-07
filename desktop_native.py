@@ -145,7 +145,12 @@ def number(value, minimum, maximum):
 class NativeDesktop:
     def __init__(self, send, frames):
         self.send, self.frames = send, frames
-        self.attachment, self.target = None, None
+        # The native scene is process-owned and shared by every authenticated
+        # viewer.  Each viewer keeps its own paint/ack state in a
+        # DesktopAttachment; this set is only the notification and capture
+        # fan-out boundary.
+        self.attachment, self.attachments, self.target = None, set(), None
+        self.capture_waiters, self.capture_active, self.capture_dispatching = [], False, False
         self.contexts = None
         self.windows, self.declared, self.last_window, self.generation = {}, {}, 0, 0
         self.x11_windows = {}
@@ -251,8 +256,7 @@ class NativeDesktop:
             title = '' if encoded == '-' else bytes.fromhex(encoded).decode('utf-8', errors='replace')
             if self.declared[wid] != title:
                 self.declared[wid] = title
-                if self.attachment:
-                    self.attachment.metadata_changed()
+                self._notify('metadata_changed')
         elif kind == 'surface-instance':
             if self.version != 1 or len(fields) != 2:
                 raise ValueError('Invalid native surface')
@@ -311,8 +315,8 @@ class NativeDesktop:
                         mode & 4 or grab_ended or mode != 8 and geometry_changed):
                     self.target = None
                     self.changed()
-                elif self.attachment:
-                    self.attachment.metadata_changed()
+                else:
+                    self._notify('metadata_changed')
         elif kind == 'window-x11':
             if self.version != 1 or len(fields) != 3:
                 raise ValueError('Invalid Xwayland binding')
@@ -358,8 +362,7 @@ class NativeDesktop:
                 raise ValueError('Invalid damage')
             integer(int(fields[1]))
             integer(int(fields[2]), 0)
-            if self.attachment:
-                self.attachment.damage()
+            self._notify('damage')
         elif kind not in ('ready', 'frame', 'window-added', 'window-mapped',
                           'window-protocol', 'window-restored', 'window-removed', 'context', 'pointer',
                           'capture-authorized', 'connection-ready', 'input-rejected',
@@ -367,18 +370,15 @@ class NativeDesktop:
             raise ValueError('Unsupported native record')
 
     def cursor_changed(self):
-        if self.attachment:
-            self.attachment.cursor_changed()
+        self._notify('cursor_changed')
 
     def clipboard_changed(self, selection):
-        if self.attachment:
-            self.attachment.clipboard_changed(selection)
+        self._notify('clipboard_changed', selection)
 
     def changed(self):
         self.cursor.invalidate()
         self.clipboard.invalidate()
-        if self.attachment:
-            self.attachment.scene_changed()
+        self._notify('scene_changed')
 
     def lost(self):
         if self.closed:
@@ -434,6 +434,26 @@ class NativeDesktop:
         if not self.closed:
             self.send(f'connection {epoch}\n')
 
+    def register_attachment(self, attachment, epoch):
+        """Register a viewer and return the shared native input epoch."""
+        if self.closed or self.version != 1:
+            raise ValueError('Native connection is unavailable')
+        first = not self.attachments
+        self.attachments.add(attachment)
+        if self.attachment is None:
+            self.attachment = attachment
+        if first:
+            self.bind(max(epoch, self.last_epoch + 1))
+        return self.epoch
+
+    def unregister_attachment(self, attachment):
+        self.attachments.discard(attachment)
+        if self.attachment is attachment:
+            self.attachment = next(iter(self.attachments), None)
+        self.capture_waiters = [item for item in self.capture_waiters if item[0] is not attachment]
+        if not self.attachments and self.epoch:
+            self.unbind(self.epoch)
+
     def release(self, epoch):
         if not self.closed and epoch == self.epoch:
             self.send(f'release {epoch}\n')
@@ -446,16 +466,56 @@ class NativeDesktop:
             self.clipboard.invalidate()
         self.frames.cancel()
 
+    def _notify(self, method, *args):
+        recipients = tuple(self.attachments)
+        if recipients:
+            for attachment in recipients:
+                getattr(attachment, method)(*args)
+        elif self.attachment:
+            # Preserve the direct native fixture contract used by lower-level
+            # tests and by embedders that have not opted into registration.
+            getattr(self.attachment, method)(*args)
+
     def configure_stream(self, mode):
         self.frames.configure(mode)
 
     def refine(self):
         self.frames.refine()
 
-    def capture(self, target, completed):
+    def capture(self, target, completed, attachment=None):
         if self.closed or self.target is not target:
             raise ValueError('Native frame is unavailable')
-        self.frames.capture(target, completed)
+        if attachment is None:
+            self.frames.capture(target, completed)
+            return
+        self.capture_waiters.append((attachment, target, completed))
+        if not self.capture_active and not self.capture_dispatching:
+            self._start_capture(target)
+
+    def _start_capture(self, target):
+        if self.capture_active or not self.capture_waiters:
+            return
+        self.capture_active = True
+        try:
+            self.frames.capture(target, self._capture_completed)
+        except Exception:
+            self.capture_active = False
+            waiters, self.capture_waiters = self.capture_waiters, []
+            for _attachment, _target, completed in waiters:
+                completed(None, None, 'CAPTURE_UNAVAILABLE')
+
+    def _capture_completed(self, description, data, error):
+        self.capture_active = False
+        waiters, self.capture_waiters = self.capture_waiters, []
+        self.capture_dispatching = True
+        try:
+            for attachment, target, completed in waiters:
+                if attachment in self.attachments:
+                    completed(description, data, error)
+        finally:
+            self.capture_dispatching = False
+        if self.capture_waiters and not self.closed:
+            self._start_capture(self.capture_waiters[0][1])
 
     def select(self, window):
         integer(window)

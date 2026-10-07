@@ -10,10 +10,13 @@ from input_order import OrderedInput, valid_text
 
 
 class DesktopAttachment:
-    def __init__(self, native, timeout_add, timeout_remove, *, terminate_application=None):
+    def __init__(self, native, timeout_add, timeout_remove, *, terminate_application=None,
+                 can_control=None):
         self.native = native
         self.terminate_application = terminate_application
         self.owner, self.epoch, self.last_request = None, 0, 0
+        self.native_epoch = 0
+        self.can_control = can_control
         self.ready, self.capture, self.awaiting = None, None, deque()
         self.mode, self.capacity = None, 1
         self.timeout_add, self.timeout_remove = timeout_add, timeout_remove
@@ -28,6 +31,13 @@ class DesktopAttachment:
     def available(self, owner):
         return self.owner is owner and not self.failed
 
+    def controllable(self, owner):
+        return self.available(owner) and (self.can_control is None or self.can_control(owner))
+
+    def authorized(self, owner):
+        """Whether this viewer is the current controller, including failed streams."""
+        return self.owner is owner and (self.can_control is None or self.can_control(owner))
+
     def attach(self, owner):
         if self.owner:
             self.detach(self.owner)
@@ -37,7 +47,11 @@ class DesktopAttachment:
         self.cursor_sent = None
         self.epoch += 1
         self.failed = False
-        self.native.bind(self.epoch)
+        if hasattr(self.native, 'register_attachment'):
+            self.native_epoch = self.native.register_attachment(self, self.epoch)
+        else:
+            self.native.bind(self.epoch)
+            self.native_epoch = getattr(self.native, 'epoch', self.epoch)
         owner.send({'event': 'attached', 'version': 1, 'connection': self.epoch,
                     'state': self.native.snapshot(), 'stream_version': 2})
         self.cursor_changed()
@@ -51,7 +65,11 @@ class DesktopAttachment:
         self.cancel_refinement()
         self.cancel_cadence()
         self.order.invalidate(owner)
-        self.native.unbind(self.epoch)
+        if hasattr(self.native, 'unregister_attachment'):
+            self.native.unregister_attachment(self)
+        else:
+            self.native.unbind(self.native_epoch or self.epoch)
+        self.native_epoch = 0
 
     @staticmethod
     def reply(owner, request, result=None, error=None):
@@ -68,6 +86,8 @@ class DesktopAttachment:
         if method == 'terminate_application':
             if set(message) != {'id', 'method'}:
                 self.reply(owner, request, error='REQUEST_INVALID')
+            elif not self.controllable(owner):
+                self.reply(owner, request, error='INPUT_NOT_AUTHORIZED')
             elif self.terminate_application is None:
                 self.reply(owner, request, error='METHOD_UNSUPPORTED')
             else:
@@ -93,7 +113,7 @@ class DesktopAttachment:
             self.awaiting.popleft()
             self.reply(owner, request, 'painted')
             if first:
-                self.native.sync_clipboard(self.epoch, self.ready)
+                self.native.sync_clipboard(self.native_epoch, self.ready)
             self.pump()
         elif method == 'configure_stream':
             mode = message.get('mode')
@@ -116,7 +136,7 @@ class DesktopAttachment:
         elif method == 'release_input':
             if set(message) != {'id', 'method', 'connection', 'window', 'generation'}:
                 self.reply(owner, request, error='REQUEST_INVALID')
-            elif not self.matches_target(owner, message):
+            elif not self.controllable(owner) or not self.matches_target(owner, message):
                 self.reply(owner, request, error='INPUT_TARGET_UNAVAILABLE')
             else:
                 self.cancel_input()
@@ -125,6 +145,9 @@ class DesktopAttachment:
             window = message.get('window')
             if type(window) is not int or not 1 <= window <= 9007199254740991:
                 self.reply(owner, request, error='WINDOW_UNAVAILABLE')
+                return
+            if not self.authorized(owner):
+                self.reply(owner, request, error='INPUT_NOT_AUTHORIZED')
                 return
             if method == 'close_window' and not self.failed:
                 self.order.enqueue(owner, (None, request, {'kind': 'close_window', 'window': window}))
@@ -149,6 +172,9 @@ class DesktopAttachment:
                 message.get('generation') == target.generation)
 
     def enqueue_input(self, owner, request, message):
+        if not self.controllable(owner):
+            self.reply(owner, request, error='INPUT_NOT_AUTHORIZED')
+            return
         if not self.matches_target(owner, message):
             self.reply(owner, request, error='INPUT_TARGET_UNAVAILABLE')
             return
@@ -181,7 +207,7 @@ class DesktopAttachment:
                 return request, adapter, token, value['text']
             if value['kind'] == 'clipboard':
                 return request, self.native.clipboard, self.native.clipboard.token(target), value['text']
-            self.native.deliver(self.epoch, target, value)
+            self.native.deliver(self.native_epoch, target, value)
             # A native transport submission is not an application text receipt.
             self.reply(owner, request, 'submitted')
         except Exception:
@@ -210,7 +236,7 @@ class DesktopAttachment:
             requests = ([pending] if pending is not None else []) + [item[1] for item in queued]
             for request in requests:
                 self.reply(owner, request, error='INPUT_TARGET_UNAVAILABLE')
-            self.native.release(self.epoch)
+            self.native.release(self.native_epoch)
 
     def scene_changed(self):
         self.retire_input()
@@ -267,7 +293,12 @@ class DesktopAttachment:
         def completed(description, data, error):
             self.captured(ticket, description, data, error)
         try:
-            self.native.capture(ticket[1], completed)
+            try:
+                self.native.capture(ticket[1], completed, self)
+            except TypeError:
+                # Small embedders and unit fixtures may still expose the
+                # pre-broker two-argument capture contract.
+                self.native.capture(ticket[1], completed)
         except Exception:
             completed(None, None, 'CAPTURE_UNAVAILABLE')
 

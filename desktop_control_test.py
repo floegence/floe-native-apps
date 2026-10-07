@@ -145,15 +145,14 @@ class ControlTests(unittest.TestCase):
         self.assertEqual(len(self.application.attached), 1)
         self.assertEqual(self.application.detached, [])
 
-    def test_replacement_revokes_old_owner_before_admission(self):
+    def test_second_viewer_keeps_old_attachment_and_becomes_controller(self):
         first = self.connect()
         self.receive(first)
         owner = self.application.attached[0]
         second = self.connect()
         self.receive(second)
-        self.assertEqual(self.application.detached, [owner])
-        self.assertEqual(first.recv(1), b'')
-        self.assertFalse(owner.send({'event': 'late'}))
+        self.assertEqual(self.application.detached, [])
+        self.assertTrue(owner.send({'event': 'late'}))
         owner.close()
         self.assertEqual(self.application.detached, [owner])
         self.assertIs(self.server.current, self.application.attached[1])

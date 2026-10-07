@@ -73,6 +73,22 @@ class DesktopHelperTests(unittest.TestCase):
         self.loop.step()
         self.assertTrue(Path(self.helper.server.path).is_socket())
 
+    def test_multiple_viewers_share_process_and_latest_viewer_controls_input(self):
+        self.listen()
+        first, _ = self.connect()
+        first_peer = next(iter(self.helper.server.peers))
+        second, _ = self.connect()
+        second_peer = self.helper.server.current
+        self.assertIsNot(first_peer, second_peer)
+        self.assertEqual(len(self.helper.application.attachments), 2)
+        self.assertIs(self.helper.application.controller, second_peer)
+        self.assertFalse(first_peer.closed)
+        second.close()
+        self.loop.step()
+        self.assertEqual(len(self.helper.application.attachments), 1)
+        self.assertIs(self.helper.application.controller, first_peer)
+        self.assertFalse(first_peer.closed)
+
     def test_compositor_loss_reports_unavailable_without_inventing_application_exit(self):
         self.listen()
         client, _ = self.connect()

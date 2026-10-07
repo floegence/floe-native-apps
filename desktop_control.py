@@ -1,8 +1,8 @@
-"""Authenticated local attachment to a persistent graphical helper.
+"""Authenticated local viewers for a persistent graphical helper.
 
-The application owns processes and native state. This transport owns only its
-bounded socket buffers and one attachment; losing it never means application
-exit. All callbacks run on the helper's event loop, including input admission.
+The application owns processes and native state. This transport owns bounded
+socket buffers for multiple independent viewers; a viewer's loss never means
+application exit and never revokes another viewer's stream.
 """
 from collections import deque
 import hmac
@@ -109,6 +109,7 @@ class DesktopControl:
         self.instance, self.token = instance, token
         self.application, self.loop = application, loop
         self.peers, self.current, self.closed = set(), None, False
+        self.sequence = 0
         self.socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         self.socket.setblocking(False)
         try:
@@ -148,14 +149,19 @@ class DesktopControl:
                 not hmac.compare_digest(message['token'], self.token)):
             peer.close()
             return
-        # Authentication happens before takeover. Old cleanup can only revoke
-        # that old object; it can never detach a replacement attachment.
-        if self.current:
-            self.current.close()
+        # Authentication happens before takeover. Existing viewers remain
+        # attached and keep receiving frames; only their input authority is
+        # revoked by the application boundary.
+        previous = self.current
+        self.sequence += 1
+        peer.sequence = self.sequence
         self.current = peer
         peer.authenticated = True
         peer.cancel_timeout()
         self.application.attach(peer)
+        takeover = getattr(self.application, 'takeover', None)
+        if takeover:
+            takeover(previous, peer)
 
     def close(self):
         if self.closed:
@@ -223,7 +229,7 @@ class Peer:
                     self.close()
                 elif not self.authenticated:
                     self.server.authenticate(self, message)
-                elif self.server.current is self:
+                elif self.authenticated:
                     if (type(message.get('id')) is not int or not 1 <= message['id'] <= 9007199254740991 or
                             not isinstance(message.get('method'), str) or not 1 <= len(message['method']) <= 64):
                         self.close()
@@ -240,7 +246,7 @@ class Peer:
             self.control_buffered += len(data)
 
     def send(self, message, *, completed=None):
-        if self.closed or self.server.current is not self:
+        if self.closed or not self.authenticated:
             return False
         try:
             data = encode_message(message, MAX_OUTPUT - 5)
@@ -255,7 +261,7 @@ class Peer:
         return True
 
     def send_frame(self, description, pixels):
-        if self.closed or self.server.current is not self or self.frame_pending:
+        if self.closed or not self.authenticated or self.frame_pending:
             return False
         if not isinstance(pixels, bytes) or not 0 < len(pixels) <= MAX_FRAME:
             raise ValueError('Invalid native frame size')
@@ -268,7 +274,7 @@ class Peer:
         return True
 
     def send_cursor(self, description, pixels):
-        if self.closed or self.server.current is not self or self.cursor_pending:
+        if self.closed or not self.authenticated or self.cursor_pending:
             return False
         if pixels is not None and (not isinstance(pixels, bytes) or not 0 < len(pixels) <= MAX_CURSOR):
             raise ValueError('Invalid native cursor size')
@@ -312,7 +318,7 @@ class Peer:
         except OSError:
             self.close()
         self.watch()
-        if drained and not self.closed and self.server.current is self:
+        if drained and not self.closed and self.authenticated:
             self.server.application.writable(self)
 
     def close(self):
@@ -328,6 +334,13 @@ class Peer:
         self.frame_pending = False
         self.cursor_pending = False
         self.server.peers.discard(self)
-        if self.server.current is self:
-            self.server.current = None
+        was_current = self.server.current is self
+        if self.authenticated:
             self.server.application.detach(self)
+        if was_current:
+            remaining = [peer for peer in self.server.peers if peer.authenticated and not peer.closed]
+            replacement = max(remaining, key=lambda peer: peer.sequence, default=None)
+            self.server.current = replacement
+            takeover = getattr(self.server.application, 'takeover', None)
+            if takeover:
+                takeover(self, replacement)
