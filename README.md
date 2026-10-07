@@ -212,7 +212,10 @@ Hosts that supply another reviewed archive catalog can use the public
 `github.com/floegence/floe-native-apps/artifactcache` package. This is the same
 acquisition implementation used by native component preparation and offline
 bundles. It downloads original publisher bytes without extracting or executing
-them, independently of the downloading machine's OS and architecture.
+them, independently of the downloading machine's OS and architecture. A trusted
+catalog may include reviewed HTTPS mirrors; when archives are missing, the
+acquirer probes representative entries, uses the fastest validated source, and
+falls back through the catalog order without changing the pinned digest.
 
 ```go
 result, err := artifactcache.Acquire(ctx, privateCacheDirectory, artifactcache.Spec{

@@ -15,13 +15,14 @@ import (
 )
 
 type Artifact struct {
-	Name    string `json:"name"`
-	URL     string `json:"url"`
-	SHA256  string `json:"sha256"`
-	Size    int64  `json:"size_bytes"`
-	Format  string `json:"format"`
-	License string `json:"license"`
-	Source  string `json:"source"`
+	Name    string   `json:"name"`
+	URL     string   `json:"url"`
+	Mirrors []string `json:"mirrors,omitempty"`
+	SHA256  string   `json:"sha256"`
+	Size    int64    `json:"size_bytes"`
+	Format  string   `json:"format"`
+	License string   `json:"license"`
+	Source  string   `json:"source"`
 }
 
 type Package struct {
@@ -79,6 +80,14 @@ func (p Package) Validate() error {
 		if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.Fragment != "" || hashErr != nil || len(hash) != 32 || a.Size <= 0 || a.Size > 512<<20 || !filepath.IsLocal(a.Name) || filepath.Base(a.Name) != a.Name || seen[a.Name] || (a.Format != "apk" && a.Format != "html5") {
 			return fmt.Errorf("invalid native artifact %q", a.Name)
 		}
+		seenURLs := map[string]bool{a.URL: true}
+		for _, mirror := range a.Mirrors {
+			mirrorURL, mirrorErr := url.Parse(mirror)
+			if mirrorErr != nil || mirrorURL.Scheme != "https" || mirrorURL.Host == "" || mirrorURL.User != nil || mirrorURL.Fragment != "" || seenURLs[mirror] {
+				return fmt.Errorf("invalid native artifact mirror %q", a.Name)
+			}
+			seenURLs[mirror] = true
+		}
 		seen[a.Name] = true
 		size += a.Size
 	}
@@ -104,7 +113,28 @@ func (p Package) Validate() error {
 }
 
 func (p Package) Digest() string {
-	data, _ := json.Marshal(p)
+	type artifactIdentity struct {
+		Name    string `json:"name"`
+		URL     string `json:"url"`
+		SHA256  string `json:"sha256"`
+		Size    int64  `json:"size_bytes"`
+		Format  string `json:"format"`
+		License string `json:"license"`
+		Source  string `json:"source"`
+	}
+	type packageIdentity struct {
+		ID             string             `json:"id"`
+		Architecture   string             `json:"architecture"`
+		SizeBytes      int64              `json:"size_bytes"`
+		InstalledBytes int64              `json:"installed_bytes"`
+		Artifacts      []artifactIdentity `json:"artifacts"`
+		Preparation    *Preparation       `json:"preparation,omitempty"`
+	}
+	identity := packageIdentity{ID: p.ID, Architecture: p.Architecture, SizeBytes: p.SizeBytes, InstalledBytes: p.InstalledBytes, Preparation: p.Preparation}
+	for _, artifact := range p.Artifacts {
+		identity.Artifacts = append(identity.Artifacts, artifactIdentity{Name: artifact.Name, URL: artifact.URL, SHA256: artifact.SHA256, Size: artifact.Size, Format: artifact.Format, License: artifact.License, Source: artifact.Source})
+	}
+	data, _ := json.Marshal(identity)
 	hash := sha256.Sum256(data)
 	return hex.EncodeToString(hash[:])
 }

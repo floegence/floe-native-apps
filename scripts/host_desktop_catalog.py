@@ -22,6 +22,12 @@ BASE = args.work.resolve()
 OUTPUT = args.output.resolve()
 BASE.mkdir(parents=True, exist_ok=True)
 SEEDS = 'python3 py3-gobject3 py3-gst py3-xlib gtk+3.0 gst-plugin-pipewire gst-plugins-base gst-plugins-good gst-plugins-bad gst-plugins-ugly'.split()
+ALPINE_ORIGIN = 'https://dl-cdn.alpinelinux.org/alpine/'
+ALPINE_MIRRORS = (
+    'https://mirrors.aliyun.com/alpine/',
+    'https://mirrors.tuna.tsinghua.edu.cn/alpine/',
+    'https://mirrors.ustc.edu.cn/alpine/',
+)
 
 
 def download(url, path):
@@ -30,6 +36,21 @@ def download(url, path):
                         '--output', str(path) + '.part', url], check=True)
         Path(str(path) + '.part').rename(path)
     return path.read_bytes()
+
+
+def mirror_urls(url):
+    if not url.startswith(ALPINE_ORIGIN):
+        return []
+    suffix = url[len(ALPINE_ORIGIN):]
+    return [mirror + suffix for mirror in ALPINE_MIRRORS]
+
+
+def resource_exists(url):
+    command = ['curl', '--fail', '--silent', '--show-error', '--location', '--head', '--max-time', '10', url]
+    if subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0:
+        return True
+    command = ['curl', '--fail', '--silent', '--show-error', '--location', '--range', '0-0', '--max-time', '10', '--output', '/dev/null', url]
+    return subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
 
 
 def build(architecture, alpine):
@@ -83,7 +104,8 @@ def build(architecture, alpine):
             installed = sum(member.size for member in archive.getmembers())
         if props['pkgname'] != record['P'] or props['pkgver'] != record['V'] or props['arch'] not in (alpine, 'noarch'):
             raise ValueError('archive identity mismatch: ' + name)
-        return dict(name=name, url=url, sha256=hashlib.sha256(data).hexdigest(), size_bytes=len(data),
+        mirrors = [candidate for candidate in mirror_urls(url) if resource_exists(candidate)]
+        return dict(name=name, url=url, mirrors=mirrors, sha256=hashlib.sha256(data).hexdigest(), size_bytes=len(data),
                     format='apk', license=props['license'], source=f'https://gitlab.alpinelinux.org/alpine/aports/-/tree/3.23-stable/{record["repository"]}/{props["origin"]}'), installed
     print(architecture, len(selected), sum(int(record['S']) for record in selected.values()), flush=True)
     with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:

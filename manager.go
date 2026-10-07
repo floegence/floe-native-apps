@@ -473,7 +473,7 @@ func (m *Manager) progress(n int64) error {
 }
 func (m *Manager) artifactPath(a Artifact) string { return filepath.Join(m.root, "archives", a.SHA256) }
 func archiveSpec(a Artifact) artifactcache.Spec {
-	return artifactcache.Spec{URL: a.URL, SHA256: a.SHA256, SizeBytes: a.Size}
+	return artifactcache.Spec{URL: a.URL, Mirrors: a.Mirrors, SHA256: a.SHA256, SizeBytes: a.Size}
 }
 func verifyFile(name string, a Artifact) bool {
 	return artifactcache.Verify(context.Background(), name, archiveSpec(a)) == nil
@@ -507,6 +507,24 @@ func (m *Manager) download(ctx context.Context) {
 		m.fail(ctx, err, "install_failed")
 		return
 	}
+	preferredSource := 0
+	if len(plan.MissingArtifacts) > 0 {
+		missing := map[string]bool{}
+		for _, digest := range plan.MissingArtifacts {
+			missing[digest] = true
+		}
+		var specs []artifactcache.Spec
+		for _, artifact := range m.pkg.Artifacts {
+			if missing[artifact.SHA256] {
+				specs = append(specs, archiveSpec(artifact))
+			}
+		}
+		preferredSource, err = artifactcache.SelectSource(ctx, specs, artifactcache.Options{Client: m.client})
+		if err != nil {
+			m.fail(ctx, err, "download_failed")
+			return
+		}
+	}
 	missing := map[string]bool{}
 	for _, digest := range plan.MissingArtifacts {
 		missing[digest] = true
@@ -520,7 +538,7 @@ func (m *Manager) download(ctx context.Context) {
 		go func() {
 			defer workers.Done()
 			for a := range jobs {
-				if err := m.downloadOne(ctx, a); err != nil {
+				if err := m.downloadOne(ctx, a, preferredSource); err != nil {
 					once.Do(func() { failure = err; cancel() })
 				}
 			}
@@ -547,14 +565,18 @@ func (m *Manager) download(ctx context.Context) {
 	}
 	m.install(m.ctx)
 }
-func (m *Manager) downloadOne(ctx context.Context, a Artifact) error {
-	return downloadArchive(ctx, m.client, m.root, a, m.progress)
+func (m *Manager) downloadOne(ctx context.Context, a Artifact, preferredSource ...int) error {
+	preferred := 0
+	if len(preferredSource) > 0 {
+		preferred = preferredSource[0]
+	}
+	return downloadArchive(ctx, m.client, m.root, a, preferred, m.progress)
 }
 
-func downloadArchive(ctx context.Context, client *http.Client, root string, a Artifact, progress func(int64) error) error {
+func downloadArchive(ctx context.Context, client *http.Client, root string, a Artifact, preferredSource int, progress func(int64) error) error {
 	var reported int64
 	_, err := artifactcache.Acquire(ctx, filepath.Join(root, "archives"), archiveSpec(a), artifactcache.Options{
-		Client: client,
+		Client: client, PreferredSource: preferredSource,
 		OnProgress: func(p artifactcache.Progress) error {
 			delta := p.ReceivedBytes - reported
 			reported = p.ReceivedBytes

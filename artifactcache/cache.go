@@ -24,6 +24,7 @@ var ErrIntegrity = errors.New("archive integrity check failed")
 // Spec describes exact original publisher bytes selected by the trusted host.
 type Spec struct {
 	URL       string
+	Mirrors   []string
 	SHA256    string
 	SizeBytes int64
 }
@@ -40,6 +41,9 @@ type Options struct {
 	// Client is a trusted integration hook, primarily for network policy/tests.
 	// Nil selects a client with a fifteen-minute timeout. HTTPS remains required.
 	Client *http.Client
+	// PreferredSource selects the first URL to try. -1 uses the canonical URL.
+	// Remaining trusted URLs are tried in catalog order after it fails.
+	PreferredSource int
 	// OnProgress may stop acquisition by returning an error.
 	OnProgress func(Progress) error
 }
@@ -50,12 +54,142 @@ type Result struct {
 }
 
 func (s Spec) validate() error {
-	u, err := url.Parse(s.URL)
+	urls := append([]string{s.URL}, s.Mirrors...)
 	hash, hashErr := hex.DecodeString(s.SHA256)
-	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.Fragment != "" || hashErr != nil || len(hash) != sha256.Size || strings.ToLower(s.SHA256) != s.SHA256 || s.SizeBytes <= 0 {
+	if hashErr != nil || len(hash) != sha256.Size || strings.ToLower(s.SHA256) != s.SHA256 || s.SizeBytes <= 0 || len(urls) == 0 {
 		return ErrInvalid
 	}
+	seen := map[string]bool{}
+	for _, rawURL := range urls {
+		u, err := url.Parse(rawURL)
+		if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.Fragment != "" || seen[rawURL] {
+			return ErrInvalid
+		}
+		seen[rawURL] = true
+	}
 	return nil
+}
+
+func (s Spec) urls() []string { return append([]string{s.URL}, s.Mirrors...) }
+
+const sourceProbeTimeout = 5 * time.Second
+
+func clientWithRedirectPolicy(client *http.Client) *http.Client {
+	if client == nil {
+		client = &http.Client{Timeout: 15 * time.Minute}
+	}
+	copy := *client
+	redirect := copy.CheckRedirect
+	copy.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if req.URL.Scheme != "https" || req.URL.User != nil {
+			return ErrInvalid
+		}
+		if redirect != nil {
+			return redirect(req, via)
+		}
+		if len(via) >= 10 {
+			return errors.New("too many archive redirects")
+		}
+		return nil
+	}
+	return &copy
+}
+
+func probeURL(ctx context.Context, client *http.Client, rawURL string, size int64) error {
+	probe := func(method string, rangeHeader bool) (*http.Response, error) {
+		probeCtx, cancel := context.WithTimeout(ctx, sourceProbeTimeout)
+		defer cancel()
+		request, err := http.NewRequestWithContext(probeCtx, method, rawURL, nil)
+		if err != nil {
+			return nil, err
+		}
+		if rangeHeader {
+			request.Header.Set("Range", "bytes=0-0")
+		}
+		return client.Do(request)
+	}
+	response, err := probe(http.MethodHead, false)
+	if err != nil {
+		return err
+	}
+	response.Body.Close()
+	if response.StatusCode >= http.StatusOK && response.StatusCode < http.StatusMultipleChoices && response.ContentLength == size {
+		return nil
+	}
+	fallback := response.StatusCode == http.StatusMethodNotAllowed || response.StatusCode == http.StatusNotImplemented
+	if response.StatusCode >= http.StatusOK && response.StatusCode < http.StatusMultipleChoices && response.ContentLength != size {
+		fallback = true
+	}
+	if !fallback {
+		return fmt.Errorf("archive probe returned HTTP %d", response.StatusCode)
+	}
+	response, err = probe(http.MethodGet, true)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	if response.StatusCode == http.StatusPartialContent {
+		contentRange := response.Header.Get("Content-Range")
+		if strings.HasPrefix(contentRange, "bytes 0-0/") && strings.TrimPrefix(contentRange, "bytes 0-0/") == fmt.Sprint(size) {
+			return nil
+		}
+	}
+	if response.StatusCode == http.StatusOK && response.ContentLength == size {
+		return nil
+	}
+	return fmt.Errorf("archive probe returned HTTP %d", response.StatusCode)
+}
+
+// SelectSource probes a small representative set of trusted catalog entries and
+// returns the source index with the lowest total probe latency. The canonical
+// source remains the safe fallback when no source passes validation.
+func SelectSource(ctx context.Context, specs []Spec, options Options) (int, error) {
+	if len(specs) == 0 {
+		return -1, ErrInvalid
+	}
+	for _, spec := range specs {
+		if err := spec.validate(); err != nil {
+			return -1, err
+		}
+	}
+	sourceCount := len(specs[0].urls())
+	for _, spec := range specs[1:] {
+		if count := len(spec.urls()); count < sourceCount {
+			sourceCount = count
+		}
+	}
+	if sourceCount == 0 {
+		return -1, ErrInvalid
+	}
+	representative := make([]int, 0, 3)
+	for _, index := range []int{0, len(specs) / 2, len(specs) - 1} {
+		duplicate := false
+		for _, existing := range representative {
+			if existing == index {
+				duplicate = true
+				break
+			}
+		}
+		if !duplicate {
+			representative = append(representative, index)
+		}
+	}
+	client := clientWithRedirectPolicy(options.Client)
+	bestIndex, bestLatency := 0, time.Duration(0)
+	for source := 0; source < sourceCount; source++ {
+		started := time.Now()
+		valid := true
+		for _, index := range representative {
+			if err := probeURL(ctx, client, specs[index].urls()[source], specs[index].SizeBytes); err != nil {
+				valid = false
+				break
+			}
+		}
+		if valid && (bestLatency == 0 || time.Since(started) < bestLatency) {
+			bestIndex, bestLatency = source, time.Since(started)
+		}
+	}
+	return bestIndex, nil
 }
 
 type contextReader struct {
@@ -169,41 +303,51 @@ func acquire(ctx context.Context, root string, spec Spec, options Options) (Resu
 	if err := report("downloading", 0); err != nil {
 		return Result{}, err
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, spec.URL, nil)
+	urls := spec.urls()
+	preferred := options.PreferredSource
+	if preferred < 0 || preferred >= len(urls) {
+		preferred = 0
+	}
+	order := make([]int, 0, len(urls))
+	order = append(order, preferred)
+	for index := range urls {
+		if index != preferred {
+			order = append(order, index)
+		}
+	}
+	var lastErr error
+	for _, source := range order {
+		if err := acquireFromURL(ctx, clientWithRedirectPolicy(options.Client), urls[source], root, target, spec, report); err == nil {
+			return Result{Path: target}, nil
+		} else {
+			lastErr = err
+			if ctx.Err() != nil {
+				return Result{}, ctx.Err()
+			}
+		}
+	}
+	return Result{}, lastErr
+}
+
+func acquireFromURL(ctx context.Context, client *http.Client, rawURL, root, target string, spec Spec, report func(string, int64) error) error {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
-		return Result{}, err
-	}
-	client := http.Client{Timeout: 15 * time.Minute}
-	if options.Client != nil {
-		client = *options.Client
-	}
-	redirect := client.CheckRedirect
-	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
-		if req.URL.Scheme != "https" || req.URL.User != nil {
-			return ErrInvalid
-		}
-		if redirect != nil {
-			return redirect(req, via)
-		}
-		if len(via) >= 10 {
-			return errors.New("too many archive redirects")
-		}
-		return nil
+		return err
 	}
 	response, err := client.Do(request)
 	if err != nil {
-		return Result{}, err
+		return err
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		return Result{}, fmt.Errorf("archive download returned HTTP %d", response.StatusCode)
+		return fmt.Errorf("archive download returned HTTP %d", response.StatusCode)
 	}
 	if response.ContentLength >= 0 && response.ContentLength != spec.SizeBytes {
-		return Result{}, ErrIntegrity
+		return ErrIntegrity
 	}
 	file, err := os.CreateTemp(root, ".part-")
 	if err != nil {
-		return Result{}, err
+		return err
 	}
 	defer os.Remove(file.Name())
 	defer file.Close()
@@ -213,49 +357,47 @@ func acquire(ctx context.Context, root string, spec Spec, options Options) (Resu
 	var received int64
 	for {
 		if err := ctx.Err(); err != nil {
-			return Result{}, err
+			return err
 		}
 		n, readErr := response.Body.Read(buffer)
 		if n > 0 {
 			if int64(n) > spec.SizeBytes-received {
-				return Result{}, ErrIntegrity
+				return ErrIntegrity
 			}
 			if _, err := writer.Write(buffer[:n]); err != nil {
-				return Result{}, err
+				return err
 			}
 			received += int64(n)
 			if err := report("downloading", received); err != nil {
-				return Result{}, err
+				return err
 			}
 		}
 		if readErr == io.EOF {
 			break
 		}
 		if readErr != nil {
-			return Result{}, readErr
+			return readErr
 		}
 	}
 	if err := report("verifying", received); err != nil {
-		return Result{}, err
+		return err
 	}
 	if received != spec.SizeBytes || hex.EncodeToString(hash.Sum(nil)) != spec.SHA256 {
-		return Result{}, ErrIntegrity
+		return ErrIntegrity
 	}
 	if err := file.Sync(); err != nil {
-		return Result{}, err
+		return err
 	}
 	if err := file.Close(); err != nil {
-		return Result{}, err
+		return err
 	}
 	if err := ctx.Err(); err != nil {
-		return Result{}, err
+		return err
 	}
 	if err := os.Rename(file.Name(), target); err != nil {
-		// Another acquirer may have published identical bytes first on a platform
-		// that refuses replacement. Never remove that acquirer's cache entry.
 		if verifyErr := Verify(ctx, target, spec); verifyErr != nil {
-			return Result{}, err
+			return err
 		}
 	}
-	return Result{Path: target}, nil
+	return nil
 }
