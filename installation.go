@@ -151,7 +151,28 @@ func (m *Manager) installedSnapshot() (*Installation, string) {
 func (m *Manager) adoptInstallation(savedVersion int) error {
 	if m.op.Package != "" {
 		if _, ok := m.installation(m.op.Package); !ok {
-			return errors.New("unsupported native preparation package")
+			if m.pkg.Preparation == nil || m.pkg.Preparation.Contract != hostDesktopContract {
+				return errors.New("unsupported native preparation package")
+			}
+			// A release may retire a package from its compatibility catalog while
+			// users still have its operation record on disk. Treat that record as
+			// an upgrade candidate instead of making the whole service unusable.
+			// The retired directory is never trusted or executed; a subsequent
+			// Start downloads and verifies the current package before activation.
+			m.op.Package = m.pkg.Digest()
+			m.op.Owner, m.op.RequestID, m.op.Source, m.op.UploadSize = "", "", "", 0
+			m.op.Status = Status{State: "available", ExpectedBytes: m.pkg.SizeBytes}
+			if installed, known := m.installation(m.op.Installed); known {
+				if _, err := m.installedDirectory(installed.Digest); err == nil {
+					m.op.Installed = installed.Digest
+					m.op.Status.State = "ready"
+				} else {
+					m.op.Installed = ""
+				}
+			} else {
+				m.op.Installed = ""
+			}
+			return nil
 		}
 	}
 	if savedVersion == 2 {

@@ -250,6 +250,38 @@ func TestRestartAndUnknownRecordFailClosed(t *testing.T) {
 		t.Fatal("rewrote unknown record")
 	}
 }
+
+func TestRestartRecoversRetiredPackageAsUpgradeCandidate(t *testing.T) {
+	p, err := HostDesktopForPlatform("linux", "amd64")
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	record := operation{Version: 2, Package: "retired-package", Installed: "retired-package",
+		Owner: "old-owner", RequestID: "old-request", Source: "download",
+		Status: Status{State: "ready", ExpectedBytes: 123}}
+	data, err := json.Marshal(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "operation.json")
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	m, err := New(root, p, func(context.Context, string) error { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+	status := m.Snapshot("new-owner")
+	if status.State != "available" || status.Installed != nil || status.CanCancel {
+		t.Fatalf("retired package was not reset to a safe upgrade state: %+v", status)
+	}
+	after, err := os.ReadFile(path)
+	if err != nil || !bytes.Equal(data, after) {
+		t.Fatalf("opening a retired package rewrote the operation record: %v", err)
+	}
+}
 func TestDownloadChecksBytesAndReusesVerifiedCache(t *testing.T) {
 	m, data := testManager(t, func(context.Context, string) error { return nil })
 	calls := 0
