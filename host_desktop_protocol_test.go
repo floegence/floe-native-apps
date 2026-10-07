@@ -68,6 +68,35 @@ func TestHostDesktopCommandsNeverAcceptUnboundInputOrArbitrarySources(t *testing
 	}
 }
 
+func TestHostDesktopUnlockInputRequiresPhysicalEventAndLockedFrame(t *testing.T) {
+	for _, input := range []*HostDesktopInput{
+		{Kind: "text", Text: "secret"},
+		{Kind: "paste", Text: "secret"},
+	} {
+		command := HostDesktopCommand{Version: 1, ID: 1, Method: "unlock_input", Generation: 2, FrameID: 8, Input: input}
+		if command.Valid() {
+			t.Fatalf("unlock input accepted non-physical event: %#v", input.Kind)
+		}
+	}
+	valid := HostDesktopCommand{Version: 1, ID: 1, Method: "unlock_input", Generation: 2, FrameID: 8,
+		Input: &HostDesktopInput{Kind: "key", Code: "Enter", Key: "Enter", Pressed: true}}
+	if !valid.Valid() {
+		t.Fatal("physical unlock input rejected")
+	}
+}
+
+func TestHostDesktopServiceCommandsAreExplicitAndBounded(t *testing.T) {
+	for _, method := range []string{"service_status", "service_install", "service_uninstall", "login_session"} {
+		command := HostDesktopCommand{Version: 1, ID: 1, Method: method, Service: LoginScreenService}
+		if !command.Valid() {
+			t.Fatalf("service command rejected: %s", method)
+		}
+	}
+	if (HostDesktopCommand{Version: 1, ID: 1, Method: "service_install", Service: "other"}).Valid() {
+		t.Fatal("unknown service accepted")
+	}
+}
+
 func TestHostDesktopClipboardEscapingFitsWireLimit(t *testing.T) {
 	value := strings.Repeat("\x01", 1<<20)
 	var wire bytes.Buffer

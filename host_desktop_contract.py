@@ -35,6 +35,7 @@ class DesktopAuthority:
         self.mode = 'view'
         self.state = 'disconnected'
         self.last_sent = self.last_painted = 0
+        self.locked_frame = 0
 
     def bind(self, display, mode):
         if not isinstance(display, str) or not 0 < len(display) <= 160 or mode not in ('view', 'control'):
@@ -42,12 +43,23 @@ class DesktopAuthority:
         self.generation += 1
         self.display, self.mode, self.state = display, mode, 'active'
         self.last_sent = self.last_painted = 0
+        self.locked_frame = 0
         return self.generation
 
     def revoke(self, state):
         self.generation += 1
         self.state = state
         self.last_sent = self.last_painted = 0
+        self.locked_frame = 0
+
+    def bind_locked_frame(self, frame):
+        if self.state != 'locked' or not integer(frame, 1, (1 << 53) - 1):
+            raise DesktopError('STALE_DESKTOP')
+        self.locked_frame = frame
+
+    def unlock_input(self, generation, frame):
+        if self.state != 'locked' or generation != self.generation or frame != self.locked_frame:
+            raise DesktopError('STALE_DESKTOP')
 
     def sent(self, frame):
         if not integer(frame, self.last_sent + 1, (1 << 53) - 1):

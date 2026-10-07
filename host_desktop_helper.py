@@ -79,6 +79,8 @@ class HostDesktop:
         self.authorization = 'unsupported'
         self.clipboard_sync = False
         self.lock_requested_at = None
+        self.service_state = 'not_installed' if sys.platform.startswith(('linux', 'darwin')) else 'unsupported'
+        self.login_service = None
         self.connected = self.connecting = False
         self.observer = GLib.timeout_add(500, self.observe)
 
@@ -111,7 +113,10 @@ class HostDesktop:
             self.authorization = 'unsupported'
         audio = bool(self.Gst.ElementFactory.find('pulsesrc') and self.Gst.ElementFactory.find('opusenc'))
         return {'backend': self.identity.backend, 'state': state, 'screen': available, 'input': available,
-                'clipboard': clipboard, 'audio': audio, 'unattended': unattended, 'unlock': False,
+                'clipboard': clipboard, 'audio': audio, 'unattended': unattended,
+                'unlock': bool(self.login_service and self.service_state == 'active'),
+                'locked_screen': bool(self.login_service and self.service_state == 'active'),
+                'service': self.service_state,
                 'encoder': self.encoder[0] if self.encoder else '', 'displays': self.displays,
                 'authorization': self.authorization}
 
@@ -127,11 +132,37 @@ class HostDesktop:
                 'input': {'generation', 'input'}, 'set_clipboard': {'generation', 'text'},
                 'get_clipboard': {'generation'}, 'release_input': {'generation'},
                 'set_clipboard_sync': {'generation', 'enabled'},
-                'keyframe': {'generation'}, 'lock': {'generation'}}
+                'keyframe': {'generation'}, 'lock': {'generation'},
+                'unlock_input': {'generation', 'frame_id', 'input'},
+                'service_status': {'service'}, 'service_install': {'service'},
+                'service_uninstall': {'service'}, 'login_session': {'service'}}
             if not isinstance(method, str) or method not in fields or set(command) - common - fields[method]:
                 raise DesktopError('INVALID_ARGUMENT')
             if method == 'probe':
                 self.emit({'type': 'capabilities', 'id': request, 'capabilities': self.capabilities()})
+                return False
+            if method == 'service_status':
+                self.emit({'type': 'service_status', 'id': request, 'service': 'login-screen',
+                           'service_status': {'state': self.service_state, 'backend': sys.platform}})
+                return False
+            if method in ('service_install', 'service_uninstall', 'login_session'):
+                if command.get('service') != 'login-screen':
+                    raise DesktopError('INVALID_ARGUMENT')
+                if method == 'service_install':
+                    # Elevation is deliberately owned by the caller's explicit
+                    # UI flow; the unprivileged helper never invokes it.
+                    self.service_state = 'authorization_required'
+                    self.emit({'type': 'service_status', 'id': request, 'service': 'login-screen',
+                               'service_status': {'state': self.service_state, 'backend': sys.platform},
+                               'code': 'ADMIN_AUTHORIZATION_REQUIRED'})
+                elif method == 'service_uninstall':
+                    self.service_state = 'not_installed'
+                    self.emit({'type': 'service_status', 'id': request, 'service': 'login-screen',
+                               'service_status': {'state': self.service_state, 'backend': sys.platform}})
+                else:
+                    if self.service_state != 'active':
+                        raise DesktopError('LOGIN_SERVICE_UNAVAILABLE')
+                    self.emit({'type': 'result', 'id': request})
                 return False
             if method == 'forget_authorization':
                 if self.connected or self.connecting:
@@ -179,6 +210,11 @@ class HostDesktop:
                     self.clipboard_enabled()
                 elif method == 'keyframe':
                     self.recover_decoder()
+                elif method == 'unlock_input':
+                    if self.authority.state != 'locked' or not self.login_service:
+                        raise DesktopError('LOGIN_SERVICE_UNAVAILABLE')
+                    self.authority.unlock_input(generation, command.get('frame_id'))
+                    self.login_service.input(command.get('input'))
                 else:
                     self.authority.input(generation)
                     self.require_active()

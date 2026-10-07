@@ -42,6 +42,8 @@ type HostDesktopCapabilities struct {
 	Audio         bool                 `json:"audio"`
 	Unattended    bool                 `json:"unattended"`
 	Unlock        bool                 `json:"unlock"`
+	LockedScreen  bool                 `json:"locked_screen,omitempty"`
+	Service       string               `json:"service,omitempty"`
 	Encoder       string               `json:"encoder,omitempty"`
 	Displays      []HostDesktopDisplay `json:"displays"`
 }
@@ -52,6 +54,15 @@ type HostDesktopPicture struct {
 	FrameRate    int    `json:"frame_rate"`
 	Audio        bool   `json:"audio"`
 	NativePixels bool   `json:"native_pixels,omitempty"`
+}
+
+// HostDesktopServiceStatus is the stable, redacted status of the optional
+// login-screen service. It intentionally contains no installation path or
+// credential material.
+type HostDesktopServiceStatus struct {
+	State   string `json:"state"`
+	Reason  string `json:"reason,omitempty"`
+	Backend string `json:"backend,omitempty"`
 }
 
 // HostDesktopInput uses normalized selected-display coordinates. Code names are
@@ -89,39 +100,42 @@ type HostDesktopCommand struct {
 	Input      *HostDesktopInput   `json:"input,omitempty"`
 	Text       *string             `json:"text,omitempty"`
 	Enabled    *bool               `json:"enabled,omitempty"`
+	Service    string              `json:"service,omitempty"`
 }
 
 // HostDesktopMessage carries control metadata or one encoded media packet.
 // Data is binary on media transports; credentials and content are not diagnostics.
 type HostDesktopMessage struct {
-	Authorization string                   `json:"authorization,omitempty"`
-	Version       int                      `json:"version"`
-	Type          string                   `json:"type"`
-	ID            uint64                   `json:"id,omitempty"`
-	Code          string                   `json:"code,omitempty"`
-	State         string                   `json:"state,omitempty"`
-	Mode          string                   `json:"mode,omitempty"`
-	Capabilities  *HostDesktopCapabilities `json:"capabilities,omitempty"`
-	Displays      []HostDesktopDisplay     `json:"displays,omitempty"`
-	DisplayID     string                   `json:"display_id,omitempty"`
-	Generation    uint64                   `json:"generation,omitempty"`
-	FrameID       uint64                   `json:"frame_id,omitempty"`
-	Timestamp     int64                    `json:"timestamp,omitempty"`
-	Codec         string                   `json:"codec,omitempty"`
-	Profile       string                   `json:"profile,omitempty"`
-	Description   string                   `json:"description,omitempty"`
-	Encoder       string                   `json:"encoder,omitempty"`
-	Cursor        string                   `json:"cursor,omitempty"`
-	Width         int                      `json:"width,omitempty"`
-	Height        int                      `json:"height,omitempty"`
-	HotX          int                      `json:"hot_x,omitempty"`
-	HotY          int                      `json:"hot_y,omitempty"`
-	Key           bool                     `json:"key,omitempty"`
-	SampleRate    int                      `json:"sample_rate,omitempty"`
-	Channels      int                      `json:"channels,omitempty"`
-	Text          *string                  `json:"text,omitempty"`
-	Bytes         int                      `json:"bytes,omitempty"`
-	Data          []byte                   `json:"-"`
+	Authorization string                    `json:"authorization,omitempty"`
+	Version       int                       `json:"version"`
+	Type          string                    `json:"type"`
+	ID            uint64                    `json:"id,omitempty"`
+	Code          string                    `json:"code,omitempty"`
+	State         string                    `json:"state,omitempty"`
+	Mode          string                    `json:"mode,omitempty"`
+	Capabilities  *HostDesktopCapabilities  `json:"capabilities,omitempty"`
+	Service       string                    `json:"service,omitempty"`
+	ServiceStatus *HostDesktopServiceStatus `json:"service_status,omitempty"`
+	Displays      []HostDesktopDisplay      `json:"displays,omitempty"`
+	DisplayID     string                    `json:"display_id,omitempty"`
+	Generation    uint64                    `json:"generation,omitempty"`
+	FrameID       uint64                    `json:"frame_id,omitempty"`
+	Timestamp     int64                     `json:"timestamp,omitempty"`
+	Codec         string                    `json:"codec,omitempty"`
+	Profile       string                    `json:"profile,omitempty"`
+	Description   string                    `json:"description,omitempty"`
+	Encoder       string                    `json:"encoder,omitempty"`
+	Cursor        string                    `json:"cursor,omitempty"`
+	Width         int                       `json:"width,omitempty"`
+	Height        int                       `json:"height,omitempty"`
+	HotX          int                       `json:"hot_x,omitempty"`
+	HotY          int                       `json:"hot_y,omitempty"`
+	Key           bool                      `json:"key,omitempty"`
+	SampleRate    int                       `json:"sample_rate,omitempty"`
+	Channels      int                       `json:"channels,omitempty"`
+	Text          *string                   `json:"text,omitempty"`
+	Bytes         int                       `json:"bytes,omitempty"`
+	Data          []byte                    `json:"-"`
 }
 
 func hostDesktopText(text string, maximum int) bool {
@@ -139,6 +153,8 @@ func hostDesktopDisplayID(id string) bool {
 	}
 	return true
 }
+
+func hostDesktopServiceName(name string) bool { return name == "login-screen" }
 
 func (p HostDesktopPicture) valid() bool {
 	if p.Mode != "auto" && p.Mode != "clarity" && p.Mode != "smooth" && p.Mode != "data" {
@@ -227,7 +243,7 @@ func (command HostDesktopCommand) Valid() bool {
 	if command.Picture != nil && (!command.Picture.valid() || command.Method != "connect" && command.Method != "configure") {
 		return false
 	}
-	if command.Input != nil && command.Method != "input" || command.Text != nil && command.Method != "set_clipboard" {
+	if command.Input != nil && command.Method != "input" && command.Method != "unlock_input" || command.Text != nil && command.Method != "set_clipboard" {
 		return false
 	}
 	if command.Enabled != nil && command.Method != "set_clipboard_sync" {
@@ -242,7 +258,10 @@ func (command HostDesktopCommand) Valid() bool {
 	if command.DisplayID != "" && (command.Method != "connect" && command.Method != "select_display" || !hostDesktopDisplayID(command.DisplayID)) {
 		return false
 	}
-	if command.FrameID != 0 && command.Method != "frame_ack" {
+	if command.FrameID != 0 && command.Method != "frame_ack" && command.Method != "unlock_input" {
+		return false
+	}
+	if command.Service != "" && command.Method != "service_status" && command.Method != "service_install" && command.Method != "service_uninstall" && command.Method != "login_session" {
 		return false
 	}
 	switch command.Method {
@@ -260,8 +279,14 @@ func (command HostDesktopCommand) Valid() bool {
 		return desktopID(command.Generation) && desktopID(command.FrameID)
 	case "input":
 		return desktopID(command.Generation) && command.Input != nil && command.Input.valid()
+	case "unlock_input":
+		return desktopID(command.Generation) && desktopID(command.FrameID) && command.Input != nil && command.Input.valid() && command.Input.Kind != "text" && command.Input.Kind != "paste"
 	case "release_input", "get_clipboard", "lock", "keyframe":
 		return desktopID(command.Generation)
+	case "service_status":
+		return command.Generation == 0
+	case "service_install", "service_uninstall", "login_session":
+		return command.Generation == 0 && hostDesktopServiceName(command.Service)
 	case "set_clipboard":
 		return desktopID(command.Generation) && command.Text != nil && hostDesktopText(*command.Text, 1<<20)
 	case "set_clipboard_sync":
@@ -278,11 +303,22 @@ func hostDesktopAuthorization(value string) bool {
 	return false
 }
 
+func hostDesktopServiceState(value string) bool {
+	switch value {
+	case "unsupported", "not_installed", "authorization_required", "installing", "active", "failed", "uninstalling":
+		return true
+	}
+	return false
+}
+
 func (message HostDesktopMessage) valid() bool {
 	if !hostDesktopAuthorization(message.Authorization) || message.Capabilities != nil && !hostDesktopAuthorization(message.Capabilities.Authorization) {
 		return false
 	}
 	if message.Version != HostDesktopProtocolVersion || message.Bytes < 0 || message.Bytes > hostDesktopPayloadLimit {
+		return false
+	}
+	if message.ServiceStatus != nil && (!hostDesktopServiceState(message.ServiceStatus.State) || !hostDesktopServiceName(message.Service)) {
 		return false
 	}
 	switch message.Type {
@@ -295,7 +331,7 @@ func (message HostDesktopMessage) valid() bool {
 		return desktopID(message.Generation) && message.Codec == "png" && message.Width >= 1 && message.Width <= 512 && message.Height >= 1 && message.Height <= 512 && message.HotX >= 0 && message.HotX < message.Width && message.HotY >= 0 && message.HotY < message.Height && message.Bytes > 0 && message.Bytes <= 2<<20
 	case "audio":
 		return desktopID(message.Generation) && message.Codec == "opus" && message.SampleRate == 48000 && message.Channels == 2 && message.Bytes > 0 && message.Bytes <= 64<<10 && message.Timestamp >= 0
-	case "result", "error", "state", "capabilities", "displays", "clipboard":
+	case "result", "error", "state", "capabilities", "displays", "clipboard", "service_status":
 		return message.Bytes == 0 && (message.Text == nil || hostDesktopText(*message.Text, 1<<20))
 	}
 	return false
