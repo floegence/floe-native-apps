@@ -149,3 +149,16 @@ terms are retained in full in each file and included in the prepared component.
 The native build manifests pin their exact SHA-256 values. No NVIDIA driver or
 CUDA toolkit binaries are distributed; a compatible user-installed system driver
 is required for this optional encoding capability.
+
+
+## libdrmtap physical scanout API
+
+The optional `desktop-drm` worker statically links the MIT-licensed libdrmtap
+0.5.8 source at [the pinned upstream commit](https://github.com/rustdesk-org/libdrmtap/tree/95d4d74549631aa5c39461300acfd2e106583cc9).
+Its unchanged copyright and full MIT permission notice accompany both architecture
+artifacts as `native/host-desktop/drm/dist/<arch>/libdrmtap.LICENSE`, and accompany
+the installed system service. `source.json` and each build manifest record the
+original publisher, commit, individual source hashes and build configuration.
+The dependency's privilege helper is disabled; the first-party worker, service,
+protocol and SSH lifecycle are independently implemented. Host libdrm/EGL and
+GPU vendor drivers are dynamically loaded system dependencies, not redistributed.

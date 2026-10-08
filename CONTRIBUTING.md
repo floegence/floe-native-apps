@@ -1383,3 +1383,52 @@ or lookahead and one-frame CBR VBV. X11 readback, scaling and raw-pixel IPC rema
 CPU-visible; this is not a zero-copy capture claim. Record the actual encoder,
 resolution, capture backend and measured client response. GPU availability or
 synthetic encoder throughput alone cannot establish desktop latency.
+
+## Privileged physical desktop deployment
+
+The `hostdesktop` package owns the optional Linux service. Its command imports
+only that protocol/service package; it must not import the distribution root and
+recursively embed its own executable. `scripts/build_host_desktop_service.sh`
+builds static amd64/arm64 commands and records every production source hash.
+
+The DRM worker is original glue around the separately licensed MIT `libdrmtap`
+dependency pinned by `native/host-desktop/drm/source.json`. No RustDesk application
+code is copied. Build its reviewed pristine checkout read-only in the signed,
+pinned disposable builder using `scripts/build_host_desktop_drm.sh`. The build
+disables the dependency's privilege helper and records original sources, MIT
+license, signed builder packages, compiler, ELF requirements and final bytes.
+Only the worker and license are redistributed; host libdrm/EGL/GPU drivers remain
+system dependencies. Rebuild manifests after changing any recorded source.
+
+`LoginScreenServiceKit` extracts reviewed release bytes without installation.
+The consumer's Env App SSH adapter confirms root service scope, verifies bytes in
+a private root directory before execution, and runs `manage`. Its JSON policy
+contains no credentials. Wait for root authority before sending that policy;
+otherwise an unused sudo password could become service input. Keep management
+stdin open through completion, close it on cancellation, and wait for reported
+rollback before terminating SSH. Failed or unknown rollback is a visible failure.
+
+Native qualifiers refuse an existing service installation. With explicit root
+authorization, `FLOE_LOGIN_DEPLOYMENT_KIT` runs real systemd install/cancel/start/
+stop/update/uninstall and unprivileged attachment tests. `FLOE_LOGIN_SERVICE_WORKER`
+qualifies capture/input teardown independently. A disconnected display qualifier
+uses `FLOE_LOGIN_EXPECT_DISCONNECTED=1` and must report missing scanout rather than
+claim success for capture or unlock. These checks do not replace real wrong-
+password/successful-unlock, user-switch and product Viewer qualification.
+
+`FLOE_LOGIN_QUALIFY_UNLOCK=1` additionally starts with a sleeping display, locks
+the current GNOME session, verifies an invalid physical credential stays locked,
+and requires the operator's credential through ephemeral stdin for actual unlock.
+It rejects old-generation input and successor input before paint. Never supply
+the credential in an environment variable, command argument, log or file. Disable
+terminal echo when using an interactive qualification pipe. The qualifier does
+not reset credentials or call an OS unlock API.
+
+`FLOE_LOGIN_QUALIFY_SWITCH=1` creates a real GDM transient greeter, verifies its
+physical frame and input teardown, and reactivates the original session without
+unlocking it. All deployment qualifiers also keep a real acknowledged key down
+while stopping the service or killing the Runtime fixture and verify the kernel
+devices disappear before a new attachment. These opt-in fixtures must never run
+in ordinary source CI. Current service media is PNG on the physical scanout;
+clipboard and audio are not advertised by this service. Existing current-user
+desktop transports retain their independent media capabilities.

@@ -16,7 +16,7 @@ import (
 
 const hostDesktopContract = "host-desktop-media-v1"
 
-//go:embed host_desktop_catalog.json host_desktop_releases.json host_desktop_contract.py host_desktop_wire.py host_desktop_identity.py host_desktop_input.py host_desktop_portal.py host_desktop_pipewire.py host_desktop_x11.py host_desktop_xcapture.py host_desktop_media.py host_desktop_pixels.py host_desktop_nvenc.py host_desktop_helper.py host_desktop_selfcheck.py native/host-desktop/dist native/host-desktop/vendor
+//go:embed host_desktop_catalog.json host_desktop_releases.json host_desktop_contract.py host_desktop_wire.py host_desktop_identity.py host_desktop_input.py host_desktop_portal.py host_desktop_pipewire.py host_desktop_x11.py host_desktop_xcapture.py host_desktop_media.py host_desktop_pixels.py host_desktop_nvenc.py host_desktop_helper.py host_desktop_selfcheck.py native/host-desktop/dist native/host-desktop/vendor native/host-desktop/drm/dist native/host-desktop/service/dist
 var hostDesktopDistribution embed.FS
 
 type hostDesktopRelease struct {
@@ -87,10 +87,15 @@ func hostDesktopFiles(architecture string) (map[string][]byte, error) {
 	// bound into the same preparation digest as the helper. Host driver libraries
 	// are never downloaded or copied into the isolated media runtime.
 	for name, path := range map[string]string{
-		"desktop-nvenc":    "native/host-desktop/dist/" + architecture + "/desktop-nvenc",
-		"nvenc-build.json": "native/host-desktop/dist/" + architecture + "/manifest.json",
-		"nvEncodeAPI.h":    "native/host-desktop/vendor/nvEncodeAPI.h",
-		"dynlink_cuda.h":   "native/host-desktop/vendor/dynlink_cuda.h",
+		"floe-host-desktop-service": "native/host-desktop/service/dist/" + architecture + "/floe-host-desktop-service",
+		"service-build.json":        "native/host-desktop/service/dist/" + architecture + "/manifest.json",
+		"desktop-drm":               "native/host-desktop/drm/dist/" + architecture + "/desktop-drm",
+		"drm-build.json":            "native/host-desktop/drm/dist/" + architecture + "/manifest.json",
+		"libdrmtap.LICENSE":         "native/host-desktop/drm/dist/" + architecture + "/libdrmtap.LICENSE",
+		"desktop-nvenc":             "native/host-desktop/dist/" + architecture + "/desktop-nvenc",
+		"nvenc-build.json":          "native/host-desktop/dist/" + architecture + "/manifest.json",
+		"nvEncodeAPI.h":             "native/host-desktop/vendor/nvEncodeAPI.h",
+		"dynlink_cuda.h":            "native/host-desktop/vendor/dynlink_cuda.h",
 	} {
 		data, err := hostDesktopDistribution.ReadFile(path)
 		if err != nil {
@@ -135,7 +140,7 @@ func ResolveHostDesktopTools(root, architecture string) (HostDesktopTools, error
 	manifest := make(map[string]desktopFile, len(files))
 	for name, data := range files {
 		digest := sha256.Sum256(data)
-		manifest[name] = desktopFile{Size: int64(len(data)), SHA256: hex.EncodeToString(digest[:]), Executable: name == "python3" || name == "desktop-nvenc"}
+		manifest[name] = desktopFile{Size: int64(len(data)), SHA256: hex.EncodeToString(digest[:]), Executable: hostDesktopExecutable(name)}
 	}
 	return resolveHostDesktopFiles(root, architecture, manifest)
 }
@@ -211,7 +216,7 @@ func prepareHostDesktopTools(ctx context.Context, root, architecture string) err
 			return err
 		}
 		mode := os.FileMode(0600)
-		if name == "python3" || name == "desktop-nvenc" {
+		if hostDesktopExecutable(name) {
 			mode = 0700
 		}
 		if err := os.WriteFile(filepath.Join(base, name), data, mode); err != nil {
@@ -260,4 +265,8 @@ func (m *Manager) HostDesktopTools() (HostDesktopTools, error) {
 		return HostDesktopTools{}, err
 	}
 	return ResolveHostDesktopTools(root, item.Architecture)
+}
+
+func hostDesktopExecutable(name string) bool {
+	return name == "python3" || name == "desktop-nvenc" || name == "desktop-drm" || name == "floe-host-desktop-service"
 }

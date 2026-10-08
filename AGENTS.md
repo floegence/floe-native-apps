@@ -13,7 +13,10 @@ Applications run directly on their host. Never introduce a container, virtual
 machine, global library path, system package installation, security-policy bypass,
 or automatic privileged fallback into the production path. Containers may be used
 as disposable distribution test fixtures. Components must not contaminate the
-environment of the user's applications.
+environment of the user's applications. The explicit, user-authorized physical
+desktop service is a separate root/systemd boundary: the consuming SSH UI owns
+scope confirmation and ephemeral administrator credentials. It is never an
+automatic fallback, and credentials must never enter Runtime or daemon protocols.
 
 Use one dedicated feature worktree and branch. Keep main clean, preserve commits,
 integrate by fast-forward, and remove only task-owned worktrees and branches.

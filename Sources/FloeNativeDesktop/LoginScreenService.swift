@@ -2,7 +2,7 @@ import Foundation
 
 public enum LoginScreenServiceState: String, Sendable {
     case unsupported, notInstalled = "not_installed", authorizationRequired = "authorization_required"
-    case installing, active, failed, uninstalling
+    case installing, active, stopped, failed, uninstalling
 }
 
 public struct LoginScreenServiceStatus: Sendable, Equatable {

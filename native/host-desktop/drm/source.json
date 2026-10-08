@@ -1,0 +1,9 @@
+{
+  "repository": "https://github.com/rustdesk-org/libdrmtap",
+  "commit": "95d4d74549631aa5c39461300acfd2e106583cc9",
+  "version": "0.5.8",
+  "license": "MIT",
+  "source_url": "https://github.com/rustdesk-org/libdrmtap/tree/95d4d74549631aa5c39461300acfd2e106583cc9",
+  "helper": "disabled",
+  "egl": "enabled only for unprivileged conversion"
+}

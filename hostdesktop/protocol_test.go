@@ -1,4 +1,4 @@
-package nativeapps
+package hostdesktop
 
 import (
 	"bytes"

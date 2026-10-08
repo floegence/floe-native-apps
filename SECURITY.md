@@ -75,3 +75,35 @@ The pinned Alpine packages, Xpra, and its HTML client require their own advisory
 review and catalog updates. Report a vulnerable pinned component here with its
 catalog identity and upstream advisory; do not assume Go dependency scanning
 covers APK archives. No scanner replaces review of changes to the trust boundary.
+
+## Administrator-authorized physical desktop service
+
+`hostdesktop` is a separate, opt-in root service boundary. The consuming product
+must confirm the installation scope and collect any administrator credential in
+its SSH UI. The SDK never requests sudo, installs on startup, receives a password,
+or sends credentials to the daemon. The management command receives a bounded
+policy and a liveness stream; cancellation or loss of that stream rolls back the
+unit, policy and activation state. Its progress contains fixed stages/error codes.
+
+The root-owned systemd service listens only on a private Unix socket. It admits
+one administrator-pinned Runtime image and UID, checks peer PID/start-time/image,
+and consumes a single-use five-second attachment ticket. Connection loss, image
+change, seat/session change, stop and generation changes release all held input.
+A lock frame can be visible without ordinary input authority. Unlock accepts
+physical key/pointer events tied to the painted frame and current generation;
+clipboard, text paste, audio and shortcuts are unavailable on that chain. No
+service log contains input content. Disk encryption is outside this boundary.
+
+DRM export and GPU conversion have separate processes and inherited private
+sockets. Only the exporter retains device/DRM authority. EGL/GLES conversion runs
+as the Runtime user after clearing Linux capabilities; no GPU vendor driver is
+loaded into the root exporter. The service does not change device ACLs, host driver
+libraries, compositor permissions, or user security policies. Current qualification
+covers GNOME/GDM; other lockers must not be inferred from a PAM session label.
+No scanout means no capture capability, even when the service itself is active.
+
+User home directories stay hidden in the service namespace. Only `/run/user` is
+bound read-only for the qualified compositor's session bus. A fixed child drops
+UID and every Linux capability before using Mutter's display-power property.
+It never unlocks the session or sends pre-frame input, changes desktop consent,
+or overrides unsupported display power. Input still requires successor paint.
