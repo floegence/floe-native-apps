@@ -118,6 +118,12 @@ architectures must verify publisher signatures and qualify the unchanged
 graphical contracts. Installed `r3` recipes retain their exact identities and
 remain available to surviving processes; an update never rewrites their files.
 
+Catalog revision `r5` completes that closure with the matching OpenSSL libssl
+and Python bytecode metapackage pins. A real GET request exposed a retired arm64
+libssl archive despite a cached successful HEAD response. Publisher signatures
+and complete acquisition, rather than HEAD responses, are required evidence.
+Installed `r4` recipes keep their original identities and files.
+
 The graphical check covers Unix sockets and three WebSocket attachments. Each
 attachment must paint, deliver fresh input, and preserve the fixture's process
 identity; each browser-style detach must leave its window available for the next

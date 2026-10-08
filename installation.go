@@ -33,6 +33,16 @@ var xpraR3Digests = map[string]string{
 	"arm64": "140010dca8f3df163562fa2b0c7d18f46b6c80165bad2e4f6751a6c31c683b44",
 }
 
+// The r4 installation identities retain their original OpenSSL and Python pins.
+var desktopR4Digests = map[string]string{
+	"amd64": "00ec5459e2a31a4e1e821e0b0836c6c57c2f2a0878af40a795febc8c2cb8badf",
+	"arm64": "67ba369c9b2cb5f364a26f24dcd8e86ec018abbab5c3b5c1aee56fbc5e35b4f3",
+}
+var xpraR4Digests = map[string]string{
+	"amd64": "0e8126a2767880d370854fce5c89f413a15b470ddfa2952e5e7ad117f09bf4af",
+	"arm64": "2c0f924565f824e8a5d2b884ad52f4d7c4b974aa2dd2eba17527d9dd33cd65c9",
+}
+
 // Published recipes remain supported until an explicit compatibility change.
 // Do not change Package's digest encoding when extending this metadata.
 func compatibleInstallations(pkg Package) []Installation {
@@ -60,6 +70,8 @@ func compatibleInstallations(pkg Package) []Installation {
 		if err != nil || pinned.Digest() != pkg.Digest() {
 			return result
 		}
+		result = append(result, Installation{ID: "alpine-3.23-desktop-14.0.2-" + pkg.Architecture + "-r4",
+			Digest: desktopR4Digests[pkg.Architecture], Architecture: pkg.Architecture, Contract: current.Contract})
 		result = append(result, Installation{ID: "alpine-3.23-desktop-14.0.2-" + pkg.Architecture + "-r3",
 			Digest: desktopR3Digests[pkg.Architecture], Architecture: pkg.Architecture, Contract: current.Contract})
 		result = append(result, Installation{ID: "alpine-3.23-desktop-14.0.2-" + pkg.Architecture + "-r2",
@@ -86,6 +98,7 @@ func compatibleInstallations(pkg Package) []Installation {
 		"arm64": "4379638ec87588ad81e96cd3fc8d91a0cd3189b779f9962cece9e568a48276fa",
 	}
 	return append(result,
+		Installation{ID: "alpine-3.23-xpra-6.2.2-" + pkg.Architecture + "-r4", Digest: xpraR4Digests[pkg.Architecture], Architecture: pkg.Architecture, Contract: current.Contract},
 		Installation{ID: "alpine-3.23-xpra-6.2.2-" + pkg.Architecture + "-r3", Digest: xpraR3Digests[pkg.Architecture], Architecture: pkg.Architecture, Contract: current.Contract},
 		Installation{ID: "alpine-3.23-xpra-6.2.2-" + pkg.Architecture + "-r2", Digest: previous[pkg.Architecture], Architecture: pkg.Architecture, Contract: current.Contract},
 		Installation{ID: "alpine-3.23-xpra-6.2.2-" + pkg.Architecture + "-r1", Digest: legacy[pkg.Architecture], Architecture: pkg.Architecture, Contract: current.Contract})

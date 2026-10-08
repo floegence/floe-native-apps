@@ -1,8 +1,8 @@
 [
   {
-    "id": "alpine-3.23-desktop-14.0.2-amd64-r4",
+    "id": "alpine-3.23-desktop-14.0.2-amd64-r5",
     "architecture": "amd64",
-    "size_bytes": 142826875,
+    "size_bytes": 142829474,
     "installed_bytes": 406079944,
     "artifacts": [
       {
@@ -848,10 +848,10 @@
         "source": "https://gitlab.alpinelinux.org/alpine/aports/-/tree/3.23-stable/main/libsndfile"
       },
       {
-        "name": "libssl3-3.5.8-r0.apk",
-        "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/libssl3-3.5.8-r0.apk",
-        "sha256": "f80b76cb5e5a52cfc1ced08f8dc3022adc0ce0a3d6e7741976731b22c71fe310",
-        "size_bytes": 379263,
+        "name": "libssl3-3.5.9-r0.apk",
+        "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/libssl3-3.5.9-r0.apk",
+        "sha256": "b5ad11f5955b3b7ddfd8c32e8c1fdd79878d208bb4dfa9bbd8f35ddc59187242",
+        "size_bytes": 381864,
         "format": "apk",
         "license": "Apache-2.0",
         "source": "https://gitlab.alpinelinux.org/alpine/aports/-/tree/3.23-stable/main/openssl"
@@ -1484,10 +1484,10 @@
         "source": "https://gitlab.alpinelinux.org/alpine/aports/-/tree/3.23-stable/main/python3"
       },
       {
-        "name": "python3-pyc-3.12.14-r0.apk",
-        "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/python3-pyc-3.12.14-r0.apk",
-        "sha256": "16bbe19b383b0916ea0c5b6fa2fdb2b2687d493714cecf58aba1dde6d4e0406d",
-        "size_bytes": 1317,
+        "name": "python3-pyc-3.12.15-r0.apk",
+        "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/python3-pyc-3.12.15-r0.apk",
+        "sha256": "f967a8a607319cfe050e6c4985e9850ced00659b39d46a48fe02c75292150c68",
+        "size_bytes": 1315,
         "format": "apk",
         "license": "PSF-2.0",
         "source": "https://gitlab.alpinelinux.org/alpine/aports/-/tree/3.23-stable/main/python3"
@@ -1819,9 +1819,9 @@
     }
   },
   {
-    "id": "alpine-3.23-desktop-14.0.2-arm64-r4",
+    "id": "alpine-3.23-desktop-14.0.2-arm64-r5",
     "architecture": "arm64",
-    "size_bytes": 137942436,
+    "size_bytes": 137945311,
     "installed_bytes": 402705143,
     "artifacts": [
       {
@@ -2676,10 +2676,10 @@
         "source": "https://gitlab.alpinelinux.org/alpine/aports/-/tree/3.23-stable/main/libsndfile"
       },
       {
-        "name": "libssl3-3.5.8-r0.apk",
-        "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/aarch64/libssl3-3.5.8-r0.apk",
-        "sha256": "77a8ef8f87a3fe6b621fd2c06bb983dea55013a3e67c60741df83f5221983247",
-        "size_bytes": 370152,
+        "name": "libssl3-3.5.9-r0.apk",
+        "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/aarch64/libssl3-3.5.9-r0.apk",
+        "sha256": "cdb3762116994f767cd1da423fa8004bd36b2e3802e3a1343786a40f00a5030e",
+        "size_bytes": 373026,
         "format": "apk",
         "license": "Apache-2.0",
         "source": "https://gitlab.alpinelinux.org/alpine/aports/-/tree/3.23-stable/main/openssl"
@@ -3312,10 +3312,10 @@
         "source": "https://gitlab.alpinelinux.org/alpine/aports/-/tree/3.23-stable/main/python3"
       },
       {
-        "name": "python3-pyc-3.12.14-r0.apk",
-        "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/aarch64/python3-pyc-3.12.14-r0.apk",
-        "sha256": "1dbe12181624e5b1786c9fc34c541e8ebd5167defaf77ca9a1573fad0232139d",
-        "size_bytes": 1301,
+        "name": "python3-pyc-3.12.15-r0.apk",
+        "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/aarch64/python3-pyc-3.12.15-r0.apk",
+        "sha256": "15382195d229840ee74e6e64f04ee65b93c24bc1817b1a3203ffed0ae02433ac",
+        "size_bytes": 1302,
         "format": "apk",
         "license": "PSF-2.0",
         "source": "https://gitlab.alpinelinux.org/alpine/aports/-/tree/3.23-stable/main/python3"
