@@ -254,7 +254,14 @@ func (s *loginServer) attachment(ctx context.Context, conn *net.UnixConn, reader
 		return
 	}
 	defer input.close()
-	go func() { <-lifetime.Done(); _ = input.release() }()
+	// EOF revokes control before a slow capture worker is reaped. A successor
+	// may claim control only after held events have been released.
+	releaseControl := func() {
+		_ = input.release()
+		s.claim(conn, "view")
+	}
+	defer releaseControl()
+	go func() { <-lifetime.Done(); releaseControl() }()
 	commands := make(chan HostDesktopCommand, 16)
 	go func() {
 		defer cancel()

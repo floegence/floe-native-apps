@@ -291,16 +291,28 @@ func (d *loginDeployer) install(ctx context.Context, request LoginServiceDeploym
 		return errLoginDeployment
 	} // Never adopt an unrelated unit.
 	rootExisted := false
+	var rootMode, versionsMode os.FileMode
+	versions := filepath.Join(d.root, "versions")
+	versionsExisted := false
 	if info, err := os.Lstat(d.root); err == nil {
 		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 			return errLoginDeployment
 		}
 		rootExisted = true
+		rootMode = info.Mode().Perm()
 		if old == nil {
 			return errLoginDeployment
 		}
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return errLoginDeployment
+	}
+	if info, err := os.Lstat(versions); err == nil {
+		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			return errLoginDeployment
+		}
+		versionsExisted, versionsMode = true, info.Mode().Perm()
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
 	}
 	oldActive := old != nil && d.systemctl(ctx, "is-active", "--quiet", loginServiceUnit) == nil
 	oldEnabled := old != nil && d.systemctl(ctx, "is-enabled", "--quiet", loginServiceUnit) == nil
@@ -369,6 +381,13 @@ func (d *loginDeployer) install(ctx context.Context, request LoginServiceDeploym
 		}
 		if !rootExisted {
 			_ = os.RemoveAll(d.root)
+		} else {
+			if versionsExisted {
+				rollbackErr = errors.Join(rollbackErr, os.Chmod(versions, versionsMode))
+			} else if err := os.Remove(versions); err != nil && !errors.Is(err, os.ErrNotExist) {
+				rollbackErr = errors.Join(rollbackErr, err)
+			}
+			rollbackErr = errors.Join(rollbackErr, os.Chmod(d.root, rootMode))
 		}
 		outcome := "complete"
 		if rollbackErr != nil {
@@ -379,6 +398,12 @@ func (d *loginDeployer) install(ctx context.Context, request LoginServiceDeploym
 			d.report(LoginServiceDeploymentEvent{Stage: "rolled_back", Rollback: outcome})
 		}
 	}()
+	// SSH management uses umask 0077. The unprivileged converter needs explicit
+	// traversal of its immutable executable paths; installed policy stays 0600.
+	// A failed update restores the previous directory permissions.
+	if err = os.Chmod(d.root, 0755); err != nil {
+		return err
+	}
 	d.emit("verifying_files")
 	for _, file := range []struct{ name, digest string }{{"floe-host-desktop-service", request.ServiceSHA256}, {"desktop-drm", request.WorkerSHA256}, {"libdrmtap.LICENSE", loginDRMLicenseSHA256}} {
 		if ctx.Err() != nil {
@@ -400,8 +425,10 @@ func (d *loginDeployer) install(ctx context.Context, request LoginServiceDeploym
 	data, _ := json.Marshal(request)
 	hash := sha256.Sum256(data)
 	digest := hex.EncodeToString(hash[:])
-	versions := filepath.Join(d.root, "versions")
 	if err = os.MkdirAll(versions, 0755); err != nil {
+		return err
+	}
+	if err = os.Chmod(versions, 0755); err != nil {
 		return err
 	}
 	published = filepath.Join(versions, digest)

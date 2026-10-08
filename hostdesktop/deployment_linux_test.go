@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -136,6 +137,41 @@ func TestLoginDeploymentInstallAndIdempotentUpdate(t *testing.T) {
 		}
 	}
 }
+func TestLoginDeploymentPrivateSSHUmaskPreservesConverterTraversal(t *testing.T) {
+	d, request, systemd, _ := fixtureLoginDeployment(t)
+	previous := syscall.Umask(0077)
+	defer syscall.Umask(previous)
+	if err := d.manage(context.Background(), request); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{d.root, filepath.Join(d.root, "versions")} {
+		info, err := os.Stat(path)
+		if err != nil || info.Mode().Perm() != 0755 {
+			t.Fatal("SSH umask hid the converter executable")
+		}
+	}
+	policy, err := os.Stat(filepath.Join(d.root, "installed.json"))
+	if err != nil || policy.Mode().Perm() != 0600 {
+		t.Fatal("policy became readable by the converter")
+	}
+	for _, path := range []string{d.root, filepath.Join(d.root, "versions")} {
+		if os.Chmod(path, 0700) != nil {
+			t.Fatal("fixture permission change failed")
+		}
+	}
+	request.Operation, request.RuntimeSHA256 = "update", strings.Repeat("b", 64)
+	systemd.fail = "start"
+	if d.manage(context.Background(), request) == nil {
+		t.Fatal("failed update was accepted")
+	}
+	for _, path := range []string{d.root, filepath.Join(d.root, "versions")} {
+		info, err := os.Stat(path)
+		if err != nil || info.Mode().Perm() != 0700 {
+			t.Fatal("rollback changed the previous directory permissions")
+		}
+	}
+}
+
 func TestLoginDeploymentFailuresLeaveNoInstallation(t *testing.T) {
 	for _, failure := range []string{"daemon-reload", "enable", "start", "is-active"} {
 		t.Run(failure, func(t *testing.T) {

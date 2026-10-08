@@ -27,6 +27,8 @@ func TestLoginDeploymentRealSystemd(t *testing.T) {
 	if os.Geteuid() != 0 {
 		t.Fatal("administrator authorization required")
 	}
+	previousUmask := syscall.Umask(0077)
+	defer syscall.Umask(previousUmask)
 	for _, name := range []string{"/etc/systemd/system/redeven-desktop.service", "/usr/lib/redeven-desktop", "/etc/modules-load.d/redeven-desktop.conf"} {
 		if _, err := os.Lstat(name); !errors.Is(err, os.ErrNotExist) {
 			t.Fatal("qualifier refuses an existing installation")

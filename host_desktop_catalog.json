@@ -2,7 +2,7 @@
   {
     "id": "alpine-3.23-host-desktop-1-amd64",
     "architecture": "amd64",
-    "size_bytes": 167058723,
+    "size_bytes": 167064400,
     "installed_bytes": 456546780,
     "artifacts": [
       {
@@ -2428,16 +2428,18 @@
         ]
       },
       {
-        "name": "pcre2-10.48-r0.apk",
-        "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/pcre2-10.48-r0.apk",
-        "sha256": "2ad30ab5e606ac08158e405c29e1c18154c9df30ee3381db75096c023865d7b6",
-        "size_bytes": 322469,
+        "name": "pcre2-10.49-r0.apk",
+        "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/pcre2-10.49-r0.apk",
+        "mirrors": [
+          "https://mirrors.aliyun.com/alpine/v3.23/main/x86_64/pcre2-10.49-r0.apk",
+          "https://mirrors.tuna.tsinghua.edu.cn/alpine/v3.23/main/x86_64/pcre2-10.49-r0.apk",
+          "https://mirrors.ustc.edu.cn/alpine/v3.23/main/x86_64/pcre2-10.49-r0.apk"
+        ],
+        "sha256": "d8057917531ed5eead1d4ccc8dd3ef630e4d90c0587e9b9feafe56c4f954265f",
+        "size_bytes": 323103,
         "format": "apk",
         "license": "BSD-3-Clause",
-        "source": "https://gitlab.alpinelinux.org/alpine/aports/-/tree/3.23-stable/main/pcre2",
-        "mirrors": [
-          "https://mirrors.ustc.edu.cn/alpine/v3.23/main/x86_64/pcre2-10.48-r0.apk"
-        ]
+        "source": "https://gitlab.alpinelinux.org/alpine/aports/-/tree/3.23-stable/main/pcre2"
       },
       {
         "name": "pipewire-libs-1.4.9-r5.apk",
@@ -2538,14 +2540,18 @@
         ]
       },
       {
-        "name": "python3-3.12.14-r0.apk",
-        "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/python3-3.12.14-r0.apk",
-        "sha256": "60514ca149492e85090e8a8e1ec053bcb2355962f0967bbe91da5bebccb01d16",
-        "size_bytes": 8104869,
+        "name": "python3-3.12.15-r0.apk",
+        "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/python3-3.12.15-r0.apk",
+        "mirrors": [
+          "https://mirrors.aliyun.com/alpine/v3.23/main/x86_64/python3-3.12.15-r0.apk",
+          "https://mirrors.tuna.tsinghua.edu.cn/alpine/v3.23/main/x86_64/python3-3.12.15-r0.apk",
+          "https://mirrors.ustc.edu.cn/alpine/v3.23/main/x86_64/python3-3.12.15-r0.apk"
+        ],
+        "sha256": "29694494393f3cd4b19297504baafdea612d9b8144bf9bb8fbac0c15dd5e7baf",
+        "size_bytes": 8109912,
         "format": "apk",
         "license": "PSF-2.0",
-        "source": "https://gitlab.alpinelinux.org/alpine/aports/-/tree/3.23-stable/main/python3",
-        "mirrors": []
+        "source": "https://gitlab.alpinelinux.org/alpine/aports/-/tree/3.23-stable/main/python3"
       },
       {
         "name": "readline-8.3.1-r0.apk",
@@ -3027,7 +3033,7 @@
   {
     "id": "alpine-3.23-host-desktop-1-arm64",
     "architecture": "arm64",
-    "size_bytes": 160830808,
+    "size_bytes": 160836170,
     "installed_bytes": 455764043,
     "artifacts": [
       {
@@ -5467,16 +5473,18 @@
         ]
       },
       {
-        "name": "pcre2-10.48-r0.apk",
-        "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/aarch64/pcre2-10.48-r0.apk",
-        "sha256": "b031774759cdfef446026a71623cb59d03865134141c395d2ab55ecacdcfd787",
-        "size_bytes": 320068,
+        "name": "pcre2-10.49-r0.apk",
+        "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/aarch64/pcre2-10.49-r0.apk",
+        "mirrors": [
+          "https://mirrors.aliyun.com/alpine/v3.23/main/aarch64/pcre2-10.49-r0.apk",
+          "https://mirrors.tuna.tsinghua.edu.cn/alpine/v3.23/main/aarch64/pcre2-10.49-r0.apk",
+          "https://mirrors.ustc.edu.cn/alpine/v3.23/main/aarch64/pcre2-10.49-r0.apk"
+        ],
+        "sha256": "a0af38fe98cb22c358aca1e1e504141c6673efef7635c539a914b83fb5c13b58",
+        "size_bytes": 320292,
         "format": "apk",
         "license": "BSD-3-Clause",
-        "source": "https://gitlab.alpinelinux.org/alpine/aports/-/tree/3.23-stable/main/pcre2",
-        "mirrors": [
-          "https://mirrors.ustc.edu.cn/alpine/v3.23/main/aarch64/pcre2-10.48-r0.apk"
-        ]
+        "source": "https://gitlab.alpinelinux.org/alpine/aports/-/tree/3.23-stable/main/pcre2"
       },
       {
         "name": "pipewire-libs-1.4.9-r5.apk",
@@ -5577,14 +5585,18 @@
         ]
       },
       {
-        "name": "python3-3.12.14-r0.apk",
-        "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/aarch64/python3-3.12.14-r0.apk",
-        "sha256": "e7c549a9871334c3fb95aaa943b552cdc5bf1807e5e523893cb63e4057bba810",
-        "size_bytes": 8073117,
+        "name": "python3-3.12.15-r0.apk",
+        "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/aarch64/python3-3.12.15-r0.apk",
+        "mirrors": [
+          "https://mirrors.aliyun.com/alpine/v3.23/main/aarch64/python3-3.12.15-r0.apk",
+          "https://mirrors.tuna.tsinghua.edu.cn/alpine/v3.23/main/aarch64/python3-3.12.15-r0.apk",
+          "https://mirrors.ustc.edu.cn/alpine/v3.23/main/aarch64/python3-3.12.15-r0.apk"
+        ],
+        "sha256": "dabc892646c32cc6619afadd30256d1845b1ef34a3f5bebff84895813b55b95b",
+        "size_bytes": 8078255,
         "format": "apk",
         "license": "PSF-2.0",
-        "source": "https://gitlab.alpinelinux.org/alpine/aports/-/tree/3.23-stable/main/python3",
-        "mirrors": []
+        "source": "https://gitlab.alpinelinux.org/alpine/aports/-/tree/3.23-stable/main/python3"
       },
       {
         "name": "readline-8.3.1-r0.apk",
