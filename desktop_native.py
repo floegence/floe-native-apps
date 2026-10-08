@@ -436,8 +436,10 @@ class NativeDesktop:
 
     def register_attachment(self, attachment, epoch):
         """Register a viewer and return the shared native input epoch."""
-        if self.closed or self.version != 1:
+        if self.version != 1:
             raise ValueError('Native connection is unavailable')
+        # A failed capture still admits an authenticated observer. bind keeps
+        # this attachment observable without restoring native input or pixels.
         first = not self.attachments
         self.attachments.add(attachment)
         if self.attachment is None:

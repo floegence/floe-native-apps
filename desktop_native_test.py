@@ -156,6 +156,24 @@ class NativeTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.native.observe('window-instance 2')
 
+    def test_shared_attachment_after_capture_loss_stays_observable_without_native_input(self):
+        native = self.native
+        native.lost()
+        sent = list(self.sent)
+        first, second = Attachment(), Attachment()
+        epoch = native.register_attachment(first, 2)
+        self.assertEqual(native.snapshot()['state'], 'unavailable')
+        self.assertIsNone(native.target)
+        self.assertEqual(self.sent, sent)
+        self.assertEqual(native.register_attachment(second, 3), epoch)
+        with self.assertRaises(ValueError):
+            native.deliver(epoch, NativeTarget(1, 1), {'kind': 'key', 'code': 30, 'pressed': True})
+        native.unregister_attachment(first)
+        native.unregister_attachment(second)
+        successor = native.register_attachment(Attachment(), 4)
+        self.assertGreater(successor, epoch)
+        self.assertEqual(self.sent, sent)
+
     def test_shared_capture_is_broadcast_without_blocking_viewers(self):
         frames = BrokerFrames()
         native = NativeDesktop(lambda _value: None, frames)
