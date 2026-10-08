@@ -2,6 +2,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 from host_desktop_media import DesktopMedia, equal_pixels
+from host_desktop_contract import DesktopError
 
 
 class PixelComparisonTests(unittest.TestCase):
@@ -24,6 +25,22 @@ class PixelComparisonTests(unittest.TestCase):
 
 
 class SchedulerTests(unittest.TestCase):
+    def test_input_dimensions_require_live_capture_and_ignore_encoder_resize(self):
+        loop = SimpleNamespace(timeout_add=lambda *_: 1)
+        media = DesktopMedia(None, loop, 1, {'frame_rate': 60}, ('fixture', ''), lambda *_: None, lambda *_: None)
+        with self.assertRaisesRegex(DesktopError, 'DESKTOP_NOT_ACTIVE'):
+            media.input_size()
+        media.latest = (object(), 1920, 1280)
+        media.encoding_size = (1920, 1280, 1600, 1066)
+        self.assertEqual(media.input_size(), (1920, 1280))
+        media.target_valid = False
+        with self.assertRaisesRegex(DesktopError, 'DESKTOP_NOT_ACTIVE'):
+            media.input_size()
+        media.target_valid = True
+        media.closed = True
+        with self.assertRaisesRegex(DesktopError, 'DESKTOP_NOT_ACTIVE'):
+            media.input_size()
+
     def test_interaction_defers_refinement_until_pixels_and_input_are_idle(self):
         loop = SimpleNamespace(timeout_add=lambda *_: 1)
         media = DesktopMedia(None, loop, 1, {'frame_rate': 60}, ('fixture', ''), lambda *_: None, lambda *_: None)

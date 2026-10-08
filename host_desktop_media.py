@@ -131,6 +131,12 @@ class DesktopMedia:
             self.target_valid = False
         return self._fail(code)
 
+    def input_size(self):
+        with self.lock:
+            if self.closed or not self.target_valid or self.latest is None:
+                raise DesktopError('DESKTOP_NOT_ACTIVE')
+            return self.latest[1:]
+
     def _cursor_changed(self, width, height, hot_x, hot_y, png):
         with self.lock:
             if self.closed:

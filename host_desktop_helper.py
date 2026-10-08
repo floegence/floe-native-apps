@@ -416,7 +416,15 @@ class HostDesktop:
             if not integer(button, 0, 4):
                 raise DesktopError('INVALID_ARGUMENT')
             display = next(item for item in self.displays if item['id'] == self.authority.display)
-            x, y = min(x * display['width'], display['width'] - 1), min(y * display['height'], display['height'] - 1)
+            if self.identity.backend == 'wayland':
+                # Portal monitor geometry may be scaled; absolute input targets
+                # the negotiated stream, before any viewer encoding resize.
+                if self.media is None:
+                    raise DesktopError('DESKTOP_NOT_ACTIVE')
+                width, height = self.media.input_size()
+            else:
+                width, height = display['width'], display['height']
+            x, y = min(x * width, width - 1), min(y * height, height - 1)
             if self.identity.backend == 'x11':
                 x, y = x + display['x'], y + display['y']
             self.backend.pointer(self.streams.get(self.authority.display, 0), x, y)

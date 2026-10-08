@@ -22,6 +22,8 @@ class Backend:
         self.calls.append(('key', code, down))
     def button(self, code, down):
         self.calls.append(('button', code, down))
+    def pointer(self, stream, x, y):
+        self.calls.append(('pointer', stream, x, y))
     def close(self):
         self.calls.append(('close',))
 
@@ -92,6 +94,29 @@ class HelperTests(unittest.TestCase):
         self.command('frame_ack', frame_id=1)
         self.command('input', input={'kind': 'key', 'code': 'KeyA', 'pressed': True})
         self.assertEqual(self.backend.calls, [('key', 30, True)])
+
+    def test_scaled_wayland_pointer_uses_capture_not_monitor_or_encoded_size(self):
+        self.desktop.displays = [{'id': 'display-1', 'width': 1152, 'height': 768}]
+        self.desktop.streams = {'display-1': 27}
+        self.desktop.media = SimpleNamespace(input_size=lambda: (1920, 1280), encoding_size=(1920, 1280, 1600, 1066))
+        self.desktop.input({'kind': 'move', 'x': .5, 'y': .5})
+        self.desktop.input({'kind': 'down', 'x': 1, 'y': 1, 'button': 0})
+        self.desktop.input({'kind': 'up', 'x': 1, 'y': 1, 'button': 0})
+        self.assertEqual(self.backend.calls, [('pointer', 27, 960, 640),
+            ('pointer', 27, 1919, 1279), ('button', 272, True),
+            ('pointer', 27, 1919, 1279), ('button', 272, False)])
+
+    def test_wayland_pointer_without_captured_geometry_is_rejected(self):
+        self.desktop.displays = [{'id': 'display-1', 'width': 1152, 'height': 768}]
+        with self.assertRaisesRegex(DesktopError, 'DESKTOP_NOT_ACTIVE'):
+            self.desktop.input({'kind': 'move', 'x': .5, 'y': .5})
+        self.assertEqual(self.backend.calls, [])
+
+    def test_x11_pointer_keeps_selected_display_geometry_and_origin(self):
+        self.desktop.identity.backend = 'x11'
+        self.desktop.displays = [{'id': 'display-1', 'width': 1920, 'height': 1280, 'x': 1920, 'y': -1280}]
+        self.desktop.input({'kind': 'move', 'x': .5, 'y': .5})
+        self.assertEqual(self.backend.calls, [('pointer', 0, 2880, -640)])
 
     def test_decoder_recovery_retires_dependencies_without_restarting_capture(self):
         generations = []

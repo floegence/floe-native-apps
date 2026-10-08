@@ -1164,6 +1164,10 @@ use the Manager's selected installation and must not rewrite that snapshot.
 The Linux helper selects the active local graphical login owned by the current
 user. Wayland uses the public RemoteDesktop/ScreenCast portal and its authorized
 PipeWire descriptor. X11 uses the selected login's authenticated local X display.
+Wayland absolute pointer coordinates use the live capture stream's unencoded
+dimensions. Portal monitor geometry can use the compositor's scaled coordinate
+space and must not be reused for stream input; encoder resize never changes input
+geometry. A missing or retired capture cannot authorize pointer positioning.
 Filter seatless SSH/service logins before reading their properties: their exit
 cannot interrupt the graphical login. Missing or invalid graphical-session
 properties still revoke authority instead of using a cached session.
