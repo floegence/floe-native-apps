@@ -33,7 +33,7 @@ func loginSeat(ctx context.Context, seat string) (loginSeatState, error) {
 	if id == "" || len(id) > 80 || strings.ContainsAny(id, " \t\n/") {
 		return state, errLoginCaptureUnavailable
 	}
-	output, err = exec.CommandContext(ctx, "/usr/bin/loginctl", "show-session", id, "-p", "Class", "-p", "Type", "-p", "LockedHint", "-p", "User", "-p", "Service").Output()
+	output, err = exec.CommandContext(ctx, "/usr/bin/loginctl", "show-session", id, "-p", "Class", "-p", "Type", "-p", "LockedHint", "-p", "User", "-p", "Service", "-p", "Active", "-p", "VTNr").Output()
 	if err != nil {
 		return state, err
 	}
@@ -45,6 +45,12 @@ func loginSeat(ctx context.Context, seat string) (loginSeatState, error) {
 			values[key] = value
 		}
 	}
+	terminal, err := os.ReadFile("/sys/class/tty/tty0/active")
+	if err != nil || !loginVirtualTerminalReady(values["VTNr"], values["Active"], string(terminal)) {
+		return state, errLoginCaptureUnavailable
+	}
+	vt, _ := strconv.ParseUint(values["VTNr"], 10, 32)
+	state.vt = uint32(vt)
 	if values["Type"] != "wayland" && values["Type"] != "x11" {
 		return state, errLoginCaptureUnavailable
 	}
@@ -72,6 +78,14 @@ func loginSeat(ctx context.Context, seat string) (loginSeatState, error) {
 	state.uid = uint32(uid)
 	state.locked = values["LockedHint"] == "yes"
 	return state, nil
+}
+
+// logind can publish the successor before the kernel has switched its VT.
+// Until both identify the same active terminal, neither pixels nor input may
+// claim that successor's login-screen authority.
+func loginVirtualTerminalReady(number, active, current string) bool {
+	vt, err := strconv.ParseUint(number, 10, 32)
+	return err == nil && vt > 0 && active == "yes" && strings.TrimSpace(current) == "tty"+strconv.FormatUint(vt, 10)
 }
 
 type loginServer struct {
@@ -286,6 +300,12 @@ func (s *loginServer) attachment(ctx context.Context, conn *net.UnixConn, reader
 		generation = generation<<8 | uint64(b)
 	}
 	authority := loginAuthority{generation: generation, release: input.release, mode: "view", state: "unavailable", attempts: &s.unlockLimiter}
+	transition := func(seat loginSeatState, mode string) error {
+		if seat.session != authority.seat.session || seat.vt != authority.seat.vt || seat.uid != authority.seat.uid {
+			capture.invalidate()
+		}
+		return authority.transition(seat, mode)
+	}
 	write := func(message HostDesktopMessage) bool {
 		_ = conn.SetWriteDeadline(time.Now().Add(3 * time.Second))
 		return WriteHostDesktopMessage(conn, message) == nil
@@ -381,7 +401,7 @@ func (s *loginServer) attachment(ctx context.Context, conn *net.UnixConn, reader
 					}
 					continue
 				}
-				if err = authority.transition(seat, mode); err != nil {
+				if err = transition(seat, mode); err != nil {
 					return
 				}
 				connected = true
@@ -408,7 +428,7 @@ func (s *loginServer) attachment(ctx context.Context, conn *net.UnixConn, reader
 				if err != nil || seat != authority.seat {
 					_ = input.release()
 					if err == nil {
-						if authority.transition(seat, authority.mode) != nil {
+						if transition(seat, authority.mode) != nil {
 							return
 						}
 						if !state(0) {
@@ -502,7 +522,7 @@ func (s *loginServer) attachment(ctx context.Context, conn *net.UnixConn, reader
 				return
 			}
 			if seat != authority.seat {
-				if authority.transition(seat, authority.mode) != nil {
+				if transition(seat, authority.mode) != nil {
 					return
 				}
 				if !state(0) {
@@ -540,7 +560,7 @@ func (s *loginServer) attachment(ctx context.Context, conn *net.UnixConn, reader
 				return
 			}
 			if seat != authority.seat {
-				if authority.transition(seat, authority.mode) != nil {
+				if transition(seat, authority.mode) != nil {
 					return
 				}
 				if !state(0) {
@@ -551,7 +571,7 @@ func (s *loginServer) attachment(ctx context.Context, conn *net.UnixConn, reader
 			bounds := result.image.Bounds()
 			if display.Width != bounds.Dx() || display.Height != bounds.Dy() {
 				display.Width, display.Height = bounds.Dx(), bounds.Dy()
-				if authority.transition(seat, authority.mode) != nil {
+				if transition(seat, authority.mode) != nil {
 					return
 				}
 				if !state(0) {

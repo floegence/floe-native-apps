@@ -19,6 +19,12 @@ import (
 // This qualifier exercises the actual Unix socket, peer identity, single-use
 // ticket, separate GPU worker, frame receipt and input teardown on a native host.
 func TestLoginServiceRealAttachment(t *testing.T) { qualifyLoginService(t, false) }
+func TestLoginServiceUnsupportedGPU(t *testing.T) {
+	if os.Getenv("FLOE_LOGIN_EXPECT_UNSUPPORTED_GPU") != "1" {
+		t.Skip("unsupported GPU qualification not requested")
+	}
+	qualifyLoginService(t, false)
+}
 func TestLoginServiceDisconnectedDisplay(t *testing.T) {
 	if os.Getenv("FLOE_LOGIN_EXPECT_DISCONNECTED") != "1" {
 		t.Skip("disconnected-display qualification not requested")
@@ -85,6 +91,9 @@ func qualifyLoginService(t *testing.T, disconnected bool) {
 	if disconnected {
 		client.Env = append(client.Env, "FLOE_LOGIN_SERVICE_CLIENT_NO_SCANOUT=1")
 	}
+	if os.Getenv("FLOE_LOGIN_EXPECT_UNSUPPORTED_GPU") == "1" {
+		client.Env = append(client.Env, "FLOE_LOGIN_SERVICE_CLIENT_EXPECT_REASON=GPU_SCANOUT_UNSUPPORTED")
+	}
 	client.SysProcAttr = &syscall.SysProcAttr{Credential: &syscall.Credential{Uid: 1000, Gid: 1000, Groups: loginRenderGroups(1000)}}
 	output, err := client.CombinedOutput()
 	t.Log(string(output))
@@ -120,17 +129,21 @@ func TestLoginServiceQualificationClient(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer connection.Close()
+	expectedReason := os.Getenv("FLOE_LOGIN_SERVICE_CLIENT_EXPECT_REASON")
 	if os.Getenv("FLOE_LOGIN_SERVICE_CLIENT_NO_SCANOUT") == "1" {
+		expectedReason = "DISPLAY_DISCONNECTED"
+	}
+	if expectedReason != "" {
 		if err = connection.Send(HostDesktopCommand{Version: 1, ID: 1, Method: "probe"}, false); err != nil {
 			t.Fatal(err)
 		}
 		select {
 		case message := <-connection.Control():
 			cap := message.Capabilities
-			if cap == nil || cap.State != "unavailable" || cap.Reason != "DISPLAY_DISCONNECTED" || cap.Screen || cap.Input || cap.Unlock || cap.LockedScreen {
+			if cap == nil || cap.State != "unavailable" || cap.Reason != expectedReason || cap.Screen || cap.Input || cap.Unlock || cap.LockedScreen {
 				t.Fatalf("disconnected probe type=%s code=%s capabilities=%+v", message.Type, message.Code, cap)
 			}
-			t.Log("disconnected display rejected with DISPLAY_DISCONNECTED; no Portal path")
+			t.Logf("capture rejected with %s; no Portal path or input authority", expectedReason)
 		case <-ctx.Done():
 			t.Fatal("capability probe timed out")
 		}

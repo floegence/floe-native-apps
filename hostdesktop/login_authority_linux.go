@@ -15,6 +15,7 @@ var errLoginAuthority = errors.New("desktop input authority rejected")
 type loginSeatState struct {
 	session, kind, compositor string
 	uid                       uint32
+	vt                        uint32
 	locked                    bool
 }
 

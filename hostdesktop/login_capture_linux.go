@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -50,6 +51,13 @@ type loginDRMCapture struct {
 	cancel              context.CancelFunc
 	children            []*exec.Cmd
 	closed              bool
+	reset               atomic.Bool
+}
+
+// A new seat must select its current CRTC, rather than inherit the previous
+// session's automatically selected scanout from libdrmtap's capture context.
+func (c *loginDRMCapture) invalidate() {
+	c.reset.Store(true)
 }
 
 func loginSocketPair() (*net.UnixConn, *os.File, error) {
@@ -140,7 +148,11 @@ func (c *loginDRMCapture) frame() (image.Image, error) {
 	}
 	deadline := time.Now().Add(3 * time.Second)
 	_ = c.exporter.SetDeadline(deadline)
-	if _, err := c.exporter.Write([]byte{1}); err != nil {
+	command := byte(1)
+	if c.reset.Swap(false) {
+		command = 2
+	}
+	if _, err := c.exporter.Write([]byte{command}); err != nil {
 		return nil, errLoginCaptureUnavailable
 	}
 	packet := make([]byte, 80)
@@ -185,6 +197,9 @@ func (c *loginDRMCapture) frame() (image.Image, error) {
 		return nil, errLoginCaptureUnavailable
 	}
 	status = int32(binary.LittleEndian.Uint32(header))
+	if status != 0 {
+		return nil, loginCaptureStatus(status)
+	}
 	width, height, stride, format, length := int(binary.LittleEndian.Uint32(header[4:])), int(binary.LittleEndian.Uint32(header[8:])), int(binary.LittleEndian.Uint32(header[12:])), binary.LittleEndian.Uint32(header[16:]), int(binary.LittleEndian.Uint32(header[20:]))
 	if status != 0 || width < 2 || height < 2 || width > 8192 || height > 8192 || stride < width*4 || length != stride*height || length > hostDesktopPayloadLimit {
 		return nil, errLoginCaptureUnavailable

@@ -70,7 +70,8 @@ static int exporter(int sock) {
   uint8_t command=0;int unexpected=-1;
   if(receive_packet(sock,&command,1,&unexpected)!=0)break;
   if(unexpected>=0){close(unexpected);break;}
-  if(command!=1)break;
+  if(command!=1&&command!=2)break;
+  if(command==2&&ctx){drmtap_close(ctx);ctx=NULL;}
   export_packet packet={.version=1};
   packet.desc.dma_buf_fd=-1;
   if(!ctx)ctx=drmtap_open(NULL);
