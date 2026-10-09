@@ -7,6 +7,6 @@
     "jquery": "3.7.1",
     "jquery-ui-dist": "1.13.3",
     "playwright": "1.58.2",
-    "solid-js": "1.9.15"
+    "solid-js": "1.9.17"
   }
 }
