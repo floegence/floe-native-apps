@@ -13,26 +13,43 @@ try {
  const page=await browser.newPage({viewport:{width:1000,height:760}}),errors=[];
  page.on('pageerror',error=>errors.push(error.message));
  await page.goto(address+'/?password='+encodeURIComponent(password)+'&floating_menu=false&encoding=png&clipboard=false');
- await page.waitForFunction(()=>window.floeXpraClient?.connected&&Object.values(floeXpraClient.id_to_window).some(win=>floeXpraClient.floePointer.targetForWindow(win)),null,{timeout:25000});
+ await page.waitForFunction(()=>window.floeXpraClient?.connected&&Object.values(floeXpraClient.id_to_window).some(win=>
+  String(win.metadata?.title??'').includes('received.txt')&&floeXpraClient.floePointer.targetForWindow(win)),null,{timeout:25000});
  await page.addStyleTag({content:css});
  await page.evaluate(async([inputSource,pointerSource])=>{
   const {createRemoteInput}=await import('data:text/javascript;base64,'+btoa(inputSource));
   const {createRemotePointer}=await import('data:text/javascript;base64,'+btoa(pointerSource));
   const client=floeXpraClient,keys=client.floeInput,adapter=client.floePointer,surface=document.querySelector('#screen');
+  const documentWindow=Object.values(client.id_to_window).find(win=>String(win.metadata?.title??'').includes('received.txt'));
+  if(!documentWindow)throw new Error('GNOME document window was not ready');
+  documentWindow.canvas.dataset.gnomeQualificationTarget='true';
   window.inputErrors=[];keys.onError=code=>inputErrors.push(code);
+  window.inputDiagnostics=()=>({focusedWid:client.focused_wid,targetWid:keys.target?.wid??null,
+   targetValid:keys.valid(keys.target),activeElement:document.activeElement?.className??'',
+   windows:Object.values(client.id_to_window).map(win=>({wid:win.wid,title:win.metadata?.title??'',
+    geometry:win.get_internal_geometry(),pointerValid:Boolean(adapter.targetForWindow(win))}))});
+  let pointer;
   const input=createRemoteInput({surface,label:'Input qualification',commitText:(text,target)=>{pointer.flush();keys.commitText(text,target)},sendKey:(key,target)=>{pointer.flush();keys.sendKey(key,target)},release:target=>keys.release(target)});
-  const pointer=createRemotePointer({surface,resolveTarget:event=>adapter.resolveTarget(event),isTargetValid:target=>adapter.isTargetValid(target),sendPointer:(command,target)=>adapter.sendPointer(command,target),release:target=>adapter.release(target),onActivate:(position,target)=>{client.set_focus(target.window);input.bindTarget(keys.bindTarget(target.wid));input.setAnchor(position.clientX,position.clientY);input.focus();}});
+  pointer=createRemotePointer({surface,resolveTarget:event=>adapter.resolveTarget(event),isTargetValid:target=>adapter.isTargetValid(target),sendPointer:(command,target)=>adapter.sendPointer(command,target),release:target=>adapter.release(target),onActivate:(position,target)=>{client.set_focus(target.window);input.bindTarget(keys.bindTarget(target.wid));input.setAnchor(position.clientX,position.clientY);input.focus();}});
   adapter.onInvalidate=()=>pointer.reset();
  },sources);
- const canvas=page.locator('canvas').filter({visible:true}).first();
- const box=await canvas.boundingBox();
- await page.mouse.click(box.x+180,box.y+180);
+ const targetWindow=await page.evaluate(()=>Object.values(floeXpraClient.id_to_window).find(win=>
+  String(win.metadata?.title??'').includes('received.txt')&&floeXpraClient.floePointer.targetForWindow(win))?.wid);
+ assert(targetWindow,'GNOME document window was not ready');
+ const documentCanvas=page.locator('canvas[data-gnome-qualification-target="true"]');
+ const box=await documentCanvas.boundingBox();
+ assert(box&&box.width>100&&box.height>100,'GNOME document canvas has no usable content area');
+ await page.mouse.click(box.x+box.width/2,box.y+box.height/2);
+ const activation=await page.evaluate(()=>window.inputDiagnostics());
+ assert(activation.focusedWid===targetWindow&&activation.targetWid===targetWindow&&activation.targetValid,
+  'GNOME document did not activate for input: '+JSON.stringify(activation));
  const modifier=await page.evaluate(()=>/Mac/.test(navigator.platform)?'Meta':'Control');
  const save=async expected=>{
   await page.keyboard.press(modifier+'+s');
   const deadline=Date.now()+8000;
   while(await readFile(document,'utf8')!==expected){
-   assert(Date.now()<deadline,'GNOME did not save the exact expected UTF-8 bytes');
+   assert(Date.now()<deadline,'GNOME did not save the exact expected UTF-8 bytes: '+
+    JSON.stringify(await page.evaluate(()=>window.inputDiagnostics())));
    await new Promise(resolve=>setTimeout(resolve,30));
   }
  };
