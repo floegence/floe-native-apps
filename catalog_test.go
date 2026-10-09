@@ -18,6 +18,9 @@ func TestReleasedCatalog(t *testing.T) {
 			if a.License == "" || !strings.HasPrefix(a.Source, "https://") {
 				t.Fatal("missing component provenance", a.Name)
 			}
+			if strings.HasPrefix(a.URL, "https://dl-cdn.alpinelinux.org/alpine/") && len(a.Mirrors) == 0 {
+				t.Fatal("Alpine desktop artifact lacks acquisition mirrors", a.Name)
+			}
 		}
 	}
 	if _, err := ForPlatform("darwin", "arm64"); err != ErrUnsupported {

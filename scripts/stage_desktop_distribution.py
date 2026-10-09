@@ -9,9 +9,25 @@ import json
 from pathlib import Path
 import shutil
 
+ALPINE_ORIGIN = 'https://dl-cdn.alpinelinux.org/alpine/'
+ALPINE_MIRRORS = (
+    'https://mirrors.edge.kernel.org/alpine/',
+    'https://mirrors.aliyun.com/alpine/',
+    'https://mirrors.tuna.tsinghua.edu.cn/alpine/',
+    'https://mirrors.ustc.edu.cn/alpine/',
+)
+
 
 def sha256(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def add_alpine_mirrors(candidate):
+    for artifact in candidate['artifacts']:
+        url = artifact['url']
+        if url.startswith(ALPINE_ORIGIN):
+            suffix = url[len(ALPINE_ORIGIN):]
+            artifact['mirrors'] = [mirror + suffix for mirror in ALPINE_MIRRORS]
 
 
 def main():
@@ -104,6 +120,7 @@ def main():
         candidate['id'] = f'alpine-3.23-desktop-14.0.2-{architecture}-r3'
         candidate['preparation'] = {'contract': 'wayland-xwayland-private-v1',
             'native_sha256': hashlib.sha256(data).hexdigest()}
+        add_alpine_mirrors(candidate)
         catalogs.append(candidate)
     (root / 'desktop_catalog.json').write_text(json.dumps(catalogs, indent=2) + '\n')
 
