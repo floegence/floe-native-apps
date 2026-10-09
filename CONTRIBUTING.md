@@ -1454,6 +1454,13 @@ The attachment version requires an explicit service update for older installs.
 DRM capture keeps its idle sampling budget but wakes immediately on the first
 admitted interaction. Continuous input retains the configured frame-rate bound.
 Capture backend selection never changes to conceal slow kernel display probing.
+The root seat observer also binds GNOME’s actual cached logind locker session:
+`XDG_SESSION_ID` from the verified compositor, or logind User.Display for a
+user-manager launch. A legacy private-desktop login can make that identity differ
+from the physical seat. Both lock hints are read before injection; the physical
+seat, kernel VT, compositor image and UID boundaries remain mandatory. An unknown
+or foreign locker fails closed. The lock command targets that bound locker;
+unlock remains physical input only.
 Measure display-driver/connector blocking separately from service input,
 application updates, encoding, transport and client painting.
 

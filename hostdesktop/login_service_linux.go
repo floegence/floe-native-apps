@@ -537,7 +537,7 @@ func (s *loginServer) attachment(ctx context.Context, conn, media *net.UnixConn,
 					}
 					continue
 				}
-				if seatReader.lock(lifetime, authority.seat.session) != nil {
+				if seatReader.lock(lifetime, authority.seat.lockSession) != nil {
 					if !replyError(command.ID, "LOCK_UNAVAILABLE") {
 						return
 					}
