@@ -70,6 +70,7 @@ class DRMCapture:
         self.lock = threading.Lock()
         self.export_lock = threading.Lock()
         self.stop = threading.Event()
+        self.wake = threading.Event()
         self.enabled = False
         self.probing = None
         self.reset = True
@@ -108,11 +109,13 @@ class DRMCapture:
             self.pending_cursor = None
             self.hot_until = time.monotonic() + .5
             self.settle_until = time.monotonic() + 2 if settle else 0
+            self.wake.set()
 
     def probe(self, callback):
         with self.lock:
             self.probing = callback
             self.settle_until = time.monotonic() + 2
+            self.wake.set()
 
     def inactive(self, epoch):
         with self.lock:
@@ -124,7 +127,11 @@ class DRMCapture:
 
     def interacted(self):
         with self.lock:
-            self.hot_until = time.monotonic() + .3
+            now = time.monotonic()
+            idle = now >= max(self.hot_until, self.changed_at + .5)
+            self.hot_until = now + .3
+            if idle:
+                self.wake.set()
 
     def descriptor(self, reset):
         with self.export_lock:
@@ -164,11 +171,12 @@ class DRMCapture:
         try:
             while not self.stop.is_set():
                 with self.lock:
+                    self.wake.clear()
                     enabled, probe, epoch = self.enabled, self.probing, self.epoch
                     reset = self.reset
                     fps = self.fps if time.monotonic() < max(self.hot_until, self.changed_at + .5) else 5
                 if not enabled and not probe:
-                    self.stop.wait(.02)
+                    self.wake.wait(.02)
                     continue
                 with self.lock:
                     self.reset = False
@@ -180,7 +188,7 @@ class DRMCapture:
                         with self.lock:
                             settling = time.monotonic() < self.settle_until
                         if settling:
-                            self.stop.wait(.05)
+                            self.wake.wait(.05)
                             continue
                         if enabled:
                             self.inactive(epoch)
@@ -217,7 +225,7 @@ class DRMCapture:
                 if previous is not None:
                     with mapped_pixels(self.Gst, previous) as a, mapped_pixels(self.Gst, current) as b:
                         if equal_pixels(a, b):
-                            self.stop.wait(max(0, 1 / fps - (time.monotonic() - started)))
+                            self.wake.wait(max(0, 1 / fps - (time.monotonic() - started)))
                             continue
                 with self.lock:
                     if epoch != self.epoch:
@@ -225,7 +233,7 @@ class DRMCapture:
                     self.previous = current
                     self.changed_at = time.monotonic()
                 self.queue_sample(epoch, current, width, height)
-                self.stop.wait(max(0, 1 / fps - (time.monotonic() - started)))
+                self.wake.wait(max(0, 1 / fps - (time.monotonic() - started)))
         except DesktopError as error:
             if not self.stop.is_set(): self.GLib.idle_add(self.failed, error.code)
         except Exception:
@@ -328,6 +336,7 @@ class DRMCapture:
 
     def close(self):
         self.stop.set()
+        self.wake.set()
         if self.pool: self.pool.interrupt()
         self.exporter.close()
         self.owner.close()

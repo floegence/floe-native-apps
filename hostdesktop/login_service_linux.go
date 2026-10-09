@@ -216,10 +216,26 @@ func (s *loginServer) attachment(ctx context.Context, conn, media *net.UnixConn,
 		return
 	}
 	defer input.close()
+	var textWorker *loginTextWorker
+	closeText := func() {
+		if textWorker != nil {
+			textWorker.close()
+			textWorker = nil
+		}
+	}
+	defer closeText()
+	type textResult struct {
+		id, generation uint64
+		code           string
+		prepared       bool
+	}
+	textResults := make(chan textResult, 1)
+	textPending := false
 	releaseControl := func() { _ = input.release(); s.claim(conn, "view") }
 	defer releaseControl()
 	go func() { <-lifetime.Done(); releaseControl() }()
 	commands := make(chan HostDesktopCommand, 16)
+	releases := make(chan HostDesktopCommand, 1)
 	go func() {
 		defer cancel()
 		for {
@@ -227,8 +243,12 @@ func (s *loginServer) attachment(ctx context.Context, conn, media *net.UnixConn,
 			if err != nil {
 				return
 			}
+			destination := commands
+			if command.Method == "release_input" {
+				destination = releases
+			}
 			select {
-			case commands <- command:
+			case destination <- command:
 			case <-lifetime.Done():
 				return
 			}
@@ -247,12 +267,18 @@ func (s *loginServer) attachment(ctx context.Context, conn, media *net.UnixConn,
 	authority := loginAuthority{generation: generation, release: input.release, mode: "view", state: "unavailable", attempts: &s.unlockLimiter}
 	picture := HostDesktopPicture{Mode: "auto", MaxDimension: 1920, FrameRate: 30}
 	transition := func(seat loginSeatState, mode string) bool {
+		closeText()
 		reset := seat != authority.seat
 		if authority.transition(seat, mode) != nil {
 			return false
 		}
 		if reset {
 			_ = s.wakeDisplay(lifetime, seat)
+		}
+		if seat.state() == "active" && mode == "control" {
+			// Warm the fixed clipboard child while the first frame is captured.
+			// It cannot select text or inject input without an admitted command.
+			textWorker, _ = openLoginText(lifetime, s.config, seat)
 		}
 		return worker.send(map[string]any{"method": "configure", "generation": authority.generation, "picture": picture, "reset": reset, "settle": reset})
 	}
@@ -265,6 +291,12 @@ func (s *loginServer) attachment(ctx context.Context, conn, media *net.UnixConn,
 	seatTicker := time.NewTicker(100 * time.Millisecond)
 	defer seatTicker.Stop()
 	for {
+		commandSource := commands
+		// Preserve input order while a selection transfer is pending. Seat,
+		// media and cancellation remain live; text cannot block revocation.
+		if textPending {
+			commandSource = nil
+		}
 		select {
 		case <-lifetime.Done():
 			return
@@ -273,7 +305,69 @@ func (s *loginServer) attachment(ctx context.Context, conn, media *net.UnixConn,
 			return
 		case <-seatReader.bus.Context().Done():
 			return
-		case command := <-commands:
+		case command := <-releases:
+			if command.Generation != authority.generation {
+				if !replyError(command.ID, "GENERATION_RETIRED") {
+					return
+				}
+				continue
+			}
+			if textPending {
+				// Cancel the selection and retire queued text/key commands. A
+				// successor needs a new painted frame; cancellation never replays.
+				if !transition(authority.seat, authority.mode) || !state(0) {
+					return
+				}
+			} else if input.release() != nil {
+				return
+			}
+			if !write(HostDesktopMessage{Version: 1, Type: "result", ID: command.ID, Generation: authority.generation}) {
+				return
+			}
+		case result := <-textResults:
+			if !result.prepared {
+				textPending = false
+			}
+			if result.generation != authority.generation {
+				continue
+			}
+			if result.prepared {
+				seat, err := readSeat()
+				if err != nil || seat != authority.seat || authority.state != "active" || authority.mode != "control" || input.held() {
+					closeText()
+					continue
+				}
+				// Clipboard ownership does not grant input. Only this authority
+				// injects the physical paste chord into the freshly checked seat.
+				for _, key := range []struct {
+					code    string
+					pressed bool
+				}{{"ControlLeft", true}, {"KeyV", true}, {"KeyV", false}, {"ControlLeft", false}} {
+					current, err := readSeat()
+					if err != nil || current != authority.seat {
+						_ = input.release()
+						closeText()
+						break
+					}
+					if input.inputPhysical(&HostDesktopInput{Kind: "key", Code: key.code, Pressed: key.pressed}, false) != nil {
+						return
+					}
+				}
+				continue
+			}
+			textPending = false
+			if result.code != "" {
+				closeText()
+				if !replyError(result.id, result.code) {
+					return
+				}
+			} else {
+				worker.interacted(authority.generation)
+				if !write(HostDesktopMessage{Version: 1, Type: "result", ID: result.id, Generation: authority.generation}) {
+					return
+				}
+			}
+		case command := <-commandSource:
 			if command.Generation != 0 && command.Generation != authority.generation {
 				if !replyError(command.ID, "GENERATION_RETIRED") {
 					return
@@ -380,6 +474,39 @@ func (s *loginServer) attachment(ctx context.Context, conn, media *net.UnixConn,
 					}
 					continue
 				}
+				if command.Input.Kind == "text" || command.Input.Kind == "paste" {
+					if input.held() {
+						if !replyError(command.ID, "INPUT_KEYS_HELD") {
+							return
+						}
+						continue
+					}
+					if textWorker == nil {
+						textWorker, err = openLoginText(lifetime, s.config, seat)
+						if err != nil {
+							if !replyError(command.ID, "CLIPBOARD_UNAVAILABLE") {
+								return
+							}
+							continue
+						}
+					}
+					textPending = true
+					child, id, generation, text := textWorker, command.ID, authority.generation, command.Input.Text
+					go func() {
+						prepared := func() {
+							select {
+							case textResults <- textResult{id: id, generation: generation, prepared: true}:
+							case <-lifetime.Done():
+							}
+						}
+						result := textResult{id: id, generation: generation, code: child.paste(id, text, prepared)}
+						select {
+						case textResults <- result:
+						case <-lifetime.Done():
+						}
+					}()
+					continue
+				}
 				if err := input.inputPhysical(command.Input, command.Method == "unlock_input"); err != nil {
 					if errors.Is(err, errLoginPhysicalInput) {
 						if !replyError(command.ID, "INPUT_REJECTED") {
@@ -391,10 +518,6 @@ func (s *loginServer) attachment(ctx context.Context, conn, media *net.UnixConn,
 				}
 				worker.interacted(authority.generation)
 				if !write(HostDesktopMessage{Version: 1, Type: "result", ID: command.ID, Generation: authority.generation}) {
-					return
-				}
-			case "release_input":
-				if input.release() != nil || !write(HostDesktopMessage{Version: 1, Type: "result", ID: command.ID, Generation: authority.generation}) {
 					return
 				}
 			case "unlock_cancel":
@@ -468,6 +591,7 @@ func (s *loginServer) attachment(ctx context.Context, conn, media *net.UnixConn,
 				cap := message.Capabilities
 				cap.Service = ServiceActive
 				cap.LockedScreen = cap.Screen
+				cap.TextInput = cap.Screen
 				if cap.Screen && seat.state() == "locked" {
 					cap.State = "locked"
 				}

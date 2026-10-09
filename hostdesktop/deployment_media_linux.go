@@ -73,7 +73,7 @@ func loginExtractMedia(ctx context.Context, source, destination string) error {
 	}); err != nil {
 		return err
 	}
-	for _, name := range []string{"floe/host-desktop/python3", "floe/host-desktop/host_desktop_drm.py", "usr/bin/python3"} {
+	for _, name := range []string{"floe/host-desktop/python3", "floe/host-desktop/host_desktop_drm.py", "floe/host-desktop/host_desktop_login_text.py", "usr/bin/python3"} {
 		info, err := os.Lstat(filepath.Join(destination, name))
 		if err != nil || !info.Mode().IsRegular() {
 			return errLoginDeployment

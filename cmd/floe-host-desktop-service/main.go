@@ -16,6 +16,12 @@ import (
 )
 
 func main() {
+	if len(os.Args) == 5 && os.Args[1] == "text" {
+		if nativeapps.RunLoginTextPython(os.Args[2], os.Args[3], os.Args[4]) != nil {
+			os.Exit(77)
+		}
+		return
+	}
 	if len(os.Args) == 4 && os.Args[1] == "media" {
 		if nativeapps.RunLoginMediaPython(os.Args[2], os.Args[3]) != nil {
 			os.Exit(77)

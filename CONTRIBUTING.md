@@ -1436,6 +1436,27 @@ uses `FLOE_LOGIN_EXPECT_DISCONNECTED=1` and must report missing scanout rather t
 claim success for capture or unlock. These checks do not replace real wrong-
 password/successful-unlock, user-switch and product Viewer qualification.
 
+The service's `text_input` capability is independent of clipboard synchronization.
+On qualified GNOME user sessions, a fixed child runs as the graphical user and
+binds the selected session, kernel VT, and Mutter's unique owner to the verified
+compositor. It owns only bounded selection transfers over an inherited socket.
+The root attachment remains the only input owner: after selection preparation,
+it rechecks the seat before each physical paste-chord event. Locked, view-only,
+unpainted and retired generations cannot submit client text. Text replaces the
+host text clipboard; consumers must obtain the user's input-mode choice and
+disclose that mutation. No text or administrator credentials enter diagnostics.
+Concurrent clipboard-manager and application readers have a bounded transfer
+window. Selection admission is not a document receipt; the opt-in
+`FLOE_LOGIN_QUALIFY_TEXT=1` and `FLOE_LOGIN_TEXT_FIXTURE` qualifier checks rapid
+ASCII, Unicode, emoji and following Enter in the actual GTK document.
+The attachment version requires an explicit service update for older installs.
+
+DRM capture keeps its idle sampling budget but wakes immediately on the first
+admitted interaction. Continuous input retains the configured frame-rate bound.
+Capture backend selection never changes to conceal slow kernel display probing.
+Measure display-driver/connector blocking separately from service input,
+application updates, encoding, transport and client painting.
+
 `FLOE_LOGIN_QUALIFY_UNLOCK=1` additionally starts with a sleeping display, locks
 the current GNOME session, verifies an invalid physical credential stays locked,
 and requires the operator's credential through ephemeral stdin for actual unlock.

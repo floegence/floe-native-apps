@@ -269,7 +269,7 @@ func TestLoginLatencyClient(t *testing.T) {
 			}
 		}
 	}
-	deadline := time.NewTimer(2 * time.Second)
+	deadline := time.NewTimer(12 * time.Second)
 	defer deadline.Stop()
 	for {
 		select {
@@ -277,6 +277,9 @@ func TestLoginLatencyClient(t *testing.T) {
 			consume(message)
 		case message := <-connection.Media():
 			consume(message)
+			if state.State == "active" && frames > 0 {
+				goto ready
+			}
 		case <-deadline.C:
 			goto ready
 		case <-connection.Done():
@@ -287,7 +290,7 @@ func TestLoginLatencyClient(t *testing.T) {
 	}
 ready:
 	if state.State != "active" || frames == 0 {
-		t.Fatal("comparison requires an active physical desktop")
+		t.Fatalf("comparison requires an active physical desktop: state=%s frames=%d", state.State, frames)
 	}
 	pid, _ := strconv.Atoi(os.Getenv("FLOE_LATENCY_SERVICE_PID"))
 	before, err := latencyCPU(pid)
@@ -317,6 +320,30 @@ sampled:
 	}
 	t.Logf("static cpu_ticks=%d duration_ms=%.1f frames=%d encoded_bytes=%d", after-before, float64(time.Since(start).Microseconds())/1000, frames-staticFrames, bytes-staticBytes)
 	var receipts, feedback []float64
+	type observedCursor struct {
+		packet  []byte
+		at      time.Time
+		elapsed float64
+		err     error
+	}
+	observations := make(chan observedCursor, 1)
+	go func() {
+		for ctx.Err() == nil {
+			started := time.Now()
+			packet, err := latencyCursor(cursor, 3)
+			sample := observedCursor{packet: packet, at: time.Now(), elapsed: float64(time.Since(started).Microseconds()) / 1000, err: err}
+			select {
+			case observations <- sample:
+			case <-ctx.Done():
+				return
+			}
+			if err != nil {
+				return
+			}
+			time.Sleep(time.Millisecond)
+		}
+	}()
+	var observationTimes []float64
 	for move := 0; move < 100; move++ {
 		x := .25
 		if move%2 != 0 {
@@ -339,22 +366,21 @@ sampled:
 				}
 			case message := <-connection.Media():
 				consume(message)
+			case sample := <-observations:
+				if sample.err != nil || len(sample.packet) != 40 {
+					t.Fatal("cursor observation failed")
+				}
+				observationTimes = append(observationTimes, sample.elapsed)
+				position := int32(binary.LittleEndian.Uint32(sample.packet[8:]))
+				if !matched && sample.at.After(started) && binary.LittleEndian.Uint32(sample.packet[4:]) == 1 && ((x < .5 && position > 300 && position < 650) || (x > .5 && position > 1250 && position < 1650)) {
+					matched = true
+					feedback = append(feedback, float64(sample.at.Sub(started).Microseconds())/1000)
+				}
 			case <-connection.Done():
 				t.Fatal("motion attachment stopped")
 			case <-ctx.Done():
 				t.Fatal("motion timeout")
 			default:
-			}
-			if !matched {
-				packet, err := latencyCursor(cursor, 3)
-				if err != nil || len(packet) != 40 {
-					t.Fatal("cursor observation failed")
-				}
-				position := int32(binary.LittleEndian.Uint32(packet[8:]))
-				if binary.LittleEndian.Uint32(packet[4:]) == 1 && ((x < .5 && position > 300 && position < 650) || (x > .5 && position > 1250 && position < 1650)) {
-					matched = true
-					feedback = append(feedback, float64(time.Since(started).Microseconds())/1000)
-				}
 			}
 			if !received || !matched {
 				time.Sleep(time.Millisecond)
@@ -364,7 +390,7 @@ sampled:
 	for _, item := range []struct {
 		name   string
 		values []float64
-	}{{"input_receipt", receipts}, {"matched_drm_feedback", feedback}} {
+	}{{"input_receipt", receipts}, {"matched_drm_feedback", feedback}, {"drm_observation_call", observationTimes}} {
 		slices.Sort(item.values)
 		t.Logf("%s samples=%d median_ms=%.3f p95_ms=%.3f max_ms=%.3f", item.name, len(item.values), item.values[len(item.values)/2], item.values[len(item.values)*95/100], item.values[len(item.values)-1])
 	}

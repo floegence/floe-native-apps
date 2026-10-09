@@ -163,6 +163,10 @@ func (w *loginMediaWorker) interacted(generation uint64) {
 // RunLoginMediaPython executes only the immutable installation selected by the
 // daemon. Thread pinning keeps capability removal and exec on the same thread.
 func RunLoginMediaPython(root, worker string) error {
+	return loginExecPython(root, "host_desktop_drm.py", []string{"--worker", worker})
+}
+
+func loginExecPython(root, script string, arguments []string) error {
 	if os.Geteuid() == 0 {
 		return errLoginPeerRejected
 	}
@@ -183,7 +187,7 @@ func RunLoginMediaPython(root, worker string) error {
 	}
 	base := filepath.Join(root, "floe", "host-desktop")
 	python := filepath.Join(base, "python3")
-	return syscall.Exec(python, []string{python, filepath.Join(base, "host_desktop_drm.py"), "--worker", worker}, []string{"PATH=/usr/bin:/bin", "LANG=C", "HOME=/nonexistent"})
+	return syscall.Exec(python, append([]string{python, filepath.Join(base, script)}, arguments...), []string{"PATH=/usr/bin:/bin", "LANG=C", "HOME=/nonexistent"})
 }
 
 func (w *loginMediaWorker) send(command any) bool {

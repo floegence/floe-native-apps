@@ -191,6 +191,12 @@ func loginInputEvent(w io.Writer, typ, code uint16, value int32) error {
 
 func (u *loginUInput) input(value *HostDesktopInput) error { return u.inputPhysical(value, false) }
 
+func (u *loginUInput) held() bool {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	return len(u.heldKeys) != 0 || len(u.heldButtons) != 0
+}
+
 func (u *loginUInput) inputPhysical(value *HostDesktopInput, unlocking bool) error {
 	if value == nil || !value.valid() || value.Text != "" {
 		return errLoginPhysicalInput

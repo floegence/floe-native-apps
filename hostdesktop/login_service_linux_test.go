@@ -87,6 +87,9 @@ func qualifyLoginService(t *testing.T, disconnected bool) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	clientTest := "^TestLoginServiceQualificationClient$"
+	if os.Getenv("FLOE_LOGIN_QUALIFY_TEXT") == "1" {
+		clientTest = "^TestLoginTextQualificationClient$"
+	}
 	if os.Getenv("FLOE_LOGIN_QUALIFY_UNLOCK") == "1" {
 		clientTest = "^TestLoginUnlockQualificationClient$"
 	}

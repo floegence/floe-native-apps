@@ -16,6 +16,13 @@ def integer(value, low, high):
     return type(value) is int and low <= value <= high
 
 
+def text_value(value, maximum):
+    try:
+        return isinstance(value, str) and '\x00' not in value and len(value.encode('utf-8')) <= maximum
+    except UnicodeError:
+        return False
+
+
 def capture_size(width, height, limit, native=False):
     if (not integer(width, 2, 32768) or not integer(height, 2, 32768) or
             not integer(limit, 2, 4096)):

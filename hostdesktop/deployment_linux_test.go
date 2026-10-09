@@ -77,7 +77,7 @@ func fixtureLoginDeployment(t *testing.T) (*loginDeployer, LoginServiceDeploymen
 	var media bytes.Buffer
 	compressed := gzip.NewWriter(&media)
 	archive := tar.NewWriter(compressed)
-	for _, name := range []string{"floe/host-desktop/python3", "floe/host-desktop/host_desktop_drm.py", "usr/bin/python3"} {
+	for _, name := range []string{"floe/host-desktop/python3", "floe/host-desktop/host_desktop_drm.py", "floe/host-desktop/host_desktop_login_text.py", "usr/bin/python3"} {
 		data := []byte("media fixture")
 		if archive.WriteHeader(&tar.Header{Name: name, Mode: 0755, Size: int64(len(data)), Typeflag: tar.TypeReg}) != nil {
 			t.Fatal("media fixture header")

@@ -39,6 +39,7 @@ type HostDesktopCapabilities struct {
 	Screen        bool                 `json:"screen"`
 	Input         bool                 `json:"input"`
 	Clipboard     bool                 `json:"clipboard"`
+	TextInput     bool                 `json:"text_input,omitempty"`
 	Audio         bool                 `json:"audio"`
 	Unattended    bool                 `json:"unattended"`
 	Unlock        bool                 `json:"unlock"`

@@ -55,6 +55,38 @@ func TestLoginAuthorityLockedFrameBinding(t *testing.T) {
 		t.Fatal("view-only unlock admitted")
 	}
 }
+
+func TestLoginAuthorityClientTextRequiresCurrentActivePaintAndControl(t *testing.T) {
+	a := paintedLoginAuthority(t)
+	command := HostDesktopCommand{Version: 1, ID: 1, Method: "input", Generation: a.generation,
+		Input: &HostDesktopInput{Kind: "paste", Text: "Unicode fixture"}}
+	if a.input(command) == nil {
+		t.Fatal("locked text admitted")
+	}
+	if err := a.transition(loginSeatState{session: "user", kind: "user", uid: 1000}, "control"); err != nil {
+		t.Fatal(err)
+	}
+	command.Generation = a.generation
+	if a.input(command) == nil {
+		t.Fatal("unpainted text admitted")
+	}
+	frame, _ := a.offer()
+	if err := a.acknowledge(a.generation, frame); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.input(command); err != nil {
+		t.Fatal(err)
+	}
+	a.mode = "view"
+	if a.input(command) == nil {
+		t.Fatal("view-only text admitted")
+	}
+	a.mode = "control"
+	command.Generation--
+	if a.input(command) == nil {
+		t.Fatal("retired text admitted")
+	}
+}
 func TestLoginAuthorityUnlockRequiresSuccessorPaint(t *testing.T) {
 	a := paintedLoginAuthority(t)
 	old := unlockKey(a)

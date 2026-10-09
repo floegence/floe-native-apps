@@ -1,5 +1,6 @@
 import struct
 import threading
+import time
 import unittest
 import zlib
 from types import SimpleNamespace
@@ -7,6 +8,29 @@ from host_desktop_drm import DRMCapture, cursor_png
 
 
 class DRMWorkerTests(unittest.TestCase):
+    def test_first_input_wakes_idle_capture_without_bypassing_active_cadence(self):
+        capture = DRMCapture.__new__(DRMCapture)
+        capture.lock, capture.wake = threading.Lock(), threading.Event()
+        capture.hot_until = capture.changed_at = -1
+        waiting = threading.Event()
+        elapsed = []
+        def idle():
+            started = time.monotonic()
+            waiting.set()
+            capture.wake.wait(.2)
+            elapsed.append(time.monotonic() - started)
+        thread = threading.Thread(target=idle)
+        thread.start()
+        self.assertTrue(waiting.wait(1))
+        capture.interacted()
+        thread.join(1)
+        self.assertFalse(thread.is_alive())
+        self.assertLess(elapsed[0], .1, 'idle polling must not delay the first input')
+        capture.wake.clear()
+        for _ in range(100):
+            capture.interacted()
+        self.assertFalse(capture.wake.is_set(), 'continuous input must retain the configured frame-rate bound')
+
     def test_display_suspend_is_once_per_current_epoch_and_bounded_during_wake(self):
         delivered = []
         capture = DRMCapture.__new__(DRMCapture)

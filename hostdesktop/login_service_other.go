@@ -7,7 +7,8 @@ import (
 	"net"
 )
 
-func RunLoginMediaPython(_, _ string) error { return ErrServiceUnsupported }
+func RunLoginMediaPython(_, _ string) error           { return ErrServiceUnsupported }
+func RunLoginTextPython(string, string, string) error { return ErrServiceUnsupported }
 
 func RunLoginScreenService(context.Context, LoginServiceConfig) error { return ErrServiceUnsupported }
 

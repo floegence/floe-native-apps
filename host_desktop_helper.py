@@ -8,19 +8,12 @@ import sys
 import threading
 import time
 
-from host_desktop_contract import DesktopAuthority, DesktopError, integer
+from host_desktop_contract import DesktopAuthority, DesktopError, integer, text_value
 from host_desktop_identity import HostIdentity, x11_credentials
 from host_desktop_input import HeldInput, physical_key
 from host_desktop_media import DesktopMedia, select_encoder
 from host_desktop_portal import PortalGrant, PortalSession
 from host_desktop_wire import Writer, read_command
-
-
-def text_value(value, maximum):
-    try:
-        return isinstance(value, str) and '\0' not in value and len(value.encode()) <= maximum
-    except UnicodeError:
-        return False
 
 
 def picture_value(value):

@@ -9,7 +9,7 @@ import (
 )
 
 const LoginServiceSocket = "/run/redeven-desktop/desktop.sock"
-const loginAttachmentVersion = 2
+const loginAttachmentVersion = 3
 
 // LoginServiceConfig contains administrator-installed, root-owned policy only.
 // It is never populated from a viewer request. No credential belongs here.

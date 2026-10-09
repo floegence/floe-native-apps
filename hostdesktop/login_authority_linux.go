@@ -103,7 +103,7 @@ func (a *loginAuthority) input(command HostDesktopCommand) error {
 	} else if a.state != "active" || command.Method != "input" {
 		return errLoginAuthority
 	}
-	if command.Input == nil || command.Input.Text != "" || command.Input.Kind == "text" || command.Input.Kind == "paste" {
+	if a.state == "locked" && (command.Input == nil || command.Input.Text != "" || command.Input.Kind == "text" || command.Input.Kind == "paste") {
 		return errLoginPhysicalInput
 	}
 	return nil
