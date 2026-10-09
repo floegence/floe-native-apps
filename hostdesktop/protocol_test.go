@@ -159,3 +159,28 @@ func TestHostDesktopRejectsUnknownCursorPresentation(t *testing.T) {
 		t.Fatalf("accepted unknown cursor presentation: %v", err)
 	}
 }
+
+func TestHostDesktopCursorVisibilityAndPosition(t *testing.T) {
+	visible, hidden, unknown := true, false, false
+	cursor := HostDesktopMessage{Version: 1, Type: "cursor", Generation: 2, Codec: "png", Width: 64, Height: 64,
+		CursorVisible: &visible, HotspotValid: &unknown, CursorPosition: &HostDesktopCursorPosition{X: -10, Y: 120, Width: 1920, Height: 1280}, Data: []byte("pixels")}
+	var stream bytes.Buffer
+	if WriteHostDesktopMessage(&stream, cursor) != nil {
+		t.Fatal("position cursor rejected")
+	}
+	if WriteHostDesktopMessage(&stream, HostDesktopMessage{Version: 1, Type: "cursor", Generation: 2, CursorVisible: &hidden}) != nil {
+		t.Fatal("hidden cursor rejected")
+	}
+	got, err := ReadHostDesktopMessage(&stream)
+	if err != nil || got.CursorPosition.X != -10 || got.HotspotValid == nil || *got.HotspotValid {
+		t.Fatal("cursor provenance lost", err)
+	}
+	got, err = ReadHostDesktopMessage(&stream)
+	if err != nil || got.CursorVisible == nil || *got.CursorVisible || len(got.Data) != 0 {
+		t.Fatal("empty hidden cursor lost", err)
+	}
+	cursor.CursorVisible = &hidden
+	if WriteHostDesktopMessage(&bytes.Buffer{}, cursor) == nil {
+		t.Fatal("hidden cursor carried pixels")
+	}
+}

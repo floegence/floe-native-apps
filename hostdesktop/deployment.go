@@ -11,6 +11,7 @@ type LoginServiceDeploymentRequest struct {
 	RuntimeSHA256   string `json:"runtime_sha256,omitempty"`
 	ServiceSHA256   string `json:"service_sha256,omitempty"`
 	WorkerSHA256    string `json:"worker_sha256,omitempty"`
+	MediaSHA256     string `json:"media_sha256,omitempty"`
 }
 type LoginServiceDeploymentEvent struct {
 	Stage    string `json:"stage"`

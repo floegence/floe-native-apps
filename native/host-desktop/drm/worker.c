@@ -5,6 +5,7 @@
  */
 #define _GNU_SOURCE
 #include <errno.h>
+#include <fcntl.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -14,6 +15,7 @@
 #include <sys/syscall.h>
 #include <linux/capability.h>
 #include <unistd.h>
+#include <sys/mman.h>
 #include "drmtap.h"
 
 #define MAX_BYTES (64u << 20)
@@ -70,8 +72,44 @@ static int exporter(int sock) {
   uint8_t command=0;int unexpected=-1;
   if(receive_packet(sock,&command,1,&unexpected)!=0)break;
   if(unexpected>=0){close(unexpected);break;}
-  if(command!=1&&command!=2)break;
+  if(command!=1&&command!=2&&command!=3)break;
   if(command==2&&ctx){drmtap_close(ctx);ctx=NULL;}
+  if(command==3) {
+   /* Cursor work never performs full-frame GPU conversion. Its bounded reply
+    * names image coordinates; an absent hotspot is not relabelled as (0,0). */
+   int32_t header[10]={0};
+   drmtap_cursor_info cursor={0};
+   header[0]=ctx?drmtap_get_cursor(ctx,&cursor):-ENODEV;
+   size_t length=0;
+   if(header[0]==0&&cursor.visible) {
+    if(!cursor.pixels||cursor.width<1||cursor.height<1||cursor.width>512||cursor.height>512)header[0]=-ENOTSUP;
+    else {
+     int valid=0;
+     if(drmtap_cursor_hotspot_valid(&cursor,&valid)!=0)header[0]=-ENOTSUP;
+     else {
+      header[1]=1;header[2]=cursor.x;header[3]=cursor.y;header[4]=(int32_t)cursor.width;header[5]=(int32_t)cursor.height;
+      header[6]=cursor.hot_x;header[7]=cursor.hot_y;header[8]=valid;
+      length=(size_t)cursor.width*cursor.height*4;header[9]=(int32_t)length;
+     }
+    }
+   }
+   /* Shapes travel in a sealed file, so even the largest accepted cursor
+    * cannot exceed the seqpacket socket's datagram limit. */
+   int pixels=-1;
+   if(length) {
+    pixels=memfd_create("floe-drm-cursor",MFD_CLOEXEC|MFD_ALLOW_SEALING);
+    if(pixels<0||write(pixels,cursor.pixels,length)!=(ssize_t)length||
+       fcntl(pixels,F_ADD_SEALS,F_SEAL_WRITE|F_SEAL_GROW|F_SEAL_SHRINK|F_SEAL_SEAL)<0) {
+     if(pixels>=0)close(pixels);
+     drmtap_cursor_release(ctx,&cursor);break;
+    }
+   }
+   int sent=send_packet(sock,header,sizeof(header),pixels);
+   if(pixels>=0)close(pixels);
+   if(ctx)drmtap_cursor_release(ctx,&cursor);
+   if(sent!=0)break;
+   continue;
+  }
   export_packet packet={.version=1};
   packet.desc.dma_buf_fd=-1;
   if(!ctx)ctx=drmtap_open(NULL);
@@ -93,13 +131,17 @@ static int write_all(int fd,const void *data,size_t length) {
  while(length){ssize_t n=write(fd,p,length);if(n<0&&errno==EINTR)continue;if(n<=0)return -1;p+=n;length-=n;}
  return 0;
 }
-static int converter(int sock) {
+static int unprivileged(void) {
  if(geteuid()==0)return 77; // GPU drivers never load in a privileged converter.
  struct __user_cap_header_struct cap_header = { .version = _LINUX_CAPABILITY_VERSION_3, .pid = 0 };
  struct __user_cap_data_struct caps[2] = {{0}, {0}};
  if (syscall(SYS_capset, &cap_header, caps) != 0) return 77;
  if (syscall(SYS_capget, &cap_header, caps) != 0) return 77;
  for (int i=0; i<2; i++) if (caps[i].effective || caps[i].permitted || caps[i].inheritable) return 77;
+ return 0;
+}
+static int converter(int sock) {
+ if(unprivileged()!=0)return 77;
  drmtap_ctx *ctx=drmtap_open_render(NULL);
  if(!ctx)return 69;
  for(;;) {
@@ -121,9 +163,15 @@ static int converter(int sock) {
 }
 int main(int argc,char **argv) {
  int type=0;socklen_t size=sizeof(type);
- if(argc!=2||getsockopt(3,SOL_SOCKET,SO_TYPE,&type,&size)!=0||type!=SOCK_SEQPACKET)return 64;
+ int sock=3;
+ if(argc==3&&strcmp(argv[1],"convert")==0) {
+  char *end=NULL;long value=strtol(argv[2],&end,10);
+  if(!end||*end||value<3||value>65535)return 64;
+  sock=(int)value;
+ }
+ if(argc<2||getsockopt(sock,SOL_SOCKET,SO_TYPE,&type,&size)!=0||type!=SOCK_SEQPACKET)return 64;
  if(prctl(PR_SET_NO_NEW_PRIVS,1,0,0,0)!=0)return 77;
- if(strcmp(argv[1],"export")==0)return geteuid()==0?exporter(3):77;
- if(strcmp(argv[1],"convert")==0)return converter(3);
+ if(argc==2&&strcmp(argv[1],"export")==0)return geteuid()==0?exporter(sock):77;
+ if((argc==2||argc==3)&&strcmp(argv[1],"convert")==0)return converter(sock);
  return 64;
 }

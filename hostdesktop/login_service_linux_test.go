@@ -69,7 +69,7 @@ func qualifyLoginService(t *testing.T, disconnected bool) {
 	defer cancel()
 	stopped := make(chan error, 1)
 	go func() {
-		stopped <- RunLoginScreenService(ctx, LoginServiceConfig{SocketPath: socket, WorkerPath: worker, RuntimeUID: 1000, RuntimeGID: 1000, RuntimeSHA256: hex.EncodeToString(hash.Sum(nil))})
+		stopped <- RunLoginScreenService(ctx, LoginServiceConfig{SocketPath: socket, WorkerPath: worker, MediaRoot: os.Getenv("FLOE_LOGIN_MEDIA_ROOT"), RuntimeUID: 1000, RuntimeGID: 1000, RuntimeSHA256: hex.EncodeToString(hash.Sum(nil))})
 	}()
 	deadline := time.Now().Add(5 * time.Second)
 	for {
@@ -86,7 +86,12 @@ func qualifyLoginService(t *testing.T, disconnected bool) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	client := exec.Command(binary, "-test.run", "^TestLoginServiceQualificationClient$", "-test.v")
+	clientTest := "^TestLoginServiceQualificationClient$"
+	if os.Getenv("FLOE_LOGIN_QUALIFY_UNLOCK") == "1" {
+		clientTest = "^TestLoginUnlockQualificationClient$"
+	}
+	client := exec.Command(binary, "-test.run", clientTest, "-test.v")
+	client.Stdin = os.Stdin
 	client.Env = append(os.Environ(), "FLOE_LOGIN_SERVICE_CLIENT_SOCKET="+socket)
 	if disconnected {
 		client.Env = append(client.Env, "FLOE_LOGIN_SERVICE_CLIENT_NO_SCANOUT=1")

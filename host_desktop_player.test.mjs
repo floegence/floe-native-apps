@@ -1,8 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { unpackDesktopMedia, DesktopPaintOrder } from './host_desktop_player.mjs';
+import { unpackDesktopMedia, DesktopPaintOrder, desktopPointerPosition } from './host_desktop_player.mjs';
 import { DesktopAudioRing } from './host_desktop_audio.mjs';
 const nativeSetTimeout = globalThis.setTimeout, nativeClearTimeout = globalThis.clearTimeout;
+
+test('cursor hiding is explicit and coordinate mapping matches fitted and scrolled pixels', () => {
+  const hidden = unpackDesktopMedia(packet({ type: 'cursor', cursor_visible: false, codec: undefined, width: undefined, height: undefined }, new Uint8Array()));
+  assert.equal(hidden.header.cursor_visible, false);
+  assert.throws(() => unpackDesktopMedia(packet({ type: 'cursor', cursor_visible: false })));
+  assert.throws(() => unpackDesktopMedia(packet({ type: 'frame' }, new Uint8Array())));
+  const canvas = { width: 1920, height: 1280, getBoundingClientRect: () => ({ left: 100, top: -200, width: 960, height: 960 }) };
+  assert.deepEqual(desktopPointerPosition(canvas, 580, 280), { x: .5, y: .5 });
+  assert.deepEqual(desktopPointerPosition(canvas, -100, 2000), { x: 0, y: 1 });
+});
 
 function packet(header, payload = Uint8Array.of(1, 2, 3)) {
   const metadata = new TextEncoder().encode(JSON.stringify({ version: 1, type: 'frame', generation: 1, frame_id: 1, codec: 'png', width: 2, height: 2, bytes: payload.length, ...header }));
@@ -356,6 +366,38 @@ test('cursor packets validate bounds and do not become painted frame receipts', 
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(styles.size, 0);
     assert.equal(closed, 2);
+  } finally {
+    f.player.close();
+    for (const [key, value] of originals) { if (value === undefined) delete globalThis[key]; else globalThis[key] = value; }
+  }
+});
+
+test('untrusted hotspots use an immediate arrow and position updates cannot grant paint', async () => {
+  const f = await playerFixture();
+  const styles = new Map();
+  const originals = ['createImageBitmap', 'document'].map(key => [key, globalThis[key]]);
+  f.player.canvas.style = { setProperty: (key, value) => styles.set(key, value), removeProperty: key => styles.delete(key) };
+  globalThis.document = { createElement: () => ({ getContext: () => ({ drawImage() {} }), toDataURL: () => 'data:image/png;base64,fixture' }) };
+  let resolveImage;
+  globalThis.createImageBitmap = () => new Promise(resolve => { resolveImage = resolve; });
+  try {
+    f.player.receive(packet({ type: 'cursor', hotspot_valid: false, cursor_visible: true,
+      cursor_position: { x: 20, y: 30, width: 1920, height: 1280 } }));
+    f.player.receive(packet({ type: 'cursor', codec: undefined, width: undefined, height: undefined,
+      cursor_visible: true, cursor_position: { x: 60, y: 70, width: 1920, height: 1280 } }, new Uint8Array()));
+    resolveImage({ width: 2, height: 2, close() {} });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(styles.get('--floe-desktop-cursor'), 'default');
+    assert.equal(f.player.cursor.header.cursor_position.x, 60);
+    assert.deepEqual(f.acknowledgements, []);
+    f.player.setInteraction(false);
+    assert.equal(styles.get('--floe-desktop-cursor'), 'none');
+    f.player.receive(packet({ type: 'cursor', cursor_visible: false, codec: undefined, width: undefined, height: undefined }, new Uint8Array()));
+    f.player.setInteraction(true);
+    assert.equal(styles.get('--floe-desktop-cursor'), 'none');
+    f.player.reset(2);
+    f.player.receive(packet({ type: 'cursor', cursor_visible: false, codec: undefined, width: undefined, height: undefined }, new Uint8Array()));
+    assert.equal(f.player.cursor, null);
   } finally {
     f.player.close();
     for (const [key, value] of originals) { if (value === undefined) delete globalThis[key]; else globalThis[key] = value; }

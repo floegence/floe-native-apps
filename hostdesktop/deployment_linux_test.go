@@ -3,7 +3,9 @@
 package hostdesktop
 
 import (
+	"archive/tar"
 	"bytes"
+	"compress/gzip"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -72,6 +74,26 @@ func fixtureLoginDeployment(t *testing.T) (*loginDeployer, LoginServiceDeploymen
 		return hex.EncodeToString(hash[:])
 	}
 	request := LoginServiceDeploymentRequest{Operation: "install", SourceDirectory: source, RuntimeUID: 1000, RuntimeGID: 1000, RuntimeSHA256: strings.Repeat("a", 64), ServiceSHA256: digest("floe-host-desktop-service"), WorkerSHA256: digest("desktop-drm")}
+	var media bytes.Buffer
+	compressed := gzip.NewWriter(&media)
+	archive := tar.NewWriter(compressed)
+	for _, name := range []string{"floe/host-desktop/python3", "floe/host-desktop/host_desktop_drm.py", "usr/bin/python3"} {
+		data := []byte("media fixture")
+		if archive.WriteHeader(&tar.Header{Name: name, Mode: 0755, Size: int64(len(data)), Typeflag: tar.TypeReg}) != nil {
+			t.Fatal("media fixture header")
+		}
+		if _, err := archive.Write(data); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if archive.Close() != nil || compressed.Close() != nil {
+		t.Fatal("media fixture close")
+	}
+	if err := os.WriteFile(filepath.Join(source, "media.tar.gz"), media.Bytes(), 0600); err != nil {
+		t.Fatal(err)
+	}
+	mediaDigest := sha256.Sum256(media.Bytes())
+	request.MediaSHA256 = hex.EncodeToString(mediaDigest[:])
 	licensePath := os.Getenv("FLOE_LOGIN_TEST_LICENSE")
 	if licensePath == "" {
 		licensePath = "../native/host-desktop/drm/dist/amd64/libdrmtap.LICENSE"

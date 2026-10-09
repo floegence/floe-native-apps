@@ -102,6 +102,27 @@ libraries, compositor permissions, or user security policies. Current qualificat
 covers GNOME/GDM; other lockers must not be inferred from a PAM session label.
 No scanout means no capture capability, even when the service itself is active.
 
+One persistent logind D-Bus connection supplies fresh seat and session properties
+at every input boundary. Kernel VT and the bound compositor process image must
+still agree; signals are wakeups, never cached permission. Query failures revoke
+input. Process enumeration occurs only when binding or rebuilding that identity.
+
+An authenticated attachment receives an independent Unix media FD. Encoding and
+slow media consumers cannot block input or release. Media queues are bounded;
+encoded H.264 reference frames remain ordered, and backpressure terminates the
+attachment. The unprivileged media worker reuses the ordinary desktop scheduler
+and codecs, suppresses unchanged frames and performs one settled lossless
+refinement. A cursor packet never constitutes a painted-frame receipt. Cursor
+pixels are separate only while the DRM hardware plane is bound; a hidden plane
+removes the overlay and the next painted frame selects embedded ownership.
+
+The SSH user prepares and self-checks the pinned media closure before the
+administrator transaction. The transaction verifies its archive digest, rejects
+links and special files, and installs immutable root-owned files. Version-one
+service records have an explicit version-two upgrade; failed upgrades restore
+the exact old policy bytes, unit and activation state. Incompatible service
+protocols report `SERVICE_UPDATE_REQUIRED`, without a legacy attachment path.
+
 User home directories stay hidden in the service namespace. Only `/run/user` is
 bound read-only for the qualified compositor's session bus. A fixed child drops
 UID and every Linux capability before using Mutter's display-power property.

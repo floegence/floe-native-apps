@@ -47,7 +47,7 @@ func TestLoginDeploymentRealSystemd(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	request := LoginServiceDeploymentRequest{Operation: "install", SourceDirectory: source, RuntimeUID: 1000, RuntimeGID: 1000, RuntimeSHA256: digest(binary), ServiceSHA256: digest(filepath.Join(source, "floe-host-desktop-service")), WorkerSHA256: digest(filepath.Join(source, "desktop-drm"))}
+	request := LoginServiceDeploymentRequest{Operation: "install", SourceDirectory: source, RuntimeUID: 1000, RuntimeGID: 1000, RuntimeSHA256: digest(binary), ServiceSHA256: digest(filepath.Join(source, "floe-host-desktop-service")), WorkerSHA256: digest(filepath.Join(source, "desktop-drm")), MediaSHA256: digest(filepath.Join(source, "media.tar.gz"))}
 	report := func(event LoginServiceDeploymentEvent) {
 		t.Logf("deployment stage=%s code=%s rollback=%s", event.Stage, event.Code, event.Rollback)
 	}

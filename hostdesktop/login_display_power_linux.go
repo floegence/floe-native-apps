@@ -4,10 +4,9 @@ package hostdesktop
 
 import (
 	"context"
-	"errors"
-	"image"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -62,43 +61,23 @@ func RunLoginDisplayPower(ctx context.Context) error {
 	return nil
 }
 
-func (s *loginServer) captureFrame(ctx context.Context, capture *loginDRMCapture) (image.Image, error) {
-	pixels, err := capture.frame()
-	if !errors.Is(err, errLoginDisplayInactive) || loginCaptureReason(err) != "DISPLAY_INACTIVE" {
-		return pixels, err
-	}
-	seat, seatErr := loginSeat(ctx, s.config.Seat)
-	if seatErr != nil || seat.uid == 0 {
-		return nil, errLoginDisplayInactive
+func (s *loginServer) wakeDisplay(ctx context.Context, seat loginSeatState) error {
+	if seat.uid == 0 {
+		return errLoginDisplayInactive
 	}
 	bus := "/run/user/" + strconv.FormatUint(uint64(seat.uid), 10) + "/bus"
 	var stat unix.Stat_t
 	if unix.Lstat(bus, &stat) != nil || stat.Uid != seat.uid || stat.Mode&unix.S_IFMT != unix.S_IFSOCK {
-		return nil, errLoginDisplayInactive
+		return errLoginDisplayInactive
 	}
-	executable, executableErr := os.Executable()
-	if executableErr != nil || loginRootOwnedExecutable(executable) != nil {
-		return nil, errLoginDisplayInactive
+	executable := filepath.Join(filepath.Dir(s.config.WorkerPath), "floe-host-desktop-service")
+	if loginRootOwnedExecutable(executable) != nil {
+		return errLoginDisplayInactive
 	}
 	wake, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	command := exec.CommandContext(wake, executable, "display-power")
 	command.Env = []string{"PATH=/usr/bin:/bin", "LANG=C", "HOME=/nonexistent"}
 	command.SysProcAttr = &syscall.SysProcAttr{Credential: &syscall.Credential{Uid: seat.uid, Gid: stat.Gid}}
-	if command.Run() != nil {
-		return nil, errLoginDisplayInactive
-	}
-	// Mode activation is asynchronous. Bound settling within this same capture
-	// operation; disconnected hardware is never retried or silently substituted.
-	for {
-		pixels, err = capture.frame()
-		if !errors.Is(err, errLoginDisplayInactive) {
-			return pixels, err
-		}
-		select {
-		case <-wake.Done():
-			return nil, errLoginDisplayInactive
-		case <-time.After(50 * time.Millisecond):
-		}
-	}
+	return command.Run()
 }

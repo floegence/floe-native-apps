@@ -19,6 +19,7 @@ type HostDesktopServiceStatus = hostdesktop.HostDesktopServiceStatus
 type HostDesktopInput = hostdesktop.HostDesktopInput
 type HostDesktopCommand = hostdesktop.HostDesktopCommand
 type HostDesktopMessage = hostdesktop.HostDesktopMessage
+type HostDesktopCursorPosition = hostdesktop.HostDesktopCursorPosition
 
 func ParseHostDesktopCommand(data []byte) (HostDesktopCommand, error) {
 	return hostdesktop.ParseHostDesktopCommand(data)

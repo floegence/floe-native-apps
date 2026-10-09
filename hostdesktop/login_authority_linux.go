@@ -76,6 +76,14 @@ func (a *loginAuthority) acknowledge(generation, frame uint64) error {
 	a.painted = frame
 	return nil
 }
+
+func (a *loginAuthority) acceptFrame(generation, frame uint64) bool {
+	if generation != a.generation || frame != a.frame+1 {
+		return false
+	}
+	id, ok := a.offer()
+	return ok && id == frame
+}
 func (a *loginAuthority) input(command HostDesktopCommand) error {
 	if !command.Valid() || a.mode != "control" || command.Generation != a.generation || a.painted == 0 {
 		return errLoginAuthority

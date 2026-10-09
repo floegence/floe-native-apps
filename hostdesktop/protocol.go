@@ -103,39 +103,51 @@ type HostDesktopCommand struct {
 	Service    string              `json:"service,omitempty"`
 }
 
+// Cursor positions name the image's top-left in physical capture coordinates,
+// not a guessed click hotspot or a compositor's logical desktop coordinates.
+type HostDesktopCursorPosition struct {
+	X      int `json:"x"`
+	Y      int `json:"y"`
+	Width  int `json:"width"`
+	Height int `json:"height"`
+}
+
 // HostDesktopMessage carries control metadata or one encoded media packet.
 // Data is binary on media transports; credentials and content are not diagnostics.
 type HostDesktopMessage struct {
-	Authorization string                    `json:"authorization,omitempty"`
-	Version       int                       `json:"version"`
-	Type          string                    `json:"type"`
-	ID            uint64                    `json:"id,omitempty"`
-	Code          string                    `json:"code,omitempty"`
-	State         string                    `json:"state,omitempty"`
-	Mode          string                    `json:"mode,omitempty"`
-	Capabilities  *HostDesktopCapabilities  `json:"capabilities,omitempty"`
-	Service       string                    `json:"service,omitempty"`
-	ServiceStatus *HostDesktopServiceStatus `json:"service_status,omitempty"`
-	Displays      []HostDesktopDisplay      `json:"displays,omitempty"`
-	DisplayID     string                    `json:"display_id,omitempty"`
-	Generation    uint64                    `json:"generation,omitempty"`
-	FrameID       uint64                    `json:"frame_id,omitempty"`
-	Timestamp     int64                     `json:"timestamp,omitempty"`
-	Codec         string                    `json:"codec,omitempty"`
-	Profile       string                    `json:"profile,omitempty"`
-	Description   string                    `json:"description,omitempty"`
-	Encoder       string                    `json:"encoder,omitempty"`
-	Cursor        string                    `json:"cursor,omitempty"`
-	Width         int                       `json:"width,omitempty"`
-	Height        int                       `json:"height,omitempty"`
-	HotX          int                       `json:"hot_x,omitempty"`
-	HotY          int                       `json:"hot_y,omitempty"`
-	Key           bool                      `json:"key,omitempty"`
-	SampleRate    int                       `json:"sample_rate,omitempty"`
-	Channels      int                       `json:"channels,omitempty"`
-	Text          *string                   `json:"text,omitempty"`
-	Bytes         int                       `json:"bytes,omitempty"`
-	Data          []byte                    `json:"-"`
+	Authorization  string                     `json:"authorization,omitempty"`
+	Version        int                        `json:"version"`
+	Type           string                     `json:"type"`
+	ID             uint64                     `json:"id,omitempty"`
+	Code           string                     `json:"code,omitempty"`
+	State          string                     `json:"state,omitempty"`
+	Mode           string                     `json:"mode,omitempty"`
+	Capabilities   *HostDesktopCapabilities   `json:"capabilities,omitempty"`
+	Service        string                     `json:"service,omitempty"`
+	ServiceStatus  *HostDesktopServiceStatus  `json:"service_status,omitempty"`
+	Displays       []HostDesktopDisplay       `json:"displays,omitempty"`
+	DisplayID      string                     `json:"display_id,omitempty"`
+	Generation     uint64                     `json:"generation,omitempty"`
+	FrameID        uint64                     `json:"frame_id,omitempty"`
+	Timestamp      int64                      `json:"timestamp,omitempty"`
+	Codec          string                     `json:"codec,omitempty"`
+	Profile        string                     `json:"profile,omitempty"`
+	Description    string                     `json:"description,omitempty"`
+	Encoder        string                     `json:"encoder,omitempty"`
+	Cursor         string                     `json:"cursor,omitempty"`
+	CursorPosition *HostDesktopCursorPosition `json:"cursor_position,omitempty"`
+	CursorVisible  *bool                      `json:"cursor_visible,omitempty"`
+	HotspotValid   *bool                      `json:"hotspot_valid,omitempty"`
+	Width          int                        `json:"width,omitempty"`
+	Height         int                        `json:"height,omitempty"`
+	HotX           int                        `json:"hot_x,omitempty"`
+	HotY           int                        `json:"hot_y,omitempty"`
+	Key            bool                       `json:"key,omitempty"`
+	SampleRate     int                        `json:"sample_rate,omitempty"`
+	Channels       int                        `json:"channels,omitempty"`
+	Text           *string                    `json:"text,omitempty"`
+	Bytes          int                        `json:"bytes,omitempty"`
+	Data           []byte                     `json:"-"`
 }
 
 func hostDesktopText(text string, maximum int) bool {
@@ -330,6 +342,15 @@ func (message HostDesktopMessage) valid() bool {
 		}
 		return desktopID(message.Generation) && desktopID(message.FrameID) && message.Width >= 2 && message.Width <= 8192 && message.Height >= 2 && message.Height <= 8192 && message.Width*message.Height <= 16<<20 && message.Bytes > 0 && (message.Codec == "h264" || message.Codec == "png") && message.Timestamp >= 0
 	case "cursor":
+		if p := message.CursorPosition; p != nil && (p.Width < 2 || p.Width > 8192 || p.Height < 2 || p.Height > 8192 || p.Width*p.Height > 16<<20 || p.X < -512 || p.X > p.Width+512 || p.Y < -512 || p.Y > p.Height+512) {
+			return false
+		}
+		if message.CursorVisible != nil && !*message.CursorVisible {
+			return desktopID(message.Generation) && message.Bytes == 0 && message.Codec == "" && message.Width == 0 && message.Height == 0 && message.CursorPosition == nil
+		}
+		if message.CursorVisible != nil && *message.CursorVisible && message.Bytes == 0 {
+			return desktopID(message.Generation) && message.CursorPosition != nil && message.Codec == "" && message.Width == 0 && message.Height == 0 && message.HotspotValid == nil && message.HotX == 0 && message.HotY == 0
+		}
 		return desktopID(message.Generation) && message.Codec == "png" && message.Width >= 1 && message.Width <= 512 && message.Height >= 1 && message.Height <= 512 && message.HotX >= 0 && message.HotX < message.Width && message.HotY >= 0 && message.HotY < message.Height && message.Bytes > 0 && message.Bytes <= 2<<20
 	case "audio":
 		return desktopID(message.Generation) && message.Codec == "opus" && message.SampleRate == 48000 && message.Channels == 2 && message.Bytes > 0 && message.Bytes <= 64<<10 && message.Timestamp >= 0

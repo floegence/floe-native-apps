@@ -23,9 +23,25 @@ func main() {
 	check := flag.String("check", "", "self-check an installed native root")
 	input := flag.String("prepare-input", "", "prepare client input support in a new private directory")
 	html := flag.String("input-html", "", "installed Xpra HTML distribution for client input preparation")
+	serviceMedia := flag.String("service-media", "", "prepare a verified physical-desktop media archive as the current user")
 	flag.Parse()
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
+	if *serviceMedia != "" {
+		if *recipe != "host-desktop" || *architecture != runtime.GOARCH {
+			fail(nativeapps.ErrUnsupported)
+		}
+		digest, err := nativeapps.PrepareLoginScreenMedia(ctx, *state, *serviceMedia, func(status nativeapps.Status) {
+			_ = json.NewEncoder(os.Stdout).Encode(status)
+		})
+		if err != nil {
+			fail(err)
+		}
+		if json.NewEncoder(os.Stdout).Encode(map[string]string{"media_sha256": digest}) != nil {
+			os.Exit(1)
+		}
+		return
+	}
 	pkg, err := packageForRecipe(*recipe, *architecture)
 	if err != nil {
 		fail(err)

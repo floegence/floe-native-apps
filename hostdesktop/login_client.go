@@ -70,6 +70,9 @@ func InstalledLoginServiceStatus(ctx context.Context, path string) (ServiceStatu
 	if err = loginReadPacket(reader, &reply); err != nil || reply.Status == nil {
 		return ServiceStatus{State: ServiceFailed, Reason: "service_identity_rejected", Backend: "linux-drm-kms"}, errLoginServiceUnavailable
 	}
+	if reply.Version != loginAttachmentVersion {
+		return ServiceStatus{State: ServiceFailed, Reason: "SERVICE_UPDATE_REQUIRED", Backend: "linux-drm-kms"}, ErrServiceUpdateRequired
+	}
 	return *reply.Status, nil
 }
 
@@ -81,7 +84,7 @@ var errLoginServiceUnavailable = errors.New("login-screen attachment unavailable
 // Close revokes the attachment, releasing its held kernel input devices.
 type LoginScreenConnection struct {
 	socket         net.Conn
-	reader         *bufio.Reader
+	mediaSocket    *net.UnixConn
 	control, media chan HostDesktopMessage
 	done           chan struct{}
 	once           sync.Once
@@ -105,36 +108,36 @@ func OpenLoginScreenSession(ctx context.Context, path string) (*LoginScreenConne
 	if err != nil || len(ticket.Token) != 64 {
 		return nil, errLoginServiceUnavailable
 	}
+	if ticket.Version != loginAttachmentVersion {
+		return nil, ErrServiceUpdateRequired
+	}
 	socket, reader, err := loginDial(ctx, path)
 	if err != nil {
 		return nil, err
 	}
 	stopAttachCancellation := context.AfterFunc(ctx, func() { _ = socket.Close() })
 	defer stopAttachCancellation()
-	if err = loginWritePacket(socket, loginServiceHello{Operation: "attach", Token: ticket.Token}); err != nil {
+	if err = loginWritePacket(socket, loginServiceHello{Version: loginAttachmentVersion, Operation: "attach", Token: ticket.Token}); err != nil {
 		_ = socket.Close()
 		return nil, err
 	}
-	var reply loginServiceReply
-	if err = loginReadPacket(reader, &reply); err != nil || reply.Code != "" {
+	mediaSocket, err := readLoginAttachment(socket.(*net.UnixConn))
+	if err != nil {
 		_ = socket.Close()
-		return nil, errLoginServiceUnavailable
+		return nil, err
 	}
 	_ = socket.SetDeadline(time.Time{})
-	connection := &LoginScreenConnection{socket: socket, reader: reader, control: make(chan HostDesktopMessage, 32), media: make(chan HostDesktopMessage, 4), done: make(chan struct{})}
-	go connection.read()
+	connection := &LoginScreenConnection{socket: socket, mediaSocket: mediaSocket, control: make(chan HostDesktopMessage, 32), media: make(chan HostDesktopMessage, 4), done: make(chan struct{})}
+	go connection.read(reader, connection.control)
+	go connection.read(bufio.NewReader(mediaSocket), connection.media)
 	return connection, nil
 }
-func (c *LoginScreenConnection) read() {
+func (c *LoginScreenConnection) read(reader *bufio.Reader, destination chan HostDesktopMessage) {
 	defer c.Close()
 	for {
-		message, err := ReadHostDesktopMessage(c.reader)
+		message, err := ReadHostDesktopMessage(reader)
 		if err != nil {
 			return
-		}
-		destination := c.control
-		if message.Type == "frame" || message.Type == "format" || message.Type == "audio" || message.Type == "cursor" {
-			destination = c.media
 		}
 		select {
 		case destination <- message:
@@ -154,6 +157,12 @@ func (c *LoginScreenConnection) Media() <-chan HostDesktopMessage   { return c.m
 func (c *LoginScreenConnection) Done() <-chan struct{}              { return c.done }
 func (c *LoginScreenConnection) Close() error {
 	var err error
-	c.once.Do(func() { err = c.socket.Close(); close(c.done) })
+	c.once.Do(func() {
+		err = c.socket.Close()
+		if c.mediaSocket != nil {
+			_ = c.mediaSocket.Close()
+		}
+		close(c.done)
+	})
 	return err
 }

@@ -5,26 +5,51 @@ export function unpackDesktopMedia(buffer) {
   if (!length || length > 8 * 1024 * 1024 || 4 + length > buffer.byteLength) throw new Error('MEDIA_INVALID');
   const header = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(new Uint8Array(buffer, 4, length)));
   if (header.version !== 1 || !Number.isSafeInteger(header.generation) || header.generation < 1 ||
-      !Number.isSafeInteger(header.bytes) || header.bytes < 1 || header.bytes > 64 * 1024 * 1024 ||
+      !Number.isSafeInteger(header.bytes) || header.bytes < 0 || header.bytes > 64 * 1024 * 1024 ||
       header.bytes !== buffer.byteLength - 4 - length) throw new Error('MEDIA_INVALID');
   if (header.type === 'frame') {
-    if (!Number.isSafeInteger(header.frame_id) || header.frame_id < 1 ||
+    if (header.bytes < 1 || !Number.isSafeInteger(header.frame_id) || header.frame_id < 1 ||
         !['h264', 'png'].includes(header.codec) ||
         (header.cursor !== undefined && !['embedded', 'separate'].includes(header.cursor)) ||
         !Number.isInteger(header.width) || header.width < 2 || header.width > 8192 ||
         !Number.isInteger(header.height) || header.height < 2 || header.height > 8192 ||
         header.width * header.height > 16 * 1024 * 1024) throw new Error('MEDIA_INVALID');
   } else if (header.type === 'cursor') {
-    if (header.codec !== 'png' || header.bytes > 2 * 1024 * 1024 ||
+    if ((header.cursor_visible !== undefined && typeof header.cursor_visible !== 'boolean') ||
+        (header.hotspot_valid !== undefined && typeof header.hotspot_valid !== 'boolean')) throw new Error('MEDIA_INVALID');
+    const position = header.cursor_position;
+    if (position && (!Number.isInteger(position.width) || position.width < 2 || position.width > 8192 ||
+        !Number.isInteger(position.height) || position.height < 2 || position.height > 8192 || position.width * position.height > 16 * 1024 * 1024 ||
+        !Number.isInteger(position.x) || position.x < -512 || position.x > position.width + 512 ||
+        !Number.isInteger(position.y) || position.y < -512 || position.y > position.height + 512)) throw new Error('MEDIA_INVALID');
+    if (header.cursor_visible === false) {
+      if (header.bytes || header.codec || header.width || header.height || position) throw new Error('MEDIA_INVALID');
+    } else if (header.cursor_visible === true && header.bytes === 0) {
+      if (!position || header.codec || header.width || header.height || header.hotspot_valid !== undefined || header.hot_x || header.hot_y) throw new Error('MEDIA_INVALID');
+    } else if (header.bytes < 1 || header.codec !== 'png' || header.bytes > 2 * 1024 * 1024 ||
         !Number.isInteger(header.width) || header.width < 1 || header.width > 512 ||
         !Number.isInteger(header.height) || header.height < 1 || header.height > 512 ||
         !Number.isInteger(header.hot_x ?? 0) || (header.hot_x ?? 0) < 0 || (header.hot_x ?? 0) >= header.width ||
         !Number.isInteger(header.hot_y ?? 0) || (header.hot_y ?? 0) < 0 || (header.hot_y ?? 0) >= header.height) throw new Error('MEDIA_INVALID');
   } else if (header.type !== 'audio' || header.codec !== 'opus' || header.sample_rate !== 48000 || header.channels !== 2 ||
-             header.bytes > 64 * 1024 || !Number.isSafeInteger(header.timestamp) || header.timestamp < 0) {
+             header.bytes < 1 || header.bytes > 64 * 1024 || !Number.isSafeInteger(header.timestamp) || header.timestamp < 0) {
     throw new Error('MEDIA_INVALID');
   }
   return { header, data: new Uint8Array(buffer, 4 + length) };
+}
+
+// The same fitted picture rectangle drives pointer input and host cursor pixels.
+export function desktopPictureGeometry(canvas) {
+  const rect = canvas.getBoundingClientRect();
+  const scale = Math.min(rect.width / canvas.width, rect.height / canvas.height);
+  const width = canvas.width * scale, height = canvas.height * scale;
+  return { left: rect.left + (rect.width - width) / 2, top: rect.top + (rect.height - height) / 2, width, height };
+}
+
+export function desktopPointerPosition(canvas, clientX, clientY) {
+  const rect = desktopPictureGeometry(canvas);
+  return { x: Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)),
+    y: Math.max(0, Math.min(1, (clientY - rect.top) / rect.height)) };
 }
 
 export class DesktopPaintOrder {
@@ -66,6 +91,13 @@ export class HostDesktopPlayer {
     this.bytes = 0; this.draws = 0; this.lastStatistic = performance.now(); this.lastDraw = 0;
     this.intervals = []; this.decoderPath = 'unconfigured';
     this.cursorPending = null; this.cursorProcessing = false;
+    this.cursor = null; this.cursorLayer = null; this.cursorImage = null; this.interacting = true;
+    this.refreshCursor = () => this.renderCursor();
+    globalThis.addEventListener?.('resize', this.refreshCursor);
+    canvas.parentElement?.addEventListener('scroll', this.refreshCursor);
+    canvas.ownerDocument?.addEventListener('fullscreenchange', this.refreshCursor);
+    this.resizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(this.refreshCursor);
+    this.resizeObserver?.observe(canvas);
   }
   reset(generation) {
     this.epoch++;
@@ -78,6 +110,8 @@ export class HostDesktopPlayer {
     this.confirmation = this.confirmationTask = 0;
     this.lastPaintHeader = null;
     this.cursorPending = null;
+    this.cursor = null;
+    if (this.cursorLayer) this.cursorLayer.hidden = true;
     this.canvas.style?.removeProperty('--floe-desktop-cursor');
     this.canvas.removeAttribute('data-floe-desktop-cursor');
     if (this.decoder && this.decoder.state !== 'closed') this.decoder.close();
@@ -92,7 +126,12 @@ export class HostDesktopPlayer {
     let packet;
     try { packet = unpackDesktopMedia(buffer); } catch { this.fail('MEDIA_INVALID'); return; }
     if (packet.header.generation !== this.order.generation || this.recovering) return;
-    if (packet.header.type === 'cursor') { this.cursorPending = packet; void this.updateCursor(); return; }
+    if (packet.header.type === 'cursor') {
+      if (!packet.data.length && packet.header.cursor_visible && this.cursorPending?.data.length) {
+        this.cursorPending.header.cursor_position = packet.header.cursor_position;
+      } else this.cursorPending = packet;
+      void this.updateCursor(); return;
+    }
     this.bytes += buffer.byteLength;
     if (packet.header.type === 'audio') { this.decodeAudio(packet); return; }
     if (!this.order.accept(packet.header)) return;
@@ -109,8 +148,15 @@ export class HostDesktopPlayer {
         const epoch = this.epoch, { header, data } = packet;
         let image;
         try {
+          if (header.cursor_visible === false) {
+            this.cursor = { header, url: null, pointer: 'none' }; this.renderCursor(); continue;
+          }
+          if (!data.length) {
+            if (this.cursor?.url) this.cursor.header.cursor_position = header.cursor_position;
+            this.renderCursor(); continue;
+          }
           image = await createImageBitmap(new Blob([data], { type: 'image/png' }));
-          if (epoch !== this.epoch || this.closed || this.recovering || this.cursorPending) continue;
+          if (epoch !== this.epoch || this.closed || this.recovering || (this.cursorPending && (this.cursorPending.data.length || this.cursorPending.header.cursor_visible === false))) continue;
           if (image.width !== header.width || image.height !== header.height) throw new Error('CURSOR_INVALID');
           const scale = Math.min(1, 128 / Math.max(header.width, header.height));
           const cursor = document.createElement('canvas');
@@ -119,11 +165,42 @@ export class HostDesktopPlayer {
           cursor.getContext('2d').drawImage(image, 0, 0, cursor.width, cursor.height);
           const x = Math.min(cursor.width - 1, Math.round((header.hot_x ?? 0) * scale));
           const y = Math.min(cursor.height - 1, Math.round((header.hot_y ?? 0) * scale));
-          this.canvas.style.setProperty('--floe-desktop-cursor', `url("${cursor.toDataURL('image/png')}") ${x} ${y}, default`);
+          this.cursor = { header, url: cursor.toDataURL('image/png'),
+            pointer: header.hotspot_valid === false ? 'default' : `url("${cursor.toDataURL('image/png')}") ${x} ${y}, default` };
+          this.renderCursor();
         } catch { if (epoch === this.epoch) this.fail('CURSOR_INVALID'); }
         finally { image?.close(); }
       }
     } finally { this.cursorProcessing = false; }
+  }
+  setInteraction(enabled) { this.interacting = enabled === true; this.renderCursor(); }
+  renderCursor() {
+    const separate = this.canvas.getAttribute('data-floe-desktop-cursor') === 'separate';
+    const cursor = this.cursor;
+    const current = cursor && cursor.header.generation === this.order.generation;
+    this.canvas.style?.setProperty('--floe-desktop-cursor', this.interacting ? current ? cursor.pointer : 'default' : 'none');
+    if (this.cursorLayer) this.cursorLayer.hidden = true;
+    if (!separate || this.interacting || !current || !cursor.url || !cursor.header.cursor_position || this.recovering || this.closed) return;
+    const parent = this.canvas.parentElement;
+    if (!parent) return;
+    if (!this.cursorLayer) {
+      const layer = this.canvas.ownerDocument.createElement('div');
+      layer.setAttribute('aria-hidden', 'true');
+      layer.style.cssText = 'position:absolute;overflow:hidden;pointer-events:none;z-index:1;';
+      const image = this.canvas.ownerDocument.createElement('img');
+      image.style.cssText = 'position:absolute;max-width:none;pointer-events:none;';
+      layer.appendChild(image); parent.appendChild(layer);
+      this.cursorLayer = layer; this.cursorImage = image;
+    }
+    const rect = desktopPictureGeometry(this.canvas), container = parent.getBoundingClientRect();
+    const position = cursor.header.cursor_position;
+    const scaleX = rect.width / position.width, scaleY = rect.height / position.height;
+    Object.assign(this.cursorLayer.style, { left: `${rect.left - container.left + parent.scrollLeft - parent.clientLeft}px`,
+      top: `${rect.top - container.top + parent.scrollTop - parent.clientTop}px`, width: `${rect.width}px`, height: `${rect.height}px` });
+    this.cursorImage.src = cursor.url;
+    Object.assign(this.cursorImage.style, { left: `${position.x * scaleX}px`, top: `${position.y * scaleY}px`,
+      width: `${cursor.header.width * scaleX}px`, height: `${cursor.header.height * scaleY}px` });
+    this.cursorLayer.hidden = false;
   }
   async process() {
     if (this.processing) return;
@@ -235,7 +312,9 @@ export class HostDesktopPlayer {
     if (!this.order.paint(header)) return;
     // Cursor packets provide shape only. Pixel ownership changes only with a
     // successfully drawn, current frame; unlabelled legacy pixels embed it.
+    if (header.cursor !== 'separate' && this.canvas.getAttribute('data-floe-desktop-cursor') === 'separate') this.cursor = null;
     this.canvas.setAttribute('data-floe-desktop-cursor', header.cursor ?? 'embedded');
+    this.renderCursor();
     const now = performance.now();
     if (this.lastDraw) { this.intervals.push(now - this.lastDraw); this.draws++; }
     else { this.lastStatistic = now; this.draws = 0; }
@@ -347,6 +426,11 @@ export class HostDesktopPlayer {
   close() {
     if (this.closed) return;
     this.reset(0); this.closed = true;
+    this.resizeObserver?.disconnect();
+    globalThis.removeEventListener?.('resize', this.refreshCursor);
+    this.canvas.parentElement?.removeEventListener('scroll', this.refreshCursor);
+    this.canvas.ownerDocument?.removeEventListener('fullscreenchange', this.refreshCursor);
+    this.cursorLayer?.remove(); this.cursorLayer = this.cursorImage = null;
     this.speaker?.disconnect(); this.gain?.disconnect();
     void this.audio?.close();
   }

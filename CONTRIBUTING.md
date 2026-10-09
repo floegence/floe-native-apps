@@ -1441,6 +1441,9 @@ physical frame and input teardown, and reactivates the original session without
 unlocking it. All deployment qualifiers also keep a real acknowledged key down
 while stopping the service or killing the Runtime fixture and verify the kernel
 devices disappear before a new attachment. These opt-in fixtures must never run
-in ordinary source CI. Current service media is PNG on the physical scanout;
-clipboard and audio are not advertised by this service. Existing current-user
-desktop transports retain their independent media capabilities.
+in ordinary source CI. Physical scanout capture uses an unprivileged converter
+and the shared H.264 media scheduler, followed by one lossless PNG refinement
+after pixels settle. Independent hardware-cursor updates carry position, explicit
+visibility and hotspot validity. Clipboard and audio are not advertised by this
+service. Existing current-user desktop transports retain their independent media
+capabilities.

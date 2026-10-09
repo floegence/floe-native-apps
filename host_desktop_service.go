@@ -9,9 +9,10 @@ import (
 const LoginScreenService = hostdesktop.LoginScreenService
 
 var (
-	ErrServiceUnsupported   = hostdesktop.ErrServiceUnsupported
-	ErrServiceAuthorization = hostdesktop.ErrServiceAuthorization
-	ErrServiceNotInstalled  = hostdesktop.ErrServiceNotInstalled
+	ErrServiceUnsupported    = hostdesktop.ErrServiceUnsupported
+	ErrServiceAuthorization  = hostdesktop.ErrServiceAuthorization
+	ErrServiceNotInstalled   = hostdesktop.ErrServiceNotInstalled
+	ErrServiceUpdateRequired = hostdesktop.ErrServiceUpdateRequired
 )
 
 type ServiceStatus = HostDesktopServiceStatus

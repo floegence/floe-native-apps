@@ -18,7 +18,8 @@ const (
 )
 
 var (
-	ErrServiceUnsupported   = errors.New("login-screen service is unsupported")
-	ErrServiceAuthorization = errors.New("administrator authorization is required")
-	ErrServiceNotInstalled  = errors.New("login-screen service is not installed")
+	ErrServiceUnsupported    = errors.New("login-screen service is unsupported")
+	ErrServiceAuthorization  = errors.New("administrator authorization is required")
+	ErrServiceNotInstalled   = errors.New("login-screen service is not installed")
+	ErrServiceUpdateRequired = errors.New("desktop service update required")
 )

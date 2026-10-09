@@ -16,6 +16,12 @@ import (
 )
 
 func main() {
+	if len(os.Args) == 4 && os.Args[1] == "media" {
+		if nativeapps.RunLoginMediaPython(os.Args[2], os.Args[3]) != nil {
+			os.Exit(77)
+		}
+		return
+	}
 	if len(os.Args) == 2 && os.Args[1] == "display-power" {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
@@ -32,6 +38,7 @@ func main() {
 	flags.SetOutput(os.Stderr)
 	flags.StringVar(&config.SocketPath, "socket", nativeapps.LoginServiceSocket, "Administrator-owned private Unix socket.")
 	flags.StringVar(&config.WorkerPath, "worker", "", "Administrator-owned DRM worker executable.")
+	flags.StringVar(&config.MediaRoot, "media-root", "", "Verified root-owned media installation.")
 	flags.StringVar(&config.RuntimeSHA256, "runtime-sha256", "", "Authorized Runtime executable digest.")
 	flags.StringVar(&config.Seat, "seat", "seat0", "Physical logind seat.")
 	uid := flags.Uint("runtime-uid", 0, "Authorized unprivileged Runtime UID.")

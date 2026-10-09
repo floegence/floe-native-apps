@@ -24,6 +24,7 @@ type loginDeploymentRecord struct {
 	Version int                           `json:"version"`
 	Request LoginServiceDeploymentRequest `json:"policy"`
 	Digest  string                        `json:"digest"`
+	raw     []byte
 }
 
 const loginDRMLicenseSHA256 = "a6db0e06dbfbfcd2f0875c5790cccbf7cd20b7b4fef7947086926f127cde0052"
@@ -115,7 +116,9 @@ func (d *loginDeployer) readRecord() (*loginDeploymentRecord, error) {
 		return nil, errLoginDeployment
 	}
 	var record loginDeploymentRecord
-	if json.Unmarshal(data, &record) != nil || record.Kind != loginDeploymentKind || record.Version != 1 || !validLoginDigest(record.Digest) || record.Request.Operation != "" || record.Request.SourceDirectory != "" || record.Request.RuntimeUID == 0 || !validLoginDigest(record.Request.RuntimeSHA256) || !validLoginDigest(record.Request.ServiceSHA256) || !validLoginDigest(record.Request.WorkerSHA256) {
+	if json.Unmarshal(data, &record) != nil || record.Kind != loginDeploymentKind || (record.Version != 1 && record.Version != 2) ||
+		(record.Version == 1 && record.Request.MediaSHA256 != "") || (record.Version == 2 && !validLoginDigest(record.Request.MediaSHA256)) ||
+		!validLoginDigest(record.Digest) || record.Request.Operation != "" || record.Request.SourceDirectory != "" || record.Request.RuntimeUID == 0 || !validLoginDigest(record.Request.RuntimeSHA256) || !validLoginDigest(record.Request.ServiceSHA256) || !validLoginDigest(record.Request.WorkerSHA256) {
 		return nil, errLoginDeployment
 	}
 	policy, _ := json.Marshal(record.Request)
@@ -123,6 +126,7 @@ func (d *loginDeployer) readRecord() (*loginDeploymentRecord, error) {
 	if hex.EncodeToString(digest[:]) != record.Digest {
 		return nil, errLoginDeployment
 	}
+	record.raw = append([]byte(nil), data...)
 	return &record, nil
 }
 func (d *loginDeployer) manage(ctx context.Context, request LoginServiceDeploymentRequest) (result error) {
@@ -228,7 +232,7 @@ func loginCopyVerified(source, destination, expected string) error {
 	input := os.NewFile(uintptr(fd), "deployment-source")
 	defer input.Close()
 	stat, err := input.Stat()
-	if err != nil || !stat.Mode().IsRegular() || stat.Size() <= 0 || stat.Size() > 128<<20 {
+	if err != nil || !stat.Mode().IsRegular() || stat.Size() <= 0 || stat.Size() > 512<<20 {
 		return errLoginDeployment
 	}
 	output, err := os.OpenFile(destination, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
@@ -236,7 +240,7 @@ func loginCopyVerified(source, destination, expected string) error {
 		return err
 	}
 	hash := sha256.New()
-	n, copyErr := io.Copy(io.MultiWriter(output, hash), io.LimitReader(input, (128<<20)+1))
+	n, copyErr := io.Copy(io.MultiWriter(output, hash), io.LimitReader(input, (512<<20)+1))
 	syncErr := output.Sync()
 	closeErr := output.Close()
 	if copyErr != nil || syncErr != nil || closeErr != nil || n != stat.Size() || hex.EncodeToString(hash.Sum(nil)) != expected {
@@ -254,7 +258,7 @@ After=systemd-logind.service
 Type=simple
 User=root
 Group=%d
-ExecStart=%s --worker %s --runtime-uid %d --runtime-gid %d --runtime-sha256 %s
+ExecStart=%s --worker %s --media-root %s --runtime-uid %d --runtime-gid %d --runtime-sha256 %s
 Restart=on-failure
 RestartSec=2
 RuntimeDirectory=redeven-desktop
@@ -277,10 +281,10 @@ TimeoutStopSec=5
 
 [Install]
 WantedBy=multi-user.target
-`, policy.RuntimeGID, quote(filepath.Join(directory, "floe-host-desktop-service")), quote(filepath.Join(directory, "desktop-drm")), policy.RuntimeUID, policy.RuntimeGID, policy.RuntimeSHA256))
+`, policy.RuntimeGID, quote(filepath.Join(directory, "floe-host-desktop-service")), quote(filepath.Join(directory, "desktop-drm")), quote(filepath.Join(directory, "media")), policy.RuntimeUID, policy.RuntimeGID, policy.RuntimeSHA256))
 }
 func (d *loginDeployer) install(ctx context.Context, request LoginServiceDeploymentRequest, old *loginDeploymentRecord) (result error) {
-	if request.RuntimeUID == 0 || !validLoginDigest(request.RuntimeSHA256) || !validLoginDigest(request.ServiceSHA256) || !validLoginDigest(request.WorkerSHA256) || !filepath.IsAbs(request.SourceDirectory) {
+	if request.RuntimeUID == 0 || !validLoginDigest(request.RuntimeSHA256) || !validLoginDigest(request.ServiceSHA256) || !validLoginDigest(request.WorkerSHA256) || !validLoginDigest(request.MediaSHA256) || !filepath.IsAbs(request.SourceDirectory) {
 		return errLoginDeployment
 	}
 	oldUnit, unitErr := os.ReadFile(d.unit)
@@ -360,8 +364,7 @@ func (d *loginDeployer) install(ctx context.Context, request LoginServiceDeploym
 		}
 		if recordChanged {
 			if old != nil {
-				data, _ := json.Marshal(old)
-				rollbackErr = errors.Join(rollbackErr, loginWriteAtomic(filepath.Join(d.root, "installed.json"), data, 0600))
+				rollbackErr = errors.Join(rollbackErr, loginWriteAtomic(filepath.Join(d.root, "installed.json"), old.raw, 0600))
 			} else {
 				_ = os.Remove(filepath.Join(d.root, "installed.json"))
 			}
@@ -416,6 +419,16 @@ func (d *loginDeployer) install(ctx context.Context, request LoginServiceDeploym
 	if err = os.Chmod(filepath.Join(stage, "libdrmtap.LICENSE"), 0644); err != nil {
 		return err
 	}
+	archive := filepath.Join(stage, "media.tar.gz")
+	if err = loginCopyVerified(filepath.Join(request.SourceDirectory, "media.tar.gz"), archive, request.MediaSHA256); err != nil {
+		return err
+	}
+	if err = loginExtractMedia(ctx, archive, filepath.Join(stage, "media")); err != nil {
+		return err
+	}
+	if err = os.Chmod(archive, 0644); err != nil {
+		return err
+	}
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
@@ -433,6 +446,9 @@ func (d *loginDeployer) install(ctx context.Context, request LoginServiceDeploym
 	}
 	published = filepath.Join(versions, digest)
 	if old != nil && old.Digest == digest {
+		if !loginInstalledDigestMatches(filepath.Join(published, "media.tar.gz"), request.MediaSHA256) {
+			return errLoginDeployment
+		}
 		for _, file := range []struct{ name, digest string }{{"floe-host-desktop-service", request.ServiceSHA256}, {"desktop-drm", request.WorkerSHA256}, {"libdrmtap.LICENSE", loginDRMLicenseSHA256}} {
 			if !loginInstalledDigestMatches(filepath.Join(published, file.name), file.digest) {
 				return errLoginDeployment
@@ -508,7 +524,7 @@ func (d *loginDeployer) install(ctx context.Context, request LoginServiceDeploym
 			return err
 		}
 	}
-	record := loginDeploymentRecord{Kind: loginDeploymentKind, Version: 1, Request: request, Digest: digest}
+	record := loginDeploymentRecord{Kind: loginDeploymentKind, Version: 2, Request: request, Digest: digest}
 	data, _ = json.Marshal(record)
 	if err = loginWriteAtomic(filepath.Join(d.root, "installed.json"), data, 0600); err != nil {
 		return err
@@ -606,11 +622,11 @@ func loginInstalledDigestMatches(path, expected string) bool {
 	file := os.NewFile(uintptr(fd), "installed-service")
 	defer file.Close()
 	stat, err := file.Stat()
-	if err != nil || !stat.Mode().IsRegular() || stat.Size() <= 0 || stat.Size() > 128<<20 {
+	if err != nil || !stat.Mode().IsRegular() || stat.Size() <= 0 || stat.Size() > 512<<20 {
 		return false
 	}
 	hash := sha256.New()
-	n, err := io.Copy(hash, io.LimitReader(file, (128<<20)+1))
+	n, err := io.Copy(hash, io.LimitReader(file, (512<<20)+1))
 	return err == nil && n == stat.Size() && hex.EncodeToString(hash.Sum(nil)) == expected
 }
 

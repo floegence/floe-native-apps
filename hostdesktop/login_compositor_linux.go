@@ -4,6 +4,7 @@ package hostdesktop
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -11,6 +12,33 @@ import (
 
 	"golang.org/x/sys/unix"
 )
+
+func loginCompositorCurrent(uid uint32, identity string) error {
+	pid, start, ok := strings.Cut(identity, ":")
+	number, err := strconv.ParseUint(pid, 10, 32)
+	if !ok || err != nil || number == 0 {
+		return errLoginCaptureUnavailable
+	}
+	base := filepath.Join("/proc", pid)
+	var stat unix.Stat_t
+	if unix.Stat(base, &stat) != nil || stat.Uid != uid {
+		return errLoginCaptureUnavailable
+	}
+	executable, err := os.Readlink(filepath.Join(base, "exe"))
+	if err != nil || executable != "/usr/bin/gnome-shell" {
+		return errLoginCaptureUnavailable
+	}
+	var live, installed unix.Stat_t
+	if unix.Stat(filepath.Join(base, "exe"), &live) != nil || unix.Stat(executable, &installed) != nil ||
+		live.Uid != 0 || live.Mode&0022 != 0 || live.Dev != installed.Dev || live.Ino != installed.Ino {
+		return errLoginCaptureUnavailable
+	}
+	current, err := loginProcessStart(uint32(number))
+	if err != nil || current != start {
+		return errors.Join(errLoginCaptureUnavailable, err)
+	}
+	return nil
+}
 
 // Only the qualified GNOME locker may use logind's lock hint as input authority.
 // A GDM PAM label alone also admits arbitrary user-selected desktops. Require a
