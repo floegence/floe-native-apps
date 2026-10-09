@@ -205,6 +205,26 @@ func TestAcquireFallsBackAcrossTrustedSources(t *testing.T) {
 	}
 }
 
+func TestAcquireRetriesTruncatedPublisherTransfer(t *testing.T) {
+	data := bytes.Repeat([]byte("verified archive\n"), 128)
+	var calls atomic.Int32
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if calls.Add(1) == 1 {
+			w.Header().Set("Content-Length", fmt.Sprint(len(data)))
+			_, _ = w.Write(data[:len(data)/3])
+			return
+		}
+		w.Header().Set("Content-Length", fmt.Sprint(len(data)))
+		_, _ = w.Write(data)
+	}))
+	defer server.Close()
+	spec := Spec{URL: server.URL + "/archive", SHA256: fmt.Sprintf("%x", sha256.Sum256(data)), SizeBytes: int64(len(data))}
+	result, err := Acquire(t.Context(), t.TempDir(), spec, Options{Client: server.Client()})
+	if err != nil || result.FromCache || calls.Load() != 2 {
+		t.Fatalf("result=%+v err=%v calls=%d", result, err, calls.Load())
+	}
+}
+
 func TestAcquireCacheSkipsSourceProbesAndNetwork(t *testing.T) {
 	data := []byte("validated archive")
 	spec := Spec{URL: "https://canonical.example/archive", Mirrors: []string{"https://mirror.example/archive"}, SHA256: fmt.Sprintf("%x", sha256.Sum256(data)), SizeBytes: int64(len(data))}

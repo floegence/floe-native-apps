@@ -21,6 +21,12 @@ import (
 var ErrInvalid = errors.New("invalid archive acquisition configuration")
 var ErrIntegrity = errors.New("archive integrity check failed")
 
+// errArchiveShort marks a transfer that ended before the pinned length. A
+// publisher or mirror may have closed an otherwise valid response transiently;
+// callers can retry that source without weakening the final length and hash
+// checks. A complete response with the wrong digest remains ErrIntegrity.
+var errArchiveShort = errors.New("archive transfer ended before expected length")
+
 // Spec describes exact original publisher bytes selected by the trusted host.
 type Spec struct {
 	URL       string
@@ -317,12 +323,18 @@ func acquire(ctx context.Context, root string, spec Spec, options Options) (Resu
 	}
 	var lastErr error
 	for _, source := range order {
-		if err := acquireFromURL(ctx, clientWithRedirectPolicy(options.Client), urls[source], root, target, spec, report); err == nil {
-			return Result{Path: target}, nil
-		} else {
+		client := clientWithRedirectPolicy(options.Client)
+		for attempt := 0; attempt < 3; attempt++ {
+			err := acquireFromURL(ctx, client, urls[source], root, target, spec, report)
+			if err == nil {
+				return Result{Path: target}, nil
+			}
 			lastErr = err
 			if ctx.Err() != nil {
 				return Result{}, ctx.Err()
+			}
+			if !errors.Is(err, errArchiveShort) {
+				break
 			}
 		}
 	}
@@ -376,13 +388,19 @@ func acquireFromURL(ctx context.Context, client *http.Client, rawURL, root, targ
 			break
 		}
 		if readErr != nil {
+			if received < spec.SizeBytes {
+				return errArchiveShort
+			}
 			return readErr
 		}
 	}
 	if err := report("verifying", received); err != nil {
 		return err
 	}
-	if received != spec.SizeBytes || hex.EncodeToString(hash.Sum(nil)) != spec.SHA256 {
+	if received != spec.SizeBytes {
+		return errArchiveShort
+	}
+	if hex.EncodeToString(hash.Sum(nil)) != spec.SHA256 {
 		return ErrIntegrity
 	}
 	if err := file.Sync(); err != nil {
