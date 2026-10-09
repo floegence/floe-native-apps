@@ -6,6 +6,8 @@ import (
 	"bufio"
 	"context"
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -153,6 +155,21 @@ func TestLoginUnlockQualificationClient(t *testing.T) {
 		request(HostDesktopCommand{Method: "unlock_input", Generation: locked.Generation, FrameID: locked.FrameID, Input: &HostDesktopInput{Kind: "key", Code: code, Pressed: pressed}}, "")
 	}
 	tap := func(code string) { key(code, true); key(code, false) }
+	// A real keyboard can leave Caps Lock enabled before this fixture starts.
+	// Observe the kernel LEDs instead of assuming lowercase physical keycodes.
+	leds, _ := filepath.Glob("/sys/class/leds/*capslock/brightness")
+	caps := false
+	for _, path := range leds {
+		value, err := os.ReadFile(path)
+		if err == nil && strings.TrimSpace(string(value)) == "1" {
+			caps = true
+		}
+	}
+	if caps {
+		tap("CapsLock")
+		pause(100 * time.Millisecond)
+		t.Log("observed Caps Lock enabled; normalized using a physical key event")
+	}
 	// Wake GNOME's screen shield, then submit exactly one invalid credential.
 	tap("Enter")
 	pause(750 * time.Millisecond)
