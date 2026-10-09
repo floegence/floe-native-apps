@@ -135,13 +135,16 @@ func TestLoginUnlockQualificationClient(t *testing.T) {
 		}
 	}
 	request(HostDesktopCommand{Method: "connect", Mode: "control", Picture: &HostDesktopPicture{Mode: "auto", MaxDimension: 1920, FrameRate: 15}}, "")
+	t.Log("control attachment admitted; waiting for the current desktop")
 	for state.State != "active" && state.State != "locked" {
 		receive()
 	}
 	if state.State == "active" {
 		active := waitFrame("active")
+		t.Log("active desktop received; acknowledging before locking")
 		paint(active)
 		request(HostDesktopCommand{Method: "lock", Generation: active.Generation}, "")
+		t.Log("lock request admitted; waiting for lock-screen pixels")
 		locked := waitFrame("locked")
 		if locked.Generation == active.Generation {
 			t.Fatal("lock retained generation")
