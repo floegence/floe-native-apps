@@ -43,6 +43,15 @@ var xpraR4Digests = map[string]string{
 	"arm64": "2c0f924565f824e8a5d2b884ad52f4d7c4b974aa2dd2eba17527d9dd33cd65c9",
 }
 
+var desktopR5Digests = map[string]string{
+	"amd64": "5a004d5d93a614339f63b5d9b18411165620475260b314e991fb4442aee2b8f7",
+	"arm64": "84741cb22535163b8106e98c327f56ee7e4d31b8c2157abb5c961974ed480828",
+}
+var xpraR5Digests = map[string]string{
+	"amd64": "cc1c334092d8702caeba65893749b63c4bcf2acddf84daf01228a502d5fe7edf",
+	"arm64": "524311a3c962225893e09c24c91dc8210a78edf96bcd1f15c55ecc1071e6abc5",
+}
+
 // Published recipes remain supported until an explicit compatibility change.
 // Do not change Package's digest encoding when extending this metadata.
 func compatibleInstallations(pkg Package) []Installation {
@@ -70,6 +79,8 @@ func compatibleInstallations(pkg Package) []Installation {
 		if err != nil || pinned.Digest() != pkg.Digest() {
 			return result
 		}
+		result = append(result, Installation{ID: "alpine-3.23-desktop-14.0.2-" + pkg.Architecture + "-r5",
+			Digest: desktopR5Digests[pkg.Architecture], Architecture: pkg.Architecture, Contract: current.Contract})
 		result = append(result, Installation{ID: "alpine-3.23-desktop-14.0.2-" + pkg.Architecture + "-r4",
 			Digest: desktopR4Digests[pkg.Architecture], Architecture: pkg.Architecture, Contract: current.Contract})
 		result = append(result, Installation{ID: "alpine-3.23-desktop-14.0.2-" + pkg.Architecture + "-r3",
@@ -98,6 +109,7 @@ func compatibleInstallations(pkg Package) []Installation {
 		"arm64": "4379638ec87588ad81e96cd3fc8d91a0cd3189b779f9962cece9e568a48276fa",
 	}
 	return append(result,
+		Installation{ID: "alpine-3.23-xpra-6.2.2-" + pkg.Architecture + "-r5", Digest: xpraR5Digests[pkg.Architecture], Architecture: pkg.Architecture, Contract: current.Contract},
 		Installation{ID: "alpine-3.23-xpra-6.2.2-" + pkg.Architecture + "-r4", Digest: xpraR4Digests[pkg.Architecture], Architecture: pkg.Architecture, Contract: current.Contract},
 		Installation{ID: "alpine-3.23-xpra-6.2.2-" + pkg.Architecture + "-r3", Digest: xpraR3Digests[pkg.Architecture], Architecture: pkg.Architecture, Contract: current.Contract},
 		Installation{ID: "alpine-3.23-xpra-6.2.2-" + pkg.Architecture + "-r2", Digest: previous[pkg.Architecture], Architecture: pkg.Architecture, Contract: current.Contract},

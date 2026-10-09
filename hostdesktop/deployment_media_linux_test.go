@@ -60,6 +60,16 @@ func TestLoginMediaExtractionRejectsLinksTraversalAndDuplicateFiles(t *testing.T
 	}
 }
 
+func TestLoginMediaPreparedClosureExtraction(t *testing.T) {
+	source := os.Getenv("FLOE_LOGIN_MEDIA_ARCHIVE")
+	if source == "" {
+		t.Skip("requires a disposable prepared media archive")
+	}
+	if err := loginExtractMedia(t.Context(), source, filepath.Join(t.TempDir(), "media")); err != nil {
+		t.Fatal("prepared closure violates privileged extraction contract", err)
+	}
+}
+
 func TestLoginMediaUpgradeRestoresExactVersionOneRecord(t *testing.T) {
 	d, request, systemd, _ := fixtureLoginDeployment(t)
 	if err := d.manage(t.Context(), request); err != nil {

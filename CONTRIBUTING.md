@@ -124,6 +124,14 @@ libssl archive despite a cached successful HEAD response. Publisher signatures
 and complete acquisition, rather than HEAD responses, are required evidence.
 Installed `r4` recipes keep their original identities and files.
 
+Catalog revision `r6` refreshes libpng to the publisher-signed 1.6.59-r0 archives
+after the original 1.6.58-r1 URLs were retired. Both architectures retain exact
+installed `r5` identities, licenses and source provenance. The resolved physical
+desktop media archive can exceed one GiB because library aliases become regular
+files; producer and privileged extractor share a two-GiB expanded budget, a
+256-MiB per-file limit and a 512-MiB compressed limit. Links and special files
+remain forbidden, and canceled or invalid exports are removed before deployment.
+
 The graphical check covers Unix sockets and three WebSocket attachments. Each
 attachment must paint, deliver fresh input, and preserve the fixture's process
 identity; each browser-style detach must leave its window available for the next

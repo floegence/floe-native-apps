@@ -23,15 +23,15 @@ func TestPublishedRecipeIdentitiesRemainStable(t *testing.T) {
 			t.Fatal(err)
 		}
 		known := compatibleInstallations(pkg)
-		if len(known) != 5 || known[0].Digest != pkg.Digest() || known[1].Digest != xpraR4Digests[arch] || known[2].Digest != xpraR3Digests[arch] || known[3].Digest != digest || known[0].Digest == digest {
+		if len(known) != 6 || known[0].Digest != pkg.Digest() || known[1].Digest != xpraR5Digests[arch] || known[2].Digest != xpraR4Digests[arch] || known[3].Digest != xpraR3Digests[arch] || known[4].Digest != digest || known[0].Digest == digest {
 			t.Fatal(known)
 		}
 		legacy := map[string]string{"amd64": "0a30ff8f725be97588b1f69714fb9487b3235c62c21fafe338cbbeae16bbb9e6", "arm64": "98010db370ba2ebda4c5c6c9c90d100fc29acca319f293de458680235a47595b"}
-		if known[4].Digest != legacy[arch] {
-			t.Fatal("published r1 identity changed", known[4])
+		if known[5].Digest != legacy[arch] {
+			t.Fatal("published r1 identity changed", known[5])
 		}
 		for index, recipe := range known {
-			if recipe.Architecture != arch || recipe.Contract != known[0].Contract || recipe.ID != fmt.Sprintf("alpine-3.23-xpra-6.2.2-%s-r%d", arch, 5-index) {
+			if recipe.Architecture != arch || recipe.Contract != known[0].Contract || recipe.ID != fmt.Sprintf("alpine-3.23-xpra-6.2.2-%s-r%d", arch, 6-index) {
 				t.Fatal("published recipe contract changed", recipe)
 			}
 		}

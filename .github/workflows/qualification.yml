@@ -55,7 +55,13 @@ jobs:
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/legacy-state"
           cp -R "$RUNNER_TEMP/native-state/archives" "$RUNNER_TEMP/legacy-state/archives"
-          go run github.com/floegence/floe-native-apps/cmd/floe-native-apps@v0.2.1 \
+          (cd qualification/legacy/libpng && sha256sum -c SHA256SUMS)
+          case "${{ matrix.arch }}" in
+            amd64) old_libpng=9020e268d1b8b8a045b55a2ef260e60c295a1ba9ec711be71ac8afab8e4b761b ; fixture=libpng-1.6.58-r1-amd64.apk ;;
+            arm64) old_libpng=9d3b01de32cc90a2e7366e04a57eaf84e08688481a5badf6c7bd32d2890a31f6 ; fixture=libpng-1.6.58-r1-arm64.apk ;;
+          esac
+          cp "qualification/legacy/libpng/$fixture" "$RUNNER_TEMP/legacy-state/archives/$old_libpng"
+          go run github.com/floegence/floe-native-apps/cmd/floe-native-apps@v0.22.29 \
             -state "$RUNNER_TEMP/legacy-state" 2>&1 | tee "$RUNNER_TEMP/qualification/legacy-install.log"
           FLOE_TEST_LEGACY_STATE="$RUNNER_TEMP/legacy-state" \
             go test -count=1 -run '^TestNativeLegacyComponentUpdate$' -v . \

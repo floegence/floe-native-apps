@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"time"
+
+	"github.com/floegence/floe-native-apps/internal/servicearchive"
 )
 
 // PrepareLoginScreenMedia acquires and checks the released media closure on
@@ -74,8 +76,9 @@ func writeLoginScreenMedia(ctx context.Context, root, output string) (string, er
 		}
 	}()
 	hash := sha256.New()
-	compressed := gzip.NewWriter(io.MultiWriter(file, hash))
+	compressed := gzip.NewWriter(io.MultiWriter(servicearchive.NewBoundedWriter(file, servicearchive.MaxCompressedBytes), hash))
 	archive := tar.NewWriter(compressed)
+	var budget servicearchive.Budget
 	err = filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -112,7 +115,11 @@ func writeLoginScreenMedia(ctx context.Context, root, output string) (string, er
 		if info.Mode().Perm()&0111 != 0 {
 			mode = 0755
 		}
-		if err = archive.WriteHeader(&tar.Header{Name: filepath.ToSlash(name), Mode: mode, Size: info.Size(), Typeflag: tar.TypeReg}); err != nil {
+		header := &tar.Header{Name: filepath.ToSlash(name), Mode: mode, Size: info.Size(), Typeflag: tar.TypeReg}
+		if err = budget.Accept(header); err != nil {
+			return err
+		}
+		if err = archive.WriteHeader(header); err != nil {
 			return err
 		}
 		_, err = io.CopyN(archive, input, info.Size())
@@ -126,6 +133,9 @@ func writeLoginScreenMedia(ctx context.Context, root, output string) (string, er
 	}
 	if err = compressed.Close(); err != nil {
 		return "", err
+	}
+	if info, err := file.Stat(); err != nil || info.Size() > servicearchive.MaxCompressedBytes {
+		return "", servicearchive.ErrInvalid
 	}
 	if err = file.Sync(); err != nil {
 		return "", err

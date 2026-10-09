@@ -27,7 +27,7 @@ func TestDesktopCatalogSeparatesRecipesAndRetainsXpra(t *testing.T) {
 			t.Fatal("new preparation must not change the published Xpra recipe")
 		}
 		items := compatibleInstallations(desktop)
-		if len(items) != 10 || items[0].Contract != desktopContract || items[1].Digest != desktopR4Digests[architecture] || items[2].Digest != desktopR3Digests[architecture] || items[5].Digest != xpra.Digest() || items[6].Digest != xpraR4Digests[architecture] || items[7].Digest != xpraR3Digests[architecture] {
+		if len(items) != 12 || items[0].Contract != desktopContract || items[1].Digest != desktopR5Digests[architecture] || items[2].Digest != desktopR4Digests[architecture] || items[3].Digest != desktopR3Digests[architecture] || items[6].Digest != xpra.Digest() || items[7].Digest != xpraR5Digests[architecture] || items[8].Digest != xpraR4Digests[architecture] || items[9].Digest != xpraR3Digests[architecture] {
 			t.Fatalf("surviving Xpra installations lost: %+v", items)
 		}
 		desktop.Preparation.NativeSHA256 = "unknown"

@@ -9,9 +9,9 @@ import (
 	"errors"
 	"io"
 	"os"
-	"path"
 	"path/filepath"
-	"strings"
+
+	"github.com/floegence/floe-native-apps/internal/servicearchive"
 )
 
 func loginExtractMedia(ctx context.Context, source, destination string) error {
@@ -26,8 +26,8 @@ func loginExtractMedia(ctx context.Context, source, destination string) error {
 	}
 	defer compressed.Close()
 	archive := tar.NewReader(compressed)
-	remaining := int64(1 << 30)
-	for entries := 0; ; entries++ {
+	var budget servicearchive.Budget
+	for {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
@@ -38,12 +38,9 @@ func loginExtractMedia(ctx context.Context, source, destination string) error {
 		if err != nil {
 			return err
 		}
-		if entries >= 100000 || header.Typeflag != tar.TypeReg || header.Size < 0 || header.Size > 256<<20 || header.Size > remaining ||
-			!filepath.IsLocal(header.Name) || path.Clean(header.Name) != header.Name || strings.Contains(header.Name, "\\") ||
-			(header.Mode != 0644 && header.Mode != 0755) {
+		if budget.Accept(header) != nil {
 			return errLoginDeployment
 		}
-		remaining -= header.Size
 		target := filepath.Join(destination, header.Name)
 		if err = os.MkdirAll(filepath.Dir(target), 0755); err != nil {
 			return err

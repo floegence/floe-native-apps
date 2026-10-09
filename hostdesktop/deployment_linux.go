@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/floegence/floe-native-apps/internal/servicearchive"
 	"golang.org/x/sys/unix"
 )
 
@@ -232,7 +233,7 @@ func loginCopyVerified(source, destination, expected string) error {
 	input := os.NewFile(uintptr(fd), "deployment-source")
 	defer input.Close()
 	stat, err := input.Stat()
-	if err != nil || !stat.Mode().IsRegular() || stat.Size() <= 0 || stat.Size() > 512<<20 {
+	if err != nil || !stat.Mode().IsRegular() || stat.Size() <= 0 || stat.Size() > servicearchive.MaxCompressedBytes {
 		return errLoginDeployment
 	}
 	output, err := os.OpenFile(destination, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
@@ -240,7 +241,7 @@ func loginCopyVerified(source, destination, expected string) error {
 		return err
 	}
 	hash := sha256.New()
-	n, copyErr := io.Copy(io.MultiWriter(output, hash), io.LimitReader(input, (512<<20)+1))
+	n, copyErr := io.Copy(io.MultiWriter(output, hash), io.LimitReader(input, servicearchive.MaxCompressedBytes+1))
 	syncErr := output.Sync()
 	closeErr := output.Close()
 	if copyErr != nil || syncErr != nil || closeErr != nil || n != stat.Size() || hex.EncodeToString(hash.Sum(nil)) != expected {

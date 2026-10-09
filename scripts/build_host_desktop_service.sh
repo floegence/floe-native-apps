@@ -13,7 +13,7 @@ import hashlib, json, subprocess, sys
 from pathlib import Path
 arch, output = sys.argv[1], Path(sys.argv[2])
 digest = lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
-sources = [p for folder in ['hostdesktop', 'cmd/floe-host-desktop-service'] for p in sorted(Path(folder).glob('*.go')) if not p.name.endswith('_test.go')]
+sources = [p for folder in ['hostdesktop', 'cmd/floe-host-desktop-service', 'internal/servicearchive'] for p in sorted(Path(folder).glob('*.go')) if not p.name.endswith('_test.go')]
 sources += [Path('go.mod'), Path('go.sum'), Path('scripts/build_host_desktop_service.sh')]
 binary = output / 'floe-host-desktop-service'
 record = {'version': 1, 'architecture': arch, 'toolchain': subprocess.check_output(['go', 'version'], text=True).strip(),

@@ -1,8 +1,8 @@
 [
   {
-    "id": "alpine-3.23-xpra-6.2.2-amd64-r5",
+    "id": "alpine-3.23-xpra-6.2.2-amd64-r6",
     "architecture": "amd64",
-    "size_bytes": 177102359,
+    "size_bytes": 177102427,
     "installed_bytes": 509673386,
     "artifacts": [
       {
@@ -556,10 +556,10 @@
         "source": "https://gitlab.alpinelinux.org/alpine/aports/-/tree/3.23-stable/main/libpciaccess"
       },
       {
-        "name": "libpng-1.6.58-r1.apk",
-        "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/libpng-1.6.58-r1.apk",
-        "sha256": "9020e268d1b8b8a045b55a2ef260e60c295a1ba9ec711be71ac8afab8e4b761b",
-        "size_bytes": 95807,
+        "name": "libpng-1.6.59-r0.apk",
+        "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/libpng-1.6.59-r0.apk",
+        "sha256": "148a10e3d6419f787b16edbc2d0bb19d12a2a078225baaa416c895c14f47fc1e",
+        "size_bytes": 95875,
         "format": "apk",
         "license": "Libpng",
         "source": "https://gitlab.alpinelinux.org/alpine/aports/-/tree/3.23-stable/main/libpng"
@@ -1685,9 +1685,9 @@
     ]
   },
   {
-    "id": "alpine-3.23-xpra-6.2.2-arm64-r5",
+    "id": "alpine-3.23-xpra-6.2.2-arm64-r6",
     "architecture": "arm64",
-    "size_bytes": 162325645,
+    "size_bytes": 162325657,
     "installed_bytes": 462274843,
     "artifacts": [
       {
@@ -2241,10 +2241,10 @@
         "source": "https://gitlab.alpinelinux.org/alpine/aports/-/tree/3.23-stable/main/libpciaccess"
       },
       {
-        "name": "libpng-1.6.58-r1.apk",
-        "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/aarch64/libpng-1.6.58-r1.apk",
-        "sha256": "9d3b01de32cc90a2e7366e04a57eaf84e08688481a5badf6c7bd32d2890a31f6",
-        "size_bytes": 97451,
+        "name": "libpng-1.6.59-r0.apk",
+        "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/aarch64/libpng-1.6.59-r0.apk",
+        "sha256": "087102199da459dd8985c118a67d6d6c463de6798f243424feb239d1087b1064",
+        "size_bytes": 97463,
         "format": "apk",
         "license": "Libpng",
         "source": "https://gitlab.alpinelinux.org/alpine/aports/-/tree/3.23-stable/main/libpng"
