@@ -6,7 +6,7 @@ Read [AGENTS.md](AGENTS.md) for the implementation and repository boundaries.
 
 ## Development
 
-Use Go **1.27.1**, Python 3, Node.js 20 or later, Git, and a POSIX shell. The Go version in `go.mod`
+Use Go **1.27.2**, Python 3, Node.js 20 or later, Git, and a POSIX shell. The Go version in `go.mod`
 is authoritative and must remain aligned with Redeven. CI reads that file;
 workflow YAML must not carry an independent Go version.
 

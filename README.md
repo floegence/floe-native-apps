@@ -49,7 +49,7 @@ flowchart LR
 
 ## Get started
 
-Use **Go 1.27.1**, aligned with Redeven. Install the released module:
+Use **Go 1.27.2**, aligned with Redeven. Install the released module:
 
 ```sh
 go get github.com/floegence/floe-native-apps@v0.5.0
