@@ -21,7 +21,7 @@ for name in drmtap drm_enumerate drm_grab gpu_generic pixel_convert gpu_intel gp
 done
 ar rcs "$output/libdrmtap.a" ./*.o
 cc -std=c11 -O2 -Wall -Wextra -Werror -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
-  -Wl,-z,relro,-z,now -Wl,--build-id=none -I "$third_party_root/include" \
+  -Wl,-z,relro,-z,now -Wl,--build-id=none -I "$third_party_root/include" -I /usr/include/libdrm \
   -o "$output/desktop-drm" "$source_root/native/host-desktop/drm/worker.c" \
   "$output/libdrmtap.a" -ldrm -ldl -lm -pthread
 strip --strip-unneeded "$output/desktop-drm"
@@ -55,7 +55,8 @@ if re.search(r'\b(fork|execve|execl|execvp|posix_spawn)\b', symbols):
     raise ValueError('Unexpected privileged helper launch path')
 digest = lambda path: hashlib.sha256(path.read_bytes()).hexdigest()
 paths = ['native/host-desktop/drm/worker.c', 'native/host-desktop/drm/source.json',
-         'native/host-desktop/drm/Dockerfile', 'scripts/build_host_desktop_drm.sh']
+         'native/host-desktop/drm/Dockerfile', 'scripts/build_host_desktop_drm.sh',
+         'native/host-desktop/drm/scanout_format.h']
 record = {'version': 1, 'architecture': architecture,
           'builder_image': os.environ['FLOE_DRM_BUILDER_IMAGE'],
           'compiler': subprocess.check_output(['cc', '--version'], text=True).splitlines()[0],

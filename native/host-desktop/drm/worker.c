@@ -16,7 +16,9 @@
 #include <linux/capability.h>
 #include <unistd.h>
 #include <sys/mman.h>
+#include <drm_fourcc.h>
 #include "drmtap.h"
+#include "scanout_format.h"
 
 #define MAX_BYTES (64u << 20)
 _Static_assert(sizeof(drmtap_dmabuf_desc) == 72, "descriptor ABI changed");
@@ -149,13 +151,25 @@ static int converter(int sock) {
   if(receive_packet(sock,&packet,sizeof(packet),&fd)!=0)break;
   if(packet.version!=1||packet.status!=0||fd<0||packet.desc.num_planes<1||packet.desc.num_planes>4||packet.desc.width<2||packet.desc.height<2||packet.desc.width>8192||packet.desc.height>8192){if(fd>=0)close(fd);break;}
   packet.desc.dma_buf_fd=fd;
+  drmtap_dmabuf_desc imported=packet.desc;
+  imported.format=scanout_import_format(drmtap_gpu_driver(ctx),packet.desc.format,
+      packet.desc.modifier,packet.desc.num_planes,packet.desc.hdr_eotf);
   drmtap_frame_info frame={0};
-  int result=drmtap_convert_dmabuf(ctx,&packet.desc,&frame);
+  int result=drmtap_convert_dmabuf(ctx,&imported,&frame);
   close(fd);
+  if(result==0&&imported.format!=packet.desc.format) {
+   /* Canonical import decoded the BGR render-target components as RGB. Tag
+    * their actual order for the existing FramePool/Pixman copy, rather than
+    * maintaining a second pixel conversion loop in this worker. */
+   if(frame.format!=DRM_FORMAT_XRGB8888||frame.modifier!=DRM_FORMAT_MOD_LINEAR||
+      frame.width!=packet.desc.width||frame.height!=packet.desc.height||
+      frame.stride!=frame.width*4)result=-ENOTSUP;
+   else frame.format=DRM_FORMAT_XBGR8888;
+  }
   uint32_t header[6]={(uint32_t)result,0,0,0,0,0};
   if(result==0&&frame.data&&frame.stride>=frame.width*4&&(uint64_t)frame.stride*frame.height<=MAX_BYTES) {
    header[1]=frame.width;header[2]=frame.height;header[3]=frame.stride;header[4]=frame.format;header[5]=frame.stride*frame.height;
-  } else header[0]=(uint32_t)-ENOTSUP;
+  } else if(result==0)header[0]=(uint32_t)-ENOTSUP;
   if(write_all(STDOUT_FILENO,header,sizeof(header))!=0)break;
   if(header[5]&&write_all(STDOUT_FILENO,frame.data,header[5])!=0)break;
  }

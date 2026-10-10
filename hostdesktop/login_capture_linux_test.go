@@ -86,6 +86,42 @@ func TestLoginDRMRealCapture(t *testing.T) {
 			if !video || nonblack == 0 {
 				t.Fatal("capture did not produce video and nonblack refinement")
 			}
+			if os.Getenv("FLOE_LOGIN_CAPTURE_PATTERN") == "rgb-bars" {
+				if bounds.Dx() != 1920 || bounds.Dy() != 1080 {
+					t.Fatal("known-color target requires the original 1920x1080 scanout")
+				}
+				colors := [8][3]uint32{{65535, 0, 0}, {0, 65535, 0}, {0, 0, 65535}, {65535, 65535, 65535}, {}, {0, 65535, 65535}, {65535, 65535, 0}, {65535, 0, 65535}}
+				for _, y := range []int{200, 720, 880} {
+					for x := 0; x < 1920; x++ {
+						r, g, b, _ := image.At(x, y).RGBA()
+						if [3]uint32{r, g, b} != colors[x/240] {
+							t.Fatalf("color/edge mismatch at (%d,%d): RGB=(%d,%d,%d)", x, y, r, g, b)
+						}
+					}
+				}
+				for y := 888; y < 1080; y++ {
+					for x := 0; x < 1024; x++ {
+						level := uint32(((x/16 + (y-888)/16) % 2) * 65535)
+						r, g, b, _ := image.At(x, y).RGBA()
+						if r != level || g != level || b != level {
+							t.Fatalf("checker layout mismatch at (%d,%d)", x, y)
+						}
+					}
+				}
+				textPixels := 0
+				for y := 500; y < 540; y++ {
+					for x := 972; x < 1200; x++ {
+						r, g, b, _ := image.At(x, y).RGBA()
+						if r|g|b != 0 {
+							textPixels++
+						}
+					}
+				}
+				if textPixels < 100 {
+					t.Fatal("known-color target text is missing")
+				}
+				t.Log("known-color bars, one-pixel boundaries, checker orientation and text passed")
+			}
 			t.Logf("captured %dx%d scanout; %d nonblack pixels; shared H264 and lossless refinement", bounds.Dx(), bounds.Dy(), nonblack)
 			if output := os.Getenv("FLOE_LOGIN_CAPTURE_OUTPUT"); output != "" {
 				if err = os.WriteFile(output, frame.Data, 0600); err != nil {

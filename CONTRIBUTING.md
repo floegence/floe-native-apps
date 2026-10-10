@@ -71,6 +71,29 @@ not change permissions on a real user's state to support qualification. The
 production path must never require Docker. A successful check proves a live
 private bus, GIO launch, a window, decoded pixels, and delivered input.
 
+For the qualified legacy Rockchip/Panfork SDR scanout (XR24, one plane,
+AFBC modifier `0x0800000000000051`), the unprivileged converter uses a local
+AB24 import descriptor and labels its actual RGBx output XB24. The existing
+FramePool/Pixman copy restores BGRx. Original modifier, FD, offsets and pitches
+remain intact; other layouts, native-swizzle modifiers and HDR use the original
+conversion contract. Permission and I/O failures retain their errno instead of
+being reported as unsupported hardware. No RGA backend, driver installation or
+new device permission is involved.
+
+On an authorized physical 1920x1080 Wayland desktop, start
+`qualification/host_desktop_afbc_pattern.py` as the desktop user, then run
+`TestLoginDRMRealCapture` with `FLOE_LOGIN_CAPTURE_PATTERN=rgb-bars` and the
+usual worker/media-root variables. The fixture exits after seven minutes.
+The lossless refinement must match all color-bar edges and checker pixels and
+retain text; a merely nonblack image is insufficient. This supplements ordinary
+capture, cursor, lock, fresh-generation and teardown qualification.
+The component convention is supported by the producer's
+[render-target swizzle](https://github.com/ROCKNIX/mesa-panfork/blob/120202c675749c5ef81ae4c8cdc30019b4de08f4/src/panfrost/lib/pan_cs.c#L386)
+and [modifier validation](https://github.com/ROCKNIX/mesa-panfork/blob/120202c675749c5ef81ae4c8cdc30019b4de08f4/src/gallium/drivers/panfrost/pan_screen.c#L631),
+and by exact known-color readback on both installed drivers. Source references
+explain the convention; physical pixel qualification determines the supported
+boundary.
+
 The system Xpra fixture pins every required split package to version 6.5.3-r0-1.
 `qualification/system_xpra` retains the publisher's original signed Noble Release
 from 2026-09-27, complete architecture indexes and public signing key from
