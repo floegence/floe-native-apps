@@ -25,6 +25,48 @@ class PixelComparisonTests(unittest.TestCase):
 
 
 class SchedulerTests(unittest.TestCase):
+    def test_native_output_preserves_the_admitted_codec_time_after_a_stall(self):
+        gst = SimpleNamespace(SECOND=1_000_000_000, MapFlags=SimpleNamespace(READ=1),
+            FlowReturn=SimpleNamespace(OK='ok', ERROR='error'), Buffer=SimpleNamespace(new_wrapped=Mock()))
+        media = DesktopMedia(gst, SimpleNamespace(timeout_add=lambda *_: 1), 1,
+            {'frame_rate': 60}, ('fixture', ''), lambda *_: None, self.fail)
+        buffer, sample, sink, encoder, compressed = (Mock() for _ in range(5))
+        sink.emit.return_value = sample
+        sample.get_buffer.return_value = buffer
+        buffer.map.return_value = (True, SimpleNamespace(data=b'pixels'))
+        encoder.encode.return_value = b'encoded'
+        compressed.emit.return_value = 'ok'
+        encoded = gst.Buffer.new_wrapped.return_value
+        encoded.pts = None
+        for timestamp in (0, gst.SECOND // 60):
+            buffer.pts = timestamp
+            self.assertEqual(media._native_sample(sink, encoder, compressed, 1), 'ok')
+            self.assertEqual(encoded.pts, timestamp)
+            self.assertEqual(encoded.duration, gst.SECOND // 60)
+        self.assertEqual(buffer.unmap.call_count, 2)
+
+    def test_credit_stalls_do_not_expand_the_next_frame_codec_time_budget(self):
+        loop = SimpleNamespace(timeout_add=lambda *_: 1, idle_add=lambda *_: 2)
+        buffers = [Mock(), Mock()]
+        for buffer in buffers:
+            buffer.pts = None
+        gst = SimpleNamespace(SECOND=1_000_000_000, Buffer=SimpleNamespace(new=Mock(side_effect=buffers)),
+            BufferCopyFlags=SimpleNamespace(MEMORY=1), FlowReturn=SimpleNamespace(OK='ok'))
+        media = DesktopMedia(gst, loop, 1, {'frame_rate': 60}, ('fixture', ''), lambda *_: None, self.fail)
+        media._ensure_encoder = Mock()
+        media.source = Mock()
+        media.source.emit.return_value = 'ok'
+        media.latest = (Mock(), 1920, 1280)
+        for sequence, capture_time in ((1, 10), (2, 12)):
+            media.sequence, media.changed_at = sequence, capture_time
+            with patch('host_desktop_media.time.monotonic', return_value=capture_time):
+                media.produce()
+            media.credit.acknowledge(sequence)
+            media.encoding_busy = False
+        self.assertEqual([buffer.pts for buffer in buffers], [0, gst.SECOND // 60])
+        self.assertEqual([buffer.duration for buffer in buffers], [gst.SECOND // 60] * 2)
+        self.assertEqual(list(media.submitted), [(1, 10_000_000), (2, 12_000_000)])
+
     def test_software_codec_selection_is_explicit_and_hardware_h264_stays_preferred(self):
         loop = SimpleNamespace(timeout_add=lambda *_: 1)
         for encoder, offer, selected in (

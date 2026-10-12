@@ -60,6 +60,26 @@ for label, description, minimum in (
     finally:
         pipeline.set_state(Gst.State.NULL)
 
+# A long software VP9 reference chain must not burst periodic keyframes. A new
+# encoder generation still starts with a complete, independently decodable key.
+vp9_specification = next(spec for name, spec in ENCODERS if name == 'vp9enc')
+for count in (240, 1):
+    pipeline = Gst.parse_launch('videotestsrc num-buffers=' + str(count) + ' pattern=ball ! '
+        'video/x-raw,width=320,height=180,framerate=60/1 ! videoconvert ! video/x-raw,format=I420 ! '
+        + vp9_specification + ' ! appsink name=encoded max-buffers=4 drop=false sync=false async=false')
+    try:
+        pipeline.set_state(Gst.State.PLAYING)
+        sink = pipeline.get_by_name('encoded')
+        for frame in range(count):
+            sample = sink.emit('try-pull-sample', Gst.SECOND)
+            if sample is None:
+                raise RuntimeError('VP9 reference chain timed out')
+            key = not sample.get_buffer().has_flags(Gst.BufferFlags.DELTA_UNIT)
+            if key != (frame == 0):
+                raise RuntimeError('VP9 generation keyframe contract failed')
+    finally:
+        pipeline.set_state(Gst.State.NULL)
+
 # Exercise the actual bounded scheduler and static-first-frame refinement, not
 # only independent encoder elements. This remains a synthetic installation test.
 for codec in ('h264', 'vp9'):
@@ -133,5 +153,5 @@ with tempfile.TemporaryDirectory(prefix='floe-desktop-selfcheck-') as state:
             child.kill()
         child.communicate(timeout=4)
         os.close(reader)
-print(json.dumps({'video' : 'decoded', 'audio': 'decoded', 'encoder': encoder,
+print(json.dumps({'video' : 'decoded', 'audio': 'decoded', 'encoder': encoder, 'vp9_reference_chain': 'generation_keyframe_only',
                   'vp9': 'decoded', 'static_frame': 'h264_and_vp9_then_lossless_refinement', 'signal_shutdown': 'clean'}))

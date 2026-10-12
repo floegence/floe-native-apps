@@ -20,7 +20,7 @@ ENCODERS = (
     ('vaapih264enc', 'vaapih264enc rate-control=cbr keyframe-period=120 bitrate=16000'),
     ('nvh264enc', 'nvh264enc zerolatency=true bframes=0 gop-size=120 bitrate=16000'),
     ('vp9enc', 'vp9enc deadline=1 cpu-used=8 end-usage=1 target-bitrate=4000000 lag-in-frames=0 '
-        'threads=4 row-mt=true tile-columns=2 keyframe-max-dist=120'),
+        'threads=4 row-mt=true tile-columns=2 keyframe-mode=disabled'),
     ('x264enc', 'x264enc tune=zerolatency speed-preset=ultrafast bitrate=16000 key-int-max=120 bframes=0 threads=4'),
     ('openh264enc', 'openh264enc complexity=low rate-control=bitrate bitrate=16000000 multi-thread=4 gop-size=120'),
 )
@@ -285,6 +285,7 @@ class DesktopMedia:
             if self.closed or generation != self.generation:
                 return self.Gst.FlowReturn.OK
             encoded = self.Gst.Buffer.new_wrapped(data)
+            encoded.pts = buffer.pts
             encoded.duration = self.Gst.SECOND // self.picture['frame_rate']
             if compressed.emit('push-buffer', encoded) != self.Gst.FlowReturn.OK:
                 raise DesktopError('VIDEO_ENCODER_FAILED')
@@ -336,6 +337,10 @@ class DesktopMedia:
             # shared GstMemory alone permits pool recycling via copy-on-write.
             if buffer.add_parent_buffer_meta(captured) is None:
                 raise DesktopError('CAPTURE_LAYOUT_UNSUPPORTED')
+            # Credits pause submission, not the per-frame codec budget. Using
+            # wall time here makes a congested encoder spend its idle budget on
+            # larger frames when transport resumes. Capture telemetry stays real.
+            buffer.pts = (frame - 1) * self.Gst.SECOND // self.picture['frame_rate']
             buffer.duration = self.Gst.SECOND // self.picture['frame_rate']
             if self.source.emit('push-buffer', buffer) != self.Gst.FlowReturn.OK:
                 raise DesktopError('VIDEO_ENCODER_FAILED')
