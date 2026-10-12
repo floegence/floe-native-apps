@@ -1,9 +1,9 @@
 [
   {
-    "id": "alpine-3.23-desktop-14.0.2-amd64-r6",
+    "id": "alpine-3.23-desktop-14.0.2-amd64-r7",
     "architecture": "amd64",
-    "size_bytes": 142829542,
-    "installed_bytes": 406079944,
+    "size_bytes": 142829754,
+    "installed_bytes": 406137590,
     "artifacts": [
       {
         "name": "abseil-cpp-raw-logging-internal-20250814.1-r0.apk",
@@ -1341,18 +1341,18 @@
         ]
       },
       {
-        "name": "libseccomp-2.6.0-r1.apk",
-        "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/libseccomp-2.6.0-r1.apk",
-        "sha256": "6774313f8d83877e106d518601af7ecbe73c48b001b210c2f7a9d61c8d41746c",
-        "size_bytes": 50302,
+        "name": "libseccomp-2.6.1-r0.apk",
+        "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/libseccomp-2.6.1-r0.apk",
+        "sha256": "40132d53050deddad00d74ec304ae766b75a1df967ed10369f5e6736b8f4ac74",
+        "size_bytes": 50514,
         "format": "apk",
         "license": "LGPL-2.1-or-later",
         "source": "https://gitlab.alpinelinux.org/alpine/aports/-/tree/3.23-stable/main/libseccomp",
         "mirrors": [
-          "https://mirrors.edge.kernel.org/alpine/v3.23/main/x86_64/libseccomp-2.6.0-r1.apk",
-          "https://mirrors.aliyun.com/alpine/v3.23/main/x86_64/libseccomp-2.6.0-r1.apk",
-          "https://mirrors.tuna.tsinghua.edu.cn/alpine/v3.23/main/x86_64/libseccomp-2.6.0-r1.apk",
-          "https://mirrors.ustc.edu.cn/alpine/v3.23/main/x86_64/libseccomp-2.6.0-r1.apk"
+          "https://mirrors.edge.kernel.org/alpine/v3.23/main/x86_64/libseccomp-2.6.1-r0.apk",
+          "https://mirrors.aliyun.com/alpine/v3.23/main/x86_64/libseccomp-2.6.1-r0.apk",
+          "https://mirrors.tuna.tsinghua.edu.cn/alpine/v3.23/main/x86_64/libseccomp-2.6.1-r0.apk",
+          "https://mirrors.ustc.edu.cn/alpine/v3.23/main/x86_64/libseccomp-2.6.1-r0.apk"
         ]
       },
       {
@@ -2982,10 +2982,10 @@
     }
   },
   {
-    "id": "alpine-3.23-desktop-14.0.2-arm64-r6",
+    "id": "alpine-3.23-desktop-14.0.2-arm64-r7",
     "architecture": "arm64",
-    "size_bytes": 137945323,
-    "installed_bytes": 402705143,
+    "size_bytes": 137945560,
+    "installed_bytes": 402750501,
     "artifacts": [
       {
         "name": "abseil-cpp-raw-logging-internal-20250814.1-r0.apk",
@@ -4338,18 +4338,18 @@
         ]
       },
       {
-        "name": "libseccomp-2.6.0-r1.apk",
-        "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/aarch64/libseccomp-2.6.0-r1.apk",
-        "sha256": "a0b29c9cb4487090a2631eb5a62f0fc05d9a9ce092a5d8e0be91da0d6911df2c",
-        "size_bytes": 51481,
+        "name": "libseccomp-2.6.1-r0.apk",
+        "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/aarch64/libseccomp-2.6.1-r0.apk",
+        "sha256": "653c4e9a2f1ab719d6aef8d41d5845133aee0cb3c6999be8ebdcd3e1d61831fd",
+        "size_bytes": 51718,
         "format": "apk",
         "license": "LGPL-2.1-or-later",
         "source": "https://gitlab.alpinelinux.org/alpine/aports/-/tree/3.23-stable/main/libseccomp",
         "mirrors": [
-          "https://mirrors.edge.kernel.org/alpine/v3.23/main/aarch64/libseccomp-2.6.0-r1.apk",
-          "https://mirrors.aliyun.com/alpine/v3.23/main/aarch64/libseccomp-2.6.0-r1.apk",
-          "https://mirrors.tuna.tsinghua.edu.cn/alpine/v3.23/main/aarch64/libseccomp-2.6.0-r1.apk",
-          "https://mirrors.ustc.edu.cn/alpine/v3.23/main/aarch64/libseccomp-2.6.0-r1.apk"
+          "https://mirrors.edge.kernel.org/alpine/v3.23/main/aarch64/libseccomp-2.6.1-r0.apk",
+          "https://mirrors.aliyun.com/alpine/v3.23/main/aarch64/libseccomp-2.6.1-r0.apk",
+          "https://mirrors.tuna.tsinghua.edu.cn/alpine/v3.23/main/aarch64/libseccomp-2.6.1-r0.apk",
+          "https://mirrors.ustc.edu.cn/alpine/v3.23/main/aarch64/libseccomp-2.6.1-r0.apk"
         ]
       },
       {

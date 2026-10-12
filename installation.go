@@ -52,6 +52,12 @@ var xpraR5Digests = map[string]string{
 	"arm64": "524311a3c962225893e09c24c91dc8210a78edf96bcd1f15c55ecc1071e6abc5",
 }
 
+// Installed r6 recipes retain the original libseccomp pin and identity.
+var desktopR6Digests = map[string]string{
+	"amd64": "dbce3dfed7be8dba2a4cd2c9c60e0ce86a74a8b020633f1c681d7c959be0a2c8",
+	"arm64": "29e39da212c57f794022de0b55e9b45da7e8e2e8b052cf358d515c7634076713",
+}
+
 // Published recipes remain supported until an explicit compatibility change.
 // Do not change Package's digest encoding when extending this metadata.
 func compatibleInstallations(pkg Package) []Installation {
@@ -79,6 +85,8 @@ func compatibleInstallations(pkg Package) []Installation {
 		if err != nil || pinned.Digest() != pkg.Digest() {
 			return result
 		}
+		result = append(result, Installation{ID: "alpine-3.23-desktop-14.0.2-" + pkg.Architecture + "-r6",
+			Digest: desktopR6Digests[pkg.Architecture], Architecture: pkg.Architecture, Contract: current.Contract})
 		result = append(result, Installation{ID: "alpine-3.23-desktop-14.0.2-" + pkg.Architecture + "-r5",
 			Digest: desktopR5Digests[pkg.Architecture], Architecture: pkg.Architecture, Contract: current.Contract})
 		result = append(result, Installation{ID: "alpine-3.23-desktop-14.0.2-" + pkg.Architecture + "-r4",

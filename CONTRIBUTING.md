@@ -155,6 +155,13 @@ files; producer and privileged extractor share a two-GiB expanded budget, a
 256-MiB per-file limit and a 512-MiB compressed limit. Links and special files
 remain forbidden, and canceled or invalid exports are removed before deployment.
 
+Catalog revision `r7` refreshes libseccomp to the publisher-signed 2.6.1-r0
+archives after the original 2.6.0-r1 URLs were retired. Both architecture
+closures are acquired and hash-verified in full, and their compressed and
+expanded budgets are recalculated from the original archives. Installed `r6`
+recipes retain their exact identities and files; native binaries and the
+physical desktop media recipe are unchanged.
+
 The graphical check covers Unix sockets and three WebSocket attachments. Each
 attachment must paint, deliver fresh input, and preserve the fixture's process
 identity; each browser-style detach must leave its window available for the next

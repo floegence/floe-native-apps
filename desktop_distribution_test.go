@@ -27,7 +27,7 @@ func TestDesktopCatalogSeparatesRecipesAndRetainsXpra(t *testing.T) {
 			t.Fatal("new preparation must not change the published Xpra recipe")
 		}
 		items := compatibleInstallations(desktop)
-		if len(items) != 12 || items[0].Contract != desktopContract || items[1].Digest != desktopR5Digests[architecture] || items[2].Digest != desktopR4Digests[architecture] || items[3].Digest != desktopR3Digests[architecture] || items[6].Digest != xpra.Digest() || items[7].Digest != xpraR5Digests[architecture] || items[8].Digest != xpraR4Digests[architecture] || items[9].Digest != xpraR3Digests[architecture] {
+		if len(items) != 13 || items[0].Contract != desktopContract || items[1].Digest != desktopR6Digests[architecture] || items[2].Digest != desktopR5Digests[architecture] || items[3].Digest != desktopR4Digests[architecture] || items[4].Digest != desktopR3Digests[architecture] || items[7].Digest != xpra.Digest() || items[8].Digest != xpraR5Digests[architecture] || items[9].Digest != xpraR4Digests[architecture] || items[10].Digest != xpraR3Digests[architecture] {
 			t.Fatalf("surviving Xpra installations lost: %+v", items)
 		}
 		desktop.Preparation.NativeSHA256 = "unknown"
@@ -37,6 +37,59 @@ func TestDesktopCatalogSeparatesRecipesAndRetainsXpra(t *testing.T) {
 	}
 	if _, err := DesktopForPlatform("darwin", "arm64"); err != ErrUnsupported {
 		t.Fatal("desktop recipe admitted on unsupported platform", err)
+	}
+}
+
+func TestDesktopCatalogUpgradePreservesR6InstallationRecord(t *testing.T) {
+	for architecture, digest := range map[string]string{
+		"amd64": "dbce3dfed7be8dba2a4cd2c9c60e0ce86a74a8b020633f1c681d7c959be0a2c8",
+		"arm64": "29e39da212c57f794022de0b55e9b45da7e8e2e8b052cf358d515c7634076713",
+	} {
+		t.Run(architecture, func(t *testing.T) {
+			pkg, err := DesktopForPlatform("linux", architecture)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if pkg.Digest() == digest {
+				t.Fatal("new installations still select the retired archive recipe")
+			}
+			root := t.TempDir()
+			directory := filepath.Join(root, "packages", digest)
+			if err := os.MkdirAll(directory, 0700); err != nil {
+				t.Fatal(err)
+			}
+			marker := filepath.Join(directory, ".native-apps")
+			if err := os.WriteFile(marker, []byte(digest), 0600); err != nil {
+				t.Fatal(err)
+			}
+			data, err := json.Marshal(operation{Version: 2, Package: digest, Installed: digest, Status: Status{State: "ready"}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			record := filepath.Join(root, "operation.json")
+			if err := os.WriteFile(record, data, 0600); err != nil {
+				t.Fatal(err)
+			}
+			manager, err := New(root, pkg, func(context.Context, string) error {
+				t.Fatal("reading an installed recipe must not activate new packages")
+				return nil
+			})
+			if err != nil {
+				t.Fatal("published r6 installation was rejected", err)
+			}
+			defer manager.Close()
+			installed := manager.Snapshot("owner").Installed
+			if installed == nil || installed.Digest != digest || installed.ID != "alpine-3.23-desktop-14.0.2-"+architecture+"-r6" {
+				t.Fatal("published installation identity was replaced", installed)
+			}
+			after, err := os.ReadFile(record)
+			if err != nil || !bytes.Equal(data, after) {
+				t.Fatal("status inspection rewrote the previous installation", err)
+			}
+			if after, err := os.ReadFile(marker); err != nil || string(after) != digest {
+				t.Fatal("previous installation marker changed", err)
+			}
+		})
 	}
 }
 
