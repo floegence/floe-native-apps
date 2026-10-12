@@ -110,45 +110,53 @@ func TestHostDesktopPreparationDetectsModifiedNativeInputCode(t *testing.T) {
 	}
 }
 
-func TestHostDesktopNVENCArtifactsMatchReviewedBuild(t *testing.T) {
+func TestHostDesktopEncoderArtifactsMatchReviewedBuild(t *testing.T) {
 	for _, architecture := range []string{"amd64", "arm64"} {
-		base := "native/host-desktop/dist/" + architecture + "/"
-		data, err := os.ReadFile(base + "manifest.json")
-		if err != nil {
-			t.Fatal(err)
-		}
-		var manifest struct {
-			Architecture string                 `json:"architecture"`
-			Sources      map[string]string      `json:"sources"`
-			Files        map[string]desktopFile `json:"files"`
-		}
-		if err := json.Unmarshal(data, &manifest); err != nil {
-			t.Fatal(err)
-		}
-		if manifest.Architecture != architecture || len(manifest.Sources) != 5 || len(manifest.Files) != 1 {
-			t.Fatal("invalid build provenance")
-		}
-		for name, expected := range manifest.Sources {
-			data, err := os.ReadFile(name)
+		for _, worker := range []struct {
+			path        string
+			sourceCount int
+		}{{"dist", 6}, {"mpp/dist", 24}} {
+			base := "native/host-desktop/" + worker.path + "/" + architecture + "/"
+			data, err := os.ReadFile(base + "manifest.json")
 			if err != nil {
 				t.Fatal(err)
 			}
-			digest := sha256.Sum256(data)
-			if hex.EncodeToString(digest[:]) != expected {
-				t.Fatalf("rebuild native encoder after changing %s", name)
+			var manifest struct {
+				Architecture string                 `json:"architecture"`
+				Sources      map[string]string      `json:"sources"`
+				Files        map[string]desktopFile `json:"files"`
 			}
-		}
-		files, err := hostDesktopFiles(architecture)
-		if err != nil {
-			t.Fatal(err)
-		}
-		for name, expected := range manifest.Files {
-			if err := verifyDesktopFile(base+name, expected); err != nil {
+			if err := json.Unmarshal(data, &manifest); err != nil {
 				t.Fatal(err)
 			}
-			data, err := os.ReadFile(base + name)
-			if err != nil || !bytes.Equal(files[name], data) || !expected.Executable {
-				t.Fatal("worker escaped preparation identity")
+			if manifest.Architecture != architecture || len(manifest.Sources) != worker.sourceCount || len(manifest.Files) != 1 {
+				t.Fatal("invalid build provenance")
+			}
+			if _, ok := manifest.Sources["native/host-desktop/native_pixels.h"]; !ok {
+				t.Fatal("shared pixel boundary missing from build provenance")
+			}
+			for name, expected := range manifest.Sources {
+				data, err := os.ReadFile(name)
+				if err != nil {
+					t.Fatal(err)
+				}
+				digest := sha256.Sum256(data)
+				if hex.EncodeToString(digest[:]) != expected {
+					t.Fatalf("rebuild native encoder after changing %s", name)
+				}
+			}
+			files, err := hostDesktopFiles(architecture)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for name, expected := range manifest.Files {
+				if err := verifyDesktopFile(base+name, expected); err != nil {
+					t.Fatal(err)
+				}
+				data, err := os.ReadFile(base + name)
+				if err != nil || !bytes.Equal(files[name], data) || !expected.Executable || !hostDesktopExecutable(name) {
+					t.Fatal("worker escaped preparation identity")
+				}
 			}
 		}
 	}

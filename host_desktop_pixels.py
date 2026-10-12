@@ -1,8 +1,32 @@
 """Bounded native pixel ownership for physical desktop capture."""
 from contextlib import contextmanager
 import ctypes
+import fcntl
+import mmap
+import os
 
 from host_desktop_contract import DesktopError
+
+
+@contextmanager
+def native_pixels(length):
+    """Hand off one sealed-size slot FD; the successful caller owns its mapping."""
+    if not 0 < length <= 64 << 20:
+        raise DesktopError('CAPTURE_LAYOUT_UNSUPPORTED')
+    fd = os.memfd_create('floe-desktop-pixels', os.MFD_CLOEXEC | os.MFD_ALLOW_SEALING)
+    pixels = None
+    try:
+        os.ftruncate(fd, length)
+        fcntl.fcntl(fd, fcntl.F_ADD_SEALS,
+            fcntl.F_SEAL_SHRINK | fcntl.F_SEAL_GROW | fcntl.F_SEAL_SEAL)
+        pixels = mmap.mmap(fd, length)
+        yield fd, pixels
+    except BaseException:
+        if pixels is not None:
+            pixels.close()
+        raise
+    finally:
+        os.close(fd)
 
 
 class _BufferView(ctypes.Structure):

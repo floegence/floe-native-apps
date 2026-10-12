@@ -1,8 +1,10 @@
 /* Private synchronous NVENC worker. No display, input, filesystem or network
  * authority. Its parent owns one request at a time and kills stalled workers.
  * Wire: FDV1 + width,height,fps,bitrate (all uint32 big endian); then repeated
- * [uint32 byte length, uint32 sequence, packed BGRA]. Reply is [length,sequence,
+ * [uint32 byte length, uint32 sequence] publishes the shared packed BGRA slot.
+ * Reply is [length,sequence,
  * complete Annex-B access unit]. EOF ends the session; invalid input fails. */
+#define _GNU_SOURCE
 #include <arpa/inet.h>
 #include <dlfcn.h>
 #include <errno.h>
@@ -13,6 +15,7 @@
 #include <unistd.h>
 #include "vendor/dynlink_cuda.h"
 #include "vendor/nvEncodeAPI.h"
+#include "native_pixels.h"
 
 #define LIMIT (64u << 20)
 static int read_all(void *data, size_t size) {
@@ -42,7 +45,9 @@ static int write_all(const void *data, size_t size) {
 
 int main(int argc, char **argv) {
     if (argc == 2 && strcmp(argv[1], "--check") == 0) return 0;
-    if (argc != 1) return 2;
+    if (argc != 3 || strcmp(argv[1], "--pixels") != 0 || geteuid() == 0) return 2;
+    int pixels_fd = native_pixels_fd(argv[2]);
+    if (pixels_fd < 0) return 2;
     uint32_t header[5];
     if (read_all(header, sizeof(header)) || ntohl(header[0]) != 0x46445631) return 2;
     uint32_t width = ntohl(header[1]), height = ntohl(header[2]);
@@ -57,6 +62,9 @@ int main(int argc, char **argv) {
     tcuCtxCreate_v2 *context_create = NULL; tcuCtxDestroy_v2 *context_destroy = NULL;
     NV_ENCODE_API_FUNCTION_LIST api = {0};
     NV_ENC_INPUT_PTR input[4] = {0}; NV_ENC_OUTPUT_PTR output[4] = {0};
+    size_t pixels_size = (size_t)width * height * 4;
+    uint8_t *pixels = native_pixels_map(pixels_fd, pixels_size, PROT_READ);
+    if (pixels == MAP_FAILED) return 2;
     cuda = dlopen("libcuda.so.1", RTLD_NOW | RTLD_LOCAL);
     library = dlopen("libnvidia-encode.so.1", RTLD_NOW | RTLD_LOCAL);
     if (!cuda || !library) goto cleanup;
@@ -126,14 +134,15 @@ int main(int argc, char **argv) {
         if (count == 0) { result = 0; break; }
         if (count != 1 || read_all((uint8_t *)request + 1, sizeof(request) - 1)) break;
         uint32_t length = ntohl(request[0]), sequence = ntohl(request[1]);
-        if (length != width * height * 4 || sequence == 0 || sequence <= previous) break;
+        if (length != pixels_size || sequence == 0 || sequence != previous + 1) break;
         unsigned slot = (sequence - 1) % 4;
         NV_ENC_LOCK_INPUT_BUFFER locked = {0}; locked.version = NV_ENC_LOCK_INPUT_BUFFER_VER;
         locked.inputBuffer = input[slot];
         CHECK(api.nvEncLockInputBuffer(encoder, &locked));
         int bad = locked.pitch < width * 4;
         for (uint32_t y = 0; !bad && y < height; y++)
-            bad = read_all((uint8_t *)locked.bufferDataPtr + (size_t)y * locked.pitch, width * 4);
+            memcpy((uint8_t *)locked.bufferDataPtr + (size_t)y * locked.pitch,
+                pixels + (size_t)y * width * 4, width * 4);
         CHECK(api.nvEncUnlockInputBuffer(encoder, input[slot]));
         if (bad) break;
         NV_ENC_PIC_PARAMS picture = {0}; picture.version = NV_ENC_PIC_PARAMS_VER;
@@ -165,5 +174,6 @@ cleanup:
     if (context && context_destroy) context_destroy(context);
     if (library) dlclose(library);
     if (cuda) dlclose(cuda);
+    munmap(pixels, pixels_size);
     return result;
 }

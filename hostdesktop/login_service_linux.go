@@ -10,7 +10,9 @@ import (
 	"errors"
 	"net"
 	"os"
+	"os/user"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -182,6 +184,33 @@ func loginRenderGroups(gid uint32) []uint32 {
 		if !found {
 			groups = append(groups, stat.Gid)
 		}
+	}
+	return groups
+}
+
+func loginEncoderDeviceGroup(device unix.Stat_t, memberships []string) (uint32, bool) {
+	if device.Uid != 0 || device.Gid == 0 || device.Mode&unix.S_IFMT != unix.S_IFCHR || device.Mode&0020 == 0 {
+		return 0, false
+	}
+	return device.Gid, slices.Contains(memberships, strconv.FormatUint(uint64(device.Gid), 10))
+}
+
+func loginMediaGroups(uid, gid uint32) []uint32 {
+	groups := loginRenderGroups(gid)
+	account, err := user.LookupId(strconv.FormatUint(uint64(uid), 10))
+	if err != nil {
+		return groups
+	}
+	memberships, err := account.GroupIds()
+	var device unix.Stat_t
+	if err != nil || unix.Lstat("/dev/mpp_service", &device) != nil {
+		return groups
+	}
+	// Retain an existing Runtime-user hardware membership only for the fixed
+	// root-owned encoder device. Never borrow another user's video group or
+	// change a device ACL to make an encoder probe succeed.
+	if group, allowed := loginEncoderDeviceGroup(device, memberships); allowed && !slices.Contains(groups, group) {
+		groups = append(groups, group)
 	}
 	return groups
 }

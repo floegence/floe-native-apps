@@ -132,3 +132,64 @@ func TestLoginDRMRealCapture(t *testing.T) {
 		}
 	}
 }
+
+// This explicitly requested qualifier requires a continuously changing physical
+// test scene. It measures the local capture/codec path, not Viewer latency.
+func TestLoginDRMRealMotionCadence(t *testing.T) {
+	if os.Getenv("FLOE_LOGIN_QUALIFY_MOTION") != "1" {
+		t.Skip("real DRM motion qualification not requested")
+	}
+	if os.Geteuid() != 0 {
+		t.Fatal("qualification requires administrator authorization")
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
+	defer cancel()
+	media, err := openLoginMedia(ctx, LoginServiceConfig{WorkerPath: os.Getenv("FLOE_LOGIN_CAPTURE_WORKER"), MediaRoot: os.Getenv("FLOE_LOGIN_MEDIA_ROOT"), RuntimeUID: 1000, RuntimeGID: 1000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer media.close()
+	if !media.send(map[string]any{"method": "configure", "generation": 1, "picture": HostDesktopPicture{Mode: "smooth", MaxDimension: 1920, FrameRate: 60}, "reset": true}) {
+		t.Fatal("media configuration rejected")
+	}
+	var first time.Time
+	frames := 0
+	for {
+		select {
+		case <-ctx.Done():
+			t.Fatal("motion cadence timed out")
+		case <-media.done:
+			t.Fatal("media worker stopped")
+		case frame := <-media.messages:
+			if frame.Type == "error" {
+				t.Fatal(frame.Code)
+			}
+			if frame.Type != "frame" {
+				continue
+			}
+			if !media.send(map[string]any{"method": "ack", "generation": frame.Generation, "frame_id": frame.FrameID}) {
+				t.Fatal("frame credit rejected")
+			}
+			if frame.Codec != "h264" {
+				continue
+			}
+			if frame.Width != 1920 || frame.Height != 1080 {
+				t.Fatal("motion qualification requires original 1920x1080 pixels")
+			}
+			now := time.Now()
+			if first.IsZero() {
+				first = now
+			}
+			frames++
+			elapsed := now.Sub(first).Seconds()
+			if elapsed >= 10 {
+				fps := float64(frames-1) / elapsed
+				t.Logf("local DRM motion: %.3f FPS, %d frames, %.3f seconds, %s", fps, frames, elapsed, frame.Encoder)
+				if fps < 50 {
+					t.Fatal("60 FPS capture/codec path did not sustain the 50 FPS qualification floor")
+				}
+				return
+			}
+		}
+	}
+}

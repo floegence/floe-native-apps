@@ -16,7 +16,7 @@ import (
 
 const hostDesktopContract = "host-desktop-media-v1"
 
-//go:embed host_desktop_catalog.json host_desktop_releases.json host_desktop_contract.py host_desktop_wire.py host_desktop_identity.py host_desktop_input.py host_desktop_portal.py host_desktop_pipewire.py host_desktop_x11.py host_desktop_xcapture.py host_desktop_media.py host_desktop_drm.py host_desktop_login_text.py host_desktop_pixels.py host_desktop_nvenc.py host_desktop_helper.py host_desktop_selfcheck.py native/host-desktop/dist native/host-desktop/vendor native/host-desktop/drm/dist native/host-desktop/service/dist
+//go:embed host_desktop_catalog.json host_desktop_releases.json host_desktop_contract.py host_desktop_wire.py host_desktop_identity.py host_desktop_input.py host_desktop_portal.py host_desktop_pipewire.py host_desktop_x11.py host_desktop_xcapture.py host_desktop_media.py host_desktop_drm.py host_desktop_login_text.py host_desktop_pixels.py host_desktop_encoder.py host_desktop_helper.py host_desktop_selfcheck.py native/host-desktop/dist native/host-desktop/vendor native/host-desktop/mpp/dist native/host-desktop/drm/dist native/host-desktop/service/dist
 var hostDesktopDistribution embed.FS
 
 type hostDesktopRelease struct {
@@ -94,6 +94,8 @@ func hostDesktopFiles(architecture string) (map[string][]byte, error) {
 		"libdrmtap.LICENSE":         "native/host-desktop/drm/dist/" + architecture + "/libdrmtap.LICENSE",
 		"desktop-nvenc":             "native/host-desktop/dist/" + architecture + "/desktop-nvenc",
 		"nvenc-build.json":          "native/host-desktop/dist/" + architecture + "/manifest.json",
+		"desktop-mpp":               "native/host-desktop/mpp/dist/" + architecture + "/desktop-mpp",
+		"mpp-build.json":            "native/host-desktop/mpp/dist/" + architecture + "/manifest.json",
 		"nvEncodeAPI.h":             "native/host-desktop/vendor/nvEncodeAPI.h",
 		"dynlink_cuda.h":            "native/host-desktop/vendor/dynlink_cuda.h",
 	} {
@@ -102,6 +104,18 @@ func hostDesktopFiles(architecture string) (map[string][]byte, error) {
 			return nil, err
 		}
 		files[name] = data
+	}
+	const mppHeaders = "native/host-desktop/vendor/mpp"
+	headers, err := hostDesktopDistribution.ReadDir(mppHeaders)
+	if err != nil {
+		return nil, err
+	}
+	for _, header := range headers {
+		data, err := hostDesktopDistribution.ReadFile(mppHeaders + "/" + header.Name())
+		if err != nil {
+			return nil, err
+		}
+		files["mpp-"+header.Name()] = data
 	}
 	loader := map[string]string{"amd64": "x86_64", "arm64": "aarch64"}[architecture]
 	files["python3"] = []byte("#!/bin/sh\nROOT=$(CDPATH= cd -- \"$(dirname -- \"$0\")/../..\" && pwd) || exit 1\n" +
@@ -268,5 +282,5 @@ func (m *Manager) HostDesktopTools() (HostDesktopTools, error) {
 }
 
 func hostDesktopExecutable(name string) bool {
-	return name == "python3" || name == "desktop-nvenc" || name == "desktop-drm" || name == "floe-host-desktop-service"
+	return name == "python3" || name == "desktop-nvenc" || name == "desktop-mpp" || name == "desktop-drm" || name == "floe-host-desktop-service"
 }

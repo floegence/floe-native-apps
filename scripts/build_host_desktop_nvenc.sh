@@ -37,7 +37,7 @@ allowed = {'libc.so.6','libdl.so.2'} | ({'ld-linux-aarch64.so.1'} if architectur
 if set(needed) - allowed:
     raise ValueError('Unexpected dynamic dependency')
 digest = lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
-paths = ['native/host-desktop/nvenc.c', 'native/host-desktop/Dockerfile',
+paths = ['native/host-desktop/nvenc.c', 'native/host-desktop/native_pixels.h', 'native/host-desktop/drm/Dockerfile',
     'native/host-desktop/vendor/nvEncodeAPI.h', 'native/host-desktop/vendor/dynlink_cuda.h',
     'scripts/build_host_desktop_nvenc.sh']
 record = {'version':1, 'architecture':architecture, 'builder_image':os.environ['FLOE_NVENC_BUILDER_IMAGE'],

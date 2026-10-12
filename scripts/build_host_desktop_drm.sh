@@ -56,7 +56,7 @@ if re.search(r'\b(fork|execve|execl|execvp|posix_spawn)\b', symbols):
 digest = lambda path: hashlib.sha256(path.read_bytes()).hexdigest()
 paths = ['native/host-desktop/drm/worker.c', 'native/host-desktop/drm/source.json',
          'native/host-desktop/drm/Dockerfile', 'scripts/build_host_desktop_drm.sh',
-         'native/host-desktop/drm/scanout_format.h']
+         'native/host-desktop/drm/scanout_format.h', 'native/host-desktop/native_pixels.h']
 record = {'version': 1, 'architecture': architecture,
           'builder_image': os.environ['FLOE_DRM_BUILDER_IMAGE'],
           'compiler': subprocess.check_output(['cc', '--version'], text=True).splitlines()[0],

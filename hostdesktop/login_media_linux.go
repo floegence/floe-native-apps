@@ -98,7 +98,7 @@ func openLoginMedia(ctx context.Context, config LoginServiceConfig) (*loginMedia
 	command.Env = []string{"PATH=/usr/bin:/bin", "LANG=C", "HOME=/nonexistent"}
 	command.ExtraFiles = []*os.File{shared, controlChild}
 	command.Stdout = outputChild
-	command.SysProcAttr = &syscall.SysProcAttr{Credential: &syscall.Credential{Uid: config.RuntimeUID, Gid: config.RuntimeGID, Groups: loginRenderGroups(config.RuntimeGID)}}
+	command.SysProcAttr = &syscall.SysProcAttr{Credential: &syscall.Credential{Uid: config.RuntimeUID, Gid: config.RuntimeGID, Groups: loginMediaGroups(config.RuntimeUID, config.RuntimeGID)}}
 	if err = command.Start(); err != nil {
 		return nil, errors.Join(errLoginConverterStart, err)
 	}

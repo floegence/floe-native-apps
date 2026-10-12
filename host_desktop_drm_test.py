@@ -1,3 +1,8 @@
+import array
+import io
+import mmap
+import os
+import socket
 import struct
 import threading
 import time
@@ -5,9 +10,80 @@ import unittest
 import zlib
 from types import SimpleNamespace
 from host_desktop_drm import DRMCapture, cursor_png
+from host_desktop_contract import DesktopError
 
 
 class DRMWorkerTests(unittest.TestCase):
+    def test_probe_and_retired_epoch_release_the_converter_slot(self):
+        for enabled, retire in ((False, False), (True, True)):
+            capture = DRMCapture.__new__(DRMCapture)
+            capture.lock = threading.Lock()
+            capture.stop, capture.wake = threading.Event(), threading.Event()
+            capture.enabled, capture.probing, capture.epoch = enabled, (lambda *_: None), 1
+            capture.hot_until = capture.changed_at = 0
+            capture.reset, capture.fps = False, 60
+            capture.GLib = SimpleNamespace(idle_add=lambda *_: None)
+            capture.failed = lambda *_: self.fail('unexpected capture error')
+            pixels = memoryview(bytes(16))
+            def descriptor(_):
+                capture.stop.set()
+                if retire:
+                    capture.epoch = 2
+                return pixels, 2, 2, 8, 0x34325258
+            capture.descriptor = descriptor
+            capture.capture()
+            with self.assertRaises(ValueError, msg='every converter-slot borrow must end before teardown'):
+                len(pixels)
+
+    def descriptor_fixture(self, header):
+        capture = DRMCapture.__new__(DRMCapture)
+        capture.export_lock = threading.Lock()
+        capture.exporter = SimpleNamespace(send=lambda _: None,
+            recvmsg=lambda *_: (struct.pack('<iI', 0, 1) + bytes(72), [], 0, None))
+        capture.owner = SimpleNamespace(sendmsg=lambda *_: None)
+        capture.converter = SimpleNamespace(stdout=io.BytesIO(header))
+        capture.pixels = mmap.mmap(-1, 64 << 20)
+        return capture
+
+    def test_conversion_reads_only_completion_header_and_copies_before_reuse(self):
+        capture = self.descriptor_fixture(struct.pack('<i5I', 0, 2, 2, 8, 0x34324258, 16))
+        # Use a real inherited descriptor in the export reply.
+        fd = os.open(os.devnull, os.O_RDONLY)
+        capture.exporter.recvmsg = lambda *_: (struct.pack('<iI', 0, 1) + bytes(72),
+            [(socket.SOL_SOCKET, socket.SCM_RIGHTS, array.array('i', [os.dup(fd)]).tobytes())], 0, None)
+        try:
+            capture.pixels[:16] = bytes(range(16))
+            pixels, width, height, stride, format = capture.descriptor(False)
+            self.assertEqual((width, height, stride, format), (2, 2, 8, 0x34324258))
+            self.assertIsInstance(pixels, memoryview)
+            captured = bytes(pixels)
+            pixels.release()
+            capture.pixels[:16] = b'x' * 16
+            self.assertEqual(captured, bytes(range(16)), 'the owned capture copy survives converter reuse')
+            self.assertEqual(capture.converter.stdout.tell(), 24, 'pixel bytes never traverse the completion pipe')
+        finally:
+            os.close(fd)
+            capture.pixels.close()
+
+    def test_conversion_rejects_invalid_completion_before_exposing_shared_pixels(self):
+        cases = ((0, 2, 2, 7, 0x34325258, 14),
+                 (0, 2, 2, 8, 0x34325258, 17),
+                 (0, 8192, 8192, 32768, 0x34325258, 268435456),
+                 (0, 2, 2, 8, 0x12345678, 16),
+                 (-5, 0, 0, 0, 0, 0))
+        for header in cases:
+            with self.subTest(header=header):
+                capture = self.descriptor_fixture(struct.pack('<i5I', *header))
+                fd = os.open(os.devnull, os.O_RDONLY)
+                capture.exporter.recvmsg = lambda *_: (struct.pack('<iI', 0, 1) + bytes(72),
+                    [(socket.SOL_SOCKET, socket.SCM_RIGHTS, array.array('i', [os.dup(fd)]).tobytes())], 0, None)
+                try:
+                    with self.assertRaises(DesktopError):
+                        capture.descriptor(False)
+                finally:
+                    os.close(fd)
+                    capture.pixels.close()
+
     def test_first_input_wakes_idle_capture_without_bypassing_active_cadence(self):
         capture = DRMCapture.__new__(DRMCapture)
         capture.lock, capture.wake = threading.Lock(), threading.Event()

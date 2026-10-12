@@ -18,7 +18,9 @@ import time
 import zlib
 
 from host_desktop_contract import DesktopError
-from host_desktop_pixels import FramePool, equal_pixels, mapped_pixels
+from host_desktop_pixels import FramePool, equal_pixels, mapped_pixels, native_pixels
+
+CAPTURE_BYTES = 64 << 20
 
 
 def capture_error(status):
@@ -89,9 +91,17 @@ class DRMCapture:
         self.owner, child = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
         self.exporter.settimeout(3)
         self.owner.settimeout(3)
-        self.converter = subprocess.Popen([worker, 'convert', str(child.fileno())], pass_fds=(child.fileno(),),
-            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-        child.close()
+        self.pixels = None
+        try:
+            with native_pixels(CAPTURE_BYTES) as (pixels_fd, self.pixels):
+                self.converter = subprocess.Popen([worker, 'convert', str(child.fileno()), str(pixels_fd)],
+                    pass_fds=(child.fileno(), pixels_fd), stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        except BaseException:
+            self.owner.close()
+            self.exporter.close()
+            raise
+        finally:
+            child.close()
         self.thread = threading.Thread(target=self.capture, name='floe-drm-capture')
         self.cursor_thread = threading.Thread(target=self.capture_cursor, name='floe-drm-cursor')
         self.thread.start()
@@ -161,11 +171,14 @@ class DRMCapture:
         status, width, height, stride, format, length = struct.unpack('<iIIIII', header)
         if status:
             raise DesktopError(capture_error(status))
-        if not 2 <= width <= 8192 or not 2 <= height <= 8192 or stride < width * 4 or length != stride * height or length > 64 << 20:
+        if not 2 <= width <= 8192 or not 2 <= height <= 8192 or stride < width * 4 or length != stride * height or length > CAPTURE_BYTES:
             raise DesktopError('DRM_CAPTURE_UNAVAILABLE')
         if format not in (0x34325258, 0x34325241, 0x34324258, 0x34324241):
             raise DesktopError('GPU_SCANOUT_UNSUPPORTED')
-        return read_exact(self.converter.stdout, length), width, height, stride, format
+        # The completion header publishes this one slot. Copy into the owned
+        # Gst pool before requesting another conversion; encoding never leases
+        # the converter's mutable mapping.
+        return memoryview(self.pixels)[:length], width, height, stride, format
 
     def capture(self):
         try:
@@ -198,27 +211,30 @@ class DRMCapture:
                         self.GLib.idle_add(probe, None, error.code)
                         continue
                     raise
-                with self.lock:
-                    if epoch != self.epoch:
-                        continue
-                    if probe:
-                        self.probing = None
-                        self.GLib.idle_add(probe, (width, height), None)
-                    if not enabled:
-                        continue
-                    if self.width and (width, height) != (self.width, self.height):
-                        self.previous = None
-                        self.pending_sample = None
-                        self.enabled = False
-                        retired, self.pool = self.pool, None
-                        current = previous = None
-                        self.width = self.height = 0
-                        self.GLib.idle_add(self.geometry, epoch, width, height, retired)
-                        continue
-                    self.width, self.height = width, height
-                if self.pool is None:
-                    self.pool = FramePool(self.Gst, width, height)
-                current = self.pool.capture(pixels, stride, swap=format in (0x34324258, 0x34324241))
+                try:
+                    with self.lock:
+                        if epoch != self.epoch:
+                            continue
+                        if probe:
+                            self.probing = None
+                            self.GLib.idle_add(probe, (width, height), None)
+                        if not enabled:
+                            continue
+                        if self.width and (width, height) != (self.width, self.height):
+                            self.previous = None
+                            self.pending_sample = None
+                            self.enabled = False
+                            retired, self.pool = self.pool, None
+                            current = previous = None
+                            self.width = self.height = 0
+                            self.GLib.idle_add(self.geometry, epoch, width, height, retired)
+                            continue
+                        self.width, self.height = width, height
+                    if self.pool is None:
+                        self.pool = FramePool(self.Gst, width, height)
+                    current = self.pool.capture(pixels, stride, swap=format in (0x34324258, 0x34324241))
+                finally:
+                    pixels.release()
                 if current is None:
                     break
                 previous = self.previous
@@ -346,6 +362,7 @@ class DRMCapture:
         self.thread.join(timeout=4)
         self.cursor_thread.join(timeout=4)
         self.converter.stdout.close()
+        self.pixels.close()
         self.previous = self.pending_sample = None
         if self.pool: self.pool.close()
 

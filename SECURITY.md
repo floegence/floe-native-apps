@@ -102,6 +102,16 @@ libraries, compositor permissions, or user security policies. Current qualificat
 covers GNOME/GDM; other lockers must not be inferred from a PAM session label.
 No scanout means no capture capability, even when the service itself is active.
 
+Native encoding also runs as the Runtime user; workers reject root before
+loading CUDA/NVENC or Rockchip MPP libraries. A private sealed-size shared pixel
+slot grants no capture or input authority. The worker verifies regular storage,
+its Runtime-user owner, exact bounded capacity and required seals before mapping.
+One completion returns slot ownership, and invalid replies terminate that child.
+For the fixed root-owned `/dev/mpp_service` character device, the media child may
+retain its Runtime user's existing device-group membership when the device is
+group-writable. It does not borrow another user's group or alter ACLs. Input,
+power and selection-transfer children do not receive that additional group.
+
 One persistent logind D-Bus connection supplies fresh seat and session properties
 at every input boundary. Kernel VT and the bound compositor process image must
 still agree; signals are wakeups, never cached permission. Query failures revoke

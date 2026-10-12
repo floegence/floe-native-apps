@@ -2,6 +2,8 @@
 from pathlib import Path
 import array
 import errno
+import fcntl
+import mmap
 import os
 import socket
 import struct
@@ -23,8 +25,13 @@ class NativeScanoutFormatTests(unittest.TestCase):
     def test_real_worker_rejects_non_dma_fds_and_releases_received_fds(self):
         self.assertNotEqual(os.geteuid(), 0, 'converter qualification must be unprivileged')
         owner, child = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
-        worker = subprocess.Popen([os.environ['FLOE_DRM_WORKER'], 'convert', str(child.fileno())],
-                                  pass_fds=(child.fileno(),), stdout=subprocess.PIPE)
+        pixels_fd = os.memfd_create('floe-test-drm-pixels', os.MFD_CLOEXEC | os.MFD_ALLOW_SEALING)
+        os.ftruncate(pixels_fd, 64 << 20)
+        fcntl.fcntl(pixels_fd, fcntl.F_ADD_SEALS, fcntl.F_SEAL_GROW | fcntl.F_SEAL_SHRINK | fcntl.F_SEAL_SEAL)
+        pixels = mmap.mmap(pixels_fd, 64 << 20)
+        pixels[:16] = b'x' * 16
+        worker = subprocess.Popen([os.environ['FLOE_DRM_WORKER'], 'convert', str(child.fileno()), str(pixels_fd)],
+                                  pass_fds=(child.fileno(), pixels_fd), stdout=subprocess.PIPE)
         child.close()
         invalid = os.memfd_create('floe-invalid-drm', os.MFD_CLOEXEC)
         os.ftruncate(invalid, 1024)
@@ -42,15 +49,39 @@ class NativeScanoutFormatTests(unittest.TestCase):
                 if fd_count is None:
                     fd_count = current
                 self.assertEqual(current, fd_count, 'received descriptors must not accumulate')
+                self.assertEqual(pixels[:16], b'x' * 16, 'failed conversions must not publish new pixels')
             owner.close()
             self.assertEqual(worker.wait(timeout=3), 0, 'disconnect must close the converter')
         finally:
             owner.close()
             os.close(invalid)
+            os.close(pixels_fd)
+            pixels.close()
             if worker.poll() is None:
                 worker.kill()
             worker.wait()
             worker.stdout.close()
+
+    @unittest.skipUnless(os.environ.get('FLOE_DRM_WORKER'), 'physical converter qualification not requested')
+    def test_converter_rejects_unsealed_or_wrong_capacity_pixel_storage(self):
+        for size, sealed in ((64 << 20, False), (1024, True)):
+            with self.subTest(size=size, sealed=sealed):
+                owner, child = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
+                fd = os.memfd_create('floe-invalid-pixels', os.MFD_CLOEXEC | os.MFD_ALLOW_SEALING)
+                try:
+                    os.ftruncate(fd, size)
+                    if sealed:
+                        fcntl.fcntl(fd, fcntl.F_ADD_SEALS,
+                            fcntl.F_SEAL_GROW | fcntl.F_SEAL_SHRINK | fcntl.F_SEAL_SEAL)
+                    completed = subprocess.run([os.environ['FLOE_DRM_WORKER'], 'convert',
+                        str(child.fileno()), str(fd)], pass_fds=(child.fileno(), fd),
+                        stdout=subprocess.PIPE, timeout=3)
+                    self.assertEqual(completed.returncode, 64)
+                    self.assertEqual(completed.stdout, b'')
+                finally:
+                    owner.close()
+                    child.close()
+                    os.close(fd)
 
 
 if __name__ == '__main__':

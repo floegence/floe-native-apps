@@ -1,0 +1,24 @@
+{
+  "repository": "https://github.com/rockchip-linux/mpp",
+  "version": "1.1.0",
+  "commit": "c08762ebfadeb4e986d2fed993bc7a54862d3ebe",
+  "files": {
+    "mpp_bit.h": "75d841425b25d78d433b87b3111b0a34ecf6d30b48eb3e0c744f905f53d81826",
+    "mpp_buffer.h": "c9d7e42030dae2c88dbede35da31e9f2bd4d8847a9a276f02ee2397df5dd75b3",
+    "mpp_err.h": "ba479121d90eb86724c52ce941b232bcdfed63cabec68927e41376cb3078eaca",
+    "mpp_frame.h": "81acdadbe66791a5d82094954f86af6c3ce10b581b7888d3d1145ab36d78bf74",
+    "mpp_meta.h": "40bc4a742fdde60ba57ec8d859adc60ab81bcca4773a648dd73052ecfff3faf3",
+    "mpp_packet.h": "75654c948549c12f4c974896006eecb2133b874366299bb2d8db73fa9c645e18",
+    "mpp_task.h": "eda5e6b1052bd5d0141450562373ac4b75c6b43eef165df9c4fec762b7001e9f",
+    "rk_mpi.h": "96dbae7d90e91baaac38821fc06c74a327cac888007841fe5937798259193646",
+    "rk_mpi_cmd.h": "4f35750f6ad5b18fdaee5b097f315c85e826037785340f0f7fa7cc72ae03cc3b",
+    "rk_mpp_cfg.h": "bc3a1d0d371c70665671411a60b3f6957e53179703aa7e2d6afc227bc97b2999",
+    "rk_type.h": "1f671775f242dc0a0e80b575aceb5c1686e7e4c1db82336f5ee90ce182569ed3",
+    "rk_vdec_cfg.h": "8b678a1f5df8905470a27d04cfedc7dfa6b927b8fd93b73bbcdf4ae5046486b6",
+    "rk_vdec_cmd.h": "b75bb3fcc55843503b65937ca6b3a8e34f4e1719066fb8c498eab5b0e6342867",
+    "rk_venc_cfg.h": "7ffc1b18d90faa627e7fcd6f6eac73298fea7e686bd2a1c6c7a776a91ab49353",
+    "rk_venc_cmd.h": "e46597acfbe40a0d06d25df1f1cd017ea1af4d3e18c52a33111058c04e5f7fc6",
+    "rk_venc_rc.h": "ee933d283efbc8c1cc259709c37525ebb72384a2f44e5e4c66dcd08dde3f6977",
+    "rk_venc_ref.h": "06c661d58b629198f69b73e0bd9593a7aadbcd6982c577483094ef4d25940c31"
+  }
+}

@@ -16,9 +16,11 @@
 #include <linux/capability.h>
 #include <unistd.h>
 #include <sys/mman.h>
+#include <sys/stat.h>
 #include <drm_fourcc.h>
 #include "drmtap.h"
 #include "scanout_format.h"
+#include "../native_pixels.h"
 
 #define MAX_BYTES (64u << 20)
 _Static_assert(sizeof(drmtap_dmabuf_desc) == 72, "descriptor ABI changed");
@@ -142,10 +144,13 @@ static int unprivileged(void) {
  for (int i=0; i<2; i++) if (caps[i].effective || caps[i].permitted || caps[i].inheritable) return 77;
  return 0;
 }
-static int converter(int sock) {
+static int converter(int sock,int pixels_fd) {
  if(unprivileged()!=0)return 77;
+ if(pixels_fd==sock)return 64;
+ void *pixels=native_pixels_map(pixels_fd,MAX_BYTES,PROT_READ|PROT_WRITE);
+ if(pixels==MAP_FAILED)return 64;
  drmtap_ctx *ctx=drmtap_open_render(NULL);
- if(!ctx)return 69;
+ if(!ctx){munmap(pixels,MAX_BYTES);return 69;}
  for(;;) {
   export_packet packet;int fd=-1;
   if(receive_packet(sock,&packet,sizeof(packet),&fd)!=0)break;
@@ -170,22 +175,22 @@ static int converter(int sock) {
   if(result==0&&frame.data&&frame.stride>=frame.width*4&&(uint64_t)frame.stride*frame.height<=MAX_BYTES) {
    header[1]=frame.width;header[2]=frame.height;header[3]=frame.stride;header[4]=frame.format;header[5]=frame.stride*frame.height;
   } else if(result==0)header[0]=(uint32_t)-ENOTSUP;
+  if(header[5])memcpy(pixels,frame.data,header[5]);
   if(write_all(STDOUT_FILENO,header,sizeof(header))!=0)break;
-  if(header[5]&&write_all(STDOUT_FILENO,frame.data,header[5])!=0)break;
  }
- drmtap_close(ctx);return 0;
+ drmtap_close(ctx);munmap(pixels,MAX_BYTES);return 0;
 }
 int main(int argc,char **argv) {
  int type=0;socklen_t size=sizeof(type);
- int sock=3;
- if(argc==3&&strcmp(argv[1],"convert")==0) {
-  char *end=NULL;long value=strtol(argv[2],&end,10);
-  if(!end||*end||value<3||value>65535)return 64;
-  sock=(int)value;
+ int sock=3,pixels_fd=-1;
+ if(argc==4&&strcmp(argv[1],"convert")==0) {
+  sock=native_pixels_fd(argv[2]);
+  pixels_fd=native_pixels_fd(argv[3]);
+  if(sock<0||pixels_fd<0)return 64;
  }
  if(argc<2||getsockopt(sock,SOL_SOCKET,SO_TYPE,&type,&size)!=0||type!=SOCK_SEQPACKET)return 64;
  if(prctl(PR_SET_NO_NEW_PRIVS,1,0,0,0)!=0)return 77;
  if(argc==2&&strcmp(argv[1],"export")==0)return geteuid()==0?exporter(sock):77;
- if((argc==2||argc==3)&&strcmp(argv[1],"convert")==0)return converter(sock);
+ if(argc==4&&strcmp(argv[1],"convert")==0)return converter(sock,pixels_fd);
  return 64;
 }

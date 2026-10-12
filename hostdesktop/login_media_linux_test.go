@@ -7,7 +7,33 @@ import (
 	"net"
 	"testing"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
+
+func TestLoginEncoderGroupRequiresExistingMembershipAndTrustedCharacterDevice(t *testing.T) {
+	for _, test := range []struct {
+		name        string
+		device      unix.Stat_t
+		memberships []string
+		allowed     bool
+	}{
+		{"existing membership", unix.Stat_t{Uid: 0, Gid: 44, Mode: unix.S_IFCHR | 0660}, []string{"1000", "44"}, true},
+		{"foreign group", unix.Stat_t{Uid: 0, Gid: 44, Mode: unix.S_IFCHR | 0660}, []string{"1000"}, false},
+		{"ordinary file", unix.Stat_t{Uid: 0, Gid: 44, Mode: unix.S_IFREG | 0660}, []string{"44"}, false},
+		{"symlink", unix.Stat_t{Uid: 0, Gid: 44, Mode: unix.S_IFLNK | 0777}, []string{"44"}, false},
+		{"user owned", unix.Stat_t{Uid: 1000, Gid: 44, Mode: unix.S_IFCHR | 0660}, []string{"44"}, false},
+		{"root group", unix.Stat_t{Uid: 0, Gid: 0, Mode: unix.S_IFCHR | 0660}, []string{"0"}, false},
+		{"no group write", unix.Stat_t{Uid: 0, Gid: 44, Mode: unix.S_IFCHR | 0640}, []string{"44"}, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			group, allowed := loginEncoderDeviceGroup(test.device, test.memberships)
+			if allowed != test.allowed || allowed && group != 44 {
+				t.Fatalf("group=%d allowed=%v", group, allowed)
+			}
+		})
+	}
+}
 
 func TestLoginMediaBackpressureDoesNotBlockAuthority(t *testing.T) {
 	conn, child, err := loginMediaSocketPair()

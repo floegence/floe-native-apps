@@ -26,9 +26,10 @@ ENCODERS = (
 
 def select_encoder(Gst):
     """Exercise a test pattern before selecting a codec; never read the desktop."""
-    from host_desktop_nvenc import available
-    if available():
-        return 'nvidia-nvenc', ''
+    from host_desktop_encoder import available
+    for backend in ('nvidia-nvenc', 'rockchip-mpp'):
+        if available(backend):
+            return backend, ''
     for name, specification in ENCODERS:
         if not Gst.ElementFactory.find(name):
             continue
@@ -60,7 +61,7 @@ class DesktopMedia:
         self.x11_capture = None
         self.pipewire_capture = None
         self.cursor_presentation = 'embedded'
-        self.nvenc = None
+        self.native_encoder = None
         self.cursor_latest = None
         self.cursor_source = None
         self.pixel_format = 'BGRA'
@@ -225,14 +226,15 @@ class DesktopMedia:
         fps = self.picture['frame_rate']
         bitrate = {'auto': 16000, 'clarity': 24000, 'smooth': 12000, 'data': 6000}[self.picture['mode']]
         specification = self.encoder_spec.replace('bitrate=16000000', 'bitrate=' + str(bitrate * 1000)) if self.encoder_name == 'openh264enc' else self.encoder_spec.replace('bitrate=16000', 'bitrate=' + str(bitrate))
-        if self.encoder_name == 'nvidia-nvenc':
-            from host_desktop_nvenc import NVEncoder
-            self.nvenc = NVEncoder(output_width, output_height, fps, bitrate * 1000)
-            # Scaling stays in the capture ABI. BGRA -> YUV conversion and H.264
-            # encoding belong to NVENC; its blocking pipe runs on Gst's streaming
+        if self.encoder_name in ('nvidia-nvenc', 'rockchip-mpp'):
+            from host_desktop_encoder import NativeEncoder
+            self.native_encoder = NativeEncoder(output_width, output_height, fps, bitrate * 1000, self.encoder_name)
+            color = ',colorimetry=bt709' if self.native_encoder.input_format == 'NV12' else ''
+            # Scaling and format conversion stay in the capture ABI; hardware
+            # encoding uses a shared pixel slot and completion pipe on Gst's streaming
             # thread, never the GLib input/control dispatcher.
             prefix = ('appsrc name=source is-live=true format=time do-timestamp=true block=false ! '
-                f'videoscale ! video/x-raw,format={self.pixel_format},width={output_width},height={output_height} ! '
+                f'videoconvertscale n-threads=4 ! video/x-raw,format={self.native_encoder.input_format},width={output_width},height={output_height}{color} ! '
                 'appsink name=raw max-buffers=1 drop=false emit-signals=true sync=false async=false '
                 'appsrc name=compressed is-live=true format=time do-timestamp=true block=false '
                 'caps=video/x-h264,stream-format=byte-stream,alignment=au ! ')
@@ -243,9 +245,9 @@ class DesktopMedia:
         self.encoding = self._pipeline(prefix + 'h264parse config-interval=-1 ! '
             'video/x-h264,stream-format=avc,alignment=au ! '
             'appsink name=encoded max-buffers=4 drop=false emit-signals=true sync=false async=false', 'encoding')
-        if self.nvenc:
-            self.encoding.get_by_name('raw').connect('new-sample', self._nvenc_sample,
-                self.nvenc, self.encoding.get_by_name('compressed'), self.generation)
+        if self.native_encoder:
+            self.encoding.get_by_name('raw').connect('new-sample', self._native_sample,
+                self.native_encoder, self.encoding.get_by_name('compressed'), self.generation)
         self.source = self.encoding.get_by_name('source')
         self.source.set_property('caps', self.Gst.Caps.from_string(
             f'video/x-raw,format={self.pixel_format},width={width},height={height},framerate={fps}/1'))
@@ -255,7 +257,7 @@ class DesktopMedia:
             raise DesktopError('VIDEO_ENCODER_UNAVAILABLE')
         self.encoding_size = size
 
-    def _nvenc_sample(self, sink, encoder, compressed, generation):
+    def _native_sample(self, sink, encoder, compressed, generation):
         sample = sink.emit('pull-sample')
         if sample is None or self.closed or self.generation != generation:
             return self.Gst.FlowReturn.OK
@@ -272,7 +274,7 @@ class DesktopMedia:
             if compressed.emit('push-buffer', encoded) != self.Gst.FlowReturn.OK:
                 raise DesktopError('VIDEO_ENCODER_FAILED')
         except Exception:
-            if not self.closed and generation == self.generation and encoder is self.nvenc:
+            if not self.closed and generation == self.generation and encoder is self.native_encoder:
                 self._fail('VIDEO_ENCODER_FAILED')
             return self.Gst.FlowReturn.ERROR
         finally:
@@ -396,8 +398,8 @@ class DesktopMedia:
         # Stop only the encoder before changing generation. Output already
         # queued on GLib keeps its original generation and cannot consume new
         # credits. The next encoder starts with a complete keyframe.
-        if self.nvenc:
-            encoder, self.nvenc = self.nvenc, None
+        if self.native_encoder:
+            encoder, self.native_encoder = self.native_encoder, None
             encoder.close()
         if self.encoding:
             self.encoding.set_state(self.Gst.State.NULL)
@@ -478,8 +480,8 @@ class DesktopMedia:
             if self.produce_source is not None:
                 self.GLib.source_remove(self.produce_source)
                 self.produce_source = None
-        if self.nvenc:
-            encoder, self.nvenc = self.nvenc, None
+        if self.native_encoder:
+            encoder, self.native_encoder = self.native_encoder, None
             encoder.close()
         self.GLib.source_remove(self.deadline)
         if self.pipewire_capture:

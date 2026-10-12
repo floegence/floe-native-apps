@@ -1409,7 +1409,7 @@ availability. A failed pre-session probe selects the existing explicit software
 candidate. An active NVENC failure suspends media and never silently changes the
 reference chain. Actual session dimensions must also encode successfully.
 
-`native/host-desktop/Dockerfile` and `scripts/build_host_desktop_nvenc.sh` own the
+`native/host-desktop/drm/Dockerfile` and `scripts/build_host_desktop_nvenc.sh` own the
 native build. Pinned Debian images and signed snapshot archives establish the
 compiler baseline. The committed manifest records source/header hashes, ELF
 architecture, system dependencies and GLIBC versions. Binary, manifest and full
@@ -1422,10 +1422,35 @@ GPU work runs off the GLib input dispatcher. Four preallocated NVENC resources
 satisfy the SDK allocation requirement without queuing four pictures.
 
 NVENC uses synchronous Linux completion, P1 ultra-low-latency tuning, no B frames
-or lookahead and one-frame CBR VBV. X11 readback, scaling and raw-pixel IPC remain
+or lookahead and one-frame CBR VBV. X11 readback, scaling and raw-pixel copies remain
 CPU-visible; this is not a zero-copy capture claim. Record the actual encoder,
 resolution, capture backend and measured client response. GPU availability or
 synthetic encoder throughput alone cannot establish desktop latency.
+
+Rockchip encoding uses the same private `NativeEncoder` request owner with a
+verified glibc `desktop-mpp` worker. It dynamically resolves the existing
+`librockchip_mpp.so.1`; no driver, device ACL, system package or global loader
+override is installed. The complete MPP 1.1.0 API headers and original MIT and
+Apache license texts are pinned in `native/host-desktop/vendor/mpp/source.json`.
+`scripts/build_host_desktop_mpp.sh` uses the pinned DRM glibc builder and binds
+those sources, the shared-slot boundary and the worker into its manifest.
+MPP consumes limited-range BT.709 NV12 and marks that color contract in H.264.
+One synchronous frame is outstanding; actual driver probes decide availability.
+`qualification/host_desktop_encoder.py` accepts either native backend and checks
+1080p/4K original dimensions, decoded color bars and explicit zero-reorder SPS.
+
+DRM conversion and both native encoders exchange pixels through one bounded,
+same-owner memfd per worker. Its size is sealed against shrink/grow and further
+seal changes; regular storage, exact capacity and ownership are checked before
+mapping. Private pipes publish only frame identity/completion and compressed
+output. The parent does not reuse the slot before completion. Capture copies
+from the converter slot into its existing owned Gst pool before the next
+conversion; the encoder slot is not a mutable view into that capture mapping.
+These CPU copies remain intentional. Shutdown reaps the child before closing
+its mapping. Invalid frames, replies or timeouts terminate the active chain.
+The physical `TestLoginDRMRealMotionCadence` qualifier requires the separate
+opt-in `FLOE_LOGIN_QUALIFY_MOTION=1`, original 1920x1080 moving content and a
+50 FPS floor on the requested 60 FPS local path; it is not Viewer parity proof.
 
 ## Privileged physical desktop deployment
 
