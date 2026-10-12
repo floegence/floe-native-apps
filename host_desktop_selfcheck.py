@@ -75,7 +75,7 @@ for codec in ('h264', 'vp9'):
             loop.quit()
             return
         frames.append((message['frame_id'], message['codec']))
-        GLib.idle_add(lambda: (media.acknowledge(message['frame_id']), False)[1])
+        GLib.idle_add(lambda target=media, frame=message['frame_id']: (target.acknowledge(frame), False)[1])
         if message['codec'] == 'png':
             if payload[:8] != b'\x89PNG\r\n\x1a\n':
                 errors.append('invalid refinement')
