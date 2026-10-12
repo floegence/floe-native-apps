@@ -77,8 +77,11 @@ func fixtureLoginDeployment(t *testing.T) (*loginDeployer, LoginServiceDeploymen
 	var media bytes.Buffer
 	compressed := gzip.NewWriter(&media)
 	archive := tar.NewWriter(compressed)
-	for _, name := range []string{"floe/host-desktop/python3", "floe/host-desktop/host_desktop_drm.py", "floe/host-desktop/host_desktop_login_text.py", "usr/bin/python3"} {
+	for _, name := range []string{"floe/host-desktop/python3", "floe/host-desktop/host_desktop_drm.py", "floe/host-desktop/host_desktop_login_text.py", "usr/bin/python3", "usr/share/empty-marker"} {
 		data := []byte("media fixture")
+		if name == "usr/share/empty-marker" {
+			data = nil
+		}
 		if archive.WriteHeader(&tar.Header{Name: name, Mode: 0755, Size: int64(len(data)), Typeflag: tar.TypeReg}) != nil {
 			t.Fatal("media fixture header")
 		}
@@ -159,6 +162,105 @@ func TestLoginDeploymentInstallAndIdempotentUpdate(t *testing.T) {
 		}
 	}
 }
+func TestLoginDeploymentRestoreRetainedVersion(t *testing.T) {
+	d, original, systemd, _ := fixtureLoginDeployment(t)
+	if err := d.manage(context.Background(), original); err != nil {
+		t.Fatal(err)
+	}
+	first, _ := d.readRecord()
+	next := original
+	next.Operation, next.RuntimeSHA256 = "update", strings.Repeat("b", 64)
+	if err := d.manage(context.Background(), next); err != nil {
+		t.Fatal(err)
+	}
+	original.Operation = "update"
+	if err := d.manage(context.Background(), original); err != nil {
+		t.Fatalf("restore retained version: %v", err)
+	}
+	restored, _ := d.readRecord()
+	if restored.Digest != first.Digest || restored.Request != first.Request || !systemd.active {
+		t.Fatal("restore did not retain the original policy and active service")
+	}
+}
+
+func TestLoginDeploymentRejectsAlteredRetainedVersion(t *testing.T) {
+	for _, alteration := range []string{"content", "missing", "extra", "symlink", "permissions", "owner"} {
+		t.Run(alteration, func(t *testing.T) {
+			if alteration == "owner" && os.Geteuid() != 0 {
+				t.Skip("owner mutation requires the explicit root qualification run")
+			}
+			d, original, systemd, _ := fixtureLoginDeployment(t)
+			if err := d.manage(context.Background(), original); err != nil {
+				t.Fatal(err)
+			}
+			first, _ := d.readRecord()
+			next := original
+			next.Operation, next.RuntimeSHA256 = "update", strings.Repeat("b", 64)
+			if err := d.manage(context.Background(), next); err != nil {
+				t.Fatal(err)
+			}
+			before, _ := os.ReadFile(filepath.Join(d.root, "installed.json"))
+			path := filepath.Join(d.root, "versions", first.Digest, "media", "floe", "host-desktop", "host_desktop_drm.py")
+			var err error
+			switch alteration {
+			case "content":
+				err = os.WriteFile(path, []byte("changed bytes"), 0755)
+			case "missing":
+				err = os.Remove(path)
+			case "extra":
+				err = os.WriteFile(path+".extra", []byte("unverified"), 0644)
+			case "symlink":
+				if err = os.Remove(path); err == nil {
+					err = os.Symlink(filepath.Join(original.SourceDirectory, "desktop-drm"), path)
+				}
+			case "permissions":
+				err = os.Chmod(path, 0777)
+			case "owner":
+				err = os.Chown(path, 1000, -1)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			original.Operation = "update"
+			if err = d.manage(context.Background(), original); err == nil {
+				t.Fatal("altered retained version was activated")
+			}
+			after, _ := os.ReadFile(filepath.Join(d.root, "installed.json"))
+			if !bytes.Equal(before, after) || !systemd.active {
+				t.Fatal("rejected restore changed the usable service")
+			}
+		})
+	}
+}
+
+func TestLoginDeploymentFailedRestorePreservesBothVersions(t *testing.T) {
+	d, original, systemd, _ := fixtureLoginDeployment(t)
+	if err := d.manage(context.Background(), original); err != nil {
+		t.Fatal(err)
+	}
+	first, _ := d.readRecord()
+	next := original
+	next.Operation, next.RuntimeSHA256 = "update", strings.Repeat("b", 64)
+	if err := d.manage(context.Background(), next); err != nil {
+		t.Fatal(err)
+	}
+	second, _ := d.readRecord()
+	systemd.fail = "start"
+	original.Operation = "update"
+	if err := d.manage(context.Background(), original); err == nil {
+		t.Fatal("failed restore reported success")
+	}
+	current, _ := d.readRecord()
+	if current.Digest != second.Digest || !systemd.active {
+		t.Fatal("failed restore did not restore the current service")
+	}
+	for _, digest := range []string{first.Digest, second.Digest} {
+		if _, err := os.Stat(filepath.Join(d.root, "versions", digest)); err != nil {
+			t.Fatal("failed restore removed a retained version")
+		}
+	}
+}
+
 func TestLoginDeploymentPrivateSSHUmaskPreservesConverterTraversal(t *testing.T) {
 	d, request, systemd, _ := fixtureLoginDeployment(t)
 	previous := syscall.Umask(0077)

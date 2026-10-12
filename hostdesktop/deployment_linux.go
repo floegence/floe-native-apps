@@ -10,10 +10,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"syscall"
 	"time"
 
 	"github.com/floegence/floe-native-apps/internal/servicearchive"
@@ -446,16 +448,19 @@ func (d *loginDeployer) install(ctx context.Context, request LoginServiceDeploym
 		return err
 	}
 	published = filepath.Join(versions, digest)
-	if old != nil && old.Digest == digest {
-		if !loginInstalledDigestMatches(filepath.Join(published, "media.tar.gz"), request.MediaSHA256) {
+	retained := false
+	if _, err = os.Lstat(published); err == nil {
+		// A previously selected version is reusable only when its entire tree
+		// matches the freshly verified and extracted preparation.
+		if !loginPreparedVersionMatches(ctx, stage, published) {
 			return errLoginDeployment
 		}
-		for _, file := range []struct{ name, digest string }{{"floe-host-desktop-service", request.ServiceSHA256}, {"desktop-drm", request.WorkerSHA256}, {"libdrmtap.LICENSE", loginDRMLicenseSHA256}} {
-			if !loginInstalledDigestMatches(filepath.Join(published, file.name), file.digest) {
-				return errLoginDeployment
-			}
-		}
-		if string(oldUnit) != string(d.unitContents(published, request)) {
+		retained = true
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	if old != nil && old.Digest == digest {
+		if !retained || string(oldUnit) != string(d.unitContents(published, request)) {
 			return errLoginDeployment
 		}
 		d.emit("starting_service")
@@ -477,18 +482,15 @@ func (d *loginDeployer) install(ctx context.Context, request LoginServiceDeploym
 		d.emit("complete")
 		return nil
 	}
-	if _, err = os.Lstat(published); err == nil {
-		return errLoginDeployment
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return err
+	if !retained {
+		if err = os.Chmod(stage, 0755); err != nil {
+			return err
+		}
+		if err = os.Rename(stage, published); err != nil {
+			return err
+		}
+		staged = true
 	}
-	if err = os.Chmod(stage, 0755); err != nil {
-		return err
-	}
-	if err = os.Rename(stage, published); err != nil {
-		return err
-	}
-	staged = true
 	d.emit("installing_service")
 	if old != nil {
 		serviceChanged = true
@@ -536,6 +538,77 @@ func (d *loginDeployer) install(ctx context.Context, request LoginServiceDeploym
 	}
 	d.emit("complete")
 	return nil
+}
+
+func loginPreparedVersionMatches(ctx context.Context, prepared, installed string) bool {
+	info, err := os.Lstat(installed)
+	if err != nil || !info.IsDir() || info.Mode().Perm() != 0755 {
+		return false
+	}
+	preparation, err := os.Lstat(prepared)
+	if err != nil || info.Sys().(*syscall.Stat_t).Uid != preparation.Sys().(*syscall.Stat_t).Uid {
+		return false
+	}
+	root, err := os.OpenRoot(installed)
+	if err != nil {
+		return false
+	}
+	defer root.Close()
+	matched := 0
+	err = fs.WalkDir(root.FS(), ".", func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if err = ctx.Err(); err != nil {
+			return err
+		}
+		if path == "." {
+			return nil
+		}
+		actual, err := entry.Info()
+		if err != nil || actual.Mode().Perm()&0022 != 0 {
+			return errLoginDeployment
+		}
+		expected, err := os.Lstat(filepath.Join(prepared, path))
+		if err != nil || actual.IsDir() != expected.IsDir() || actual.Sys().(*syscall.Stat_t).Uid != expected.Sys().(*syscall.Stat_t).Uid {
+			return errLoginDeployment
+		}
+		matched++
+		if actual.IsDir() {
+			if actual.Mode().Perm() != expected.Mode().Perm() {
+				return errLoginDeployment
+			}
+			return nil
+		}
+		if !actual.Mode().IsRegular() || actual.Mode().Perm() != expected.Mode().Perm() || actual.Size() != expected.Size() {
+			return errLoginDeployment
+		}
+		if actual.Size() == 0 {
+			return nil
+		}
+		input, err := os.Open(filepath.Join(prepared, path))
+		if err != nil {
+			return err
+		}
+		hash := sha256.New()
+		_, copyErr := io.Copy(hash, input)
+		closeErr := input.Close()
+		if copyErr != nil || closeErr != nil || !loginInstalledDigestMatches(filepath.Join(installed, path), hex.EncodeToString(hash.Sum(nil))) {
+			return errLoginDeployment
+		}
+		return nil
+	})
+	if err != nil {
+		return false
+	}
+	expected := 0
+	err = filepath.WalkDir(prepared, func(path string, _ fs.DirEntry, err error) error {
+		if path != prepared {
+			expected++
+		}
+		return err
+	})
+	return err == nil && matched == expected && ctx.Err() == nil
 }
 func (d *loginDeployer) uninstall(ctx context.Context, record *loginDeploymentRecord) error {
 	if record == nil {

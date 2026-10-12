@@ -1315,6 +1315,11 @@ eight-bit 4:2:0 with no lookahead, frame dropping or spatial resampling, and
 resolution-scaled picture-mode bitrate. The reported encoder/codec identifies
 the exercised path. A failed capability probe never selects an encoder for
 desktop pixels. macOS capture remains H.264; offer that codec to its adapter.
+Linux codec timestamps advance by the admitted frame ordinal and requested
+frame period. A credit stall must not become extra per-frame rate-control
+budget; the separately reported capture timestamp remains the host observation.
+VP9 starts each encoder generation with a keyframe and retains its ordered
+reference chain until recovery, without periodic keyframe bursts.
 Consumers own authenticated control/media channels, published remote-input and
 pointer controllers, clipboard consent/fallback UI, and all product controls.
 Reset the player on each native generation and bind input only after its painted
@@ -1502,6 +1507,10 @@ contains no credentials. Wait for root authority before sending that policy;
 otherwise an unused sudo password could become service input. Keep management
 stdin open through completion, close it on cancellation, and wait for reported
 rollback before terminating SSH. Failed or unknown rollback is a visible failure.
+An update may select a retained immutable version after comparing its complete
+file tree and permissions with the freshly verified preparation, including
+empty files. Altered or incomplete versions remain rejected. A failed restore
+keeps both retained versions and rolls back the active policy and service.
 
 Native qualifiers refuse an existing service installation. With explicit root
 authorization, `FLOE_LOGIN_DEPLOYMENT_KIT` runs real systemd install/cancel/start/

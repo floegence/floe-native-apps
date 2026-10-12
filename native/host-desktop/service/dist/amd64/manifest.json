@@ -1,11 +1,11 @@
 {
   "architecture": "amd64",
-  "build_info": "/tmp/redeven-udesk26-rustdesk-baseline/vp9-service-amd64/floe-host-desktop-service: go1.27.2\n\tpath\tgithub.com/floegence/floe-native-apps/cmd/floe-host-desktop-service\n\tmod\tgithub.com/floegence/floe-native-apps\t(devel)\t\n\tdep\tgithub.com/godbus/dbus/v5\tv5.2.2\th1:TUR3TgtSVDmjiXOgAAyaZbYmIeP3DPkld3jgKGV8mXQ=\n\tdep\tgolang.org/x/sys\tv0.49.0\th1:XbzkgYJHdqh/8m2Uu0W/dQv8nktxx4BFHp1M0gROTXA=\n\tbuild\t-buildmode=exe\n\tbuild\t-compiler=gc\n\tbuild\t-trimpath=true\n\tbuild\tCGO_ENABLED=0\n\tbuild\tGOARCH=amd64\n\tbuild\tGOOS=linux\n\tbuild\tGOAMD64=v1\n",
+  "build_info": "/tmp/redeven-udesk26-rustdesk-baseline/codec-debug/release-service-amd64/floe-host-desktop-service: go1.27.2\n\tpath\tgithub.com/floegence/floe-native-apps/cmd/floe-host-desktop-service\n\tmod\tgithub.com/floegence/floe-native-apps\t(devel)\t\n\tdep\tgithub.com/godbus/dbus/v5\tv5.2.2\th1:TUR3TgtSVDmjiXOgAAyaZbYmIeP3DPkld3jgKGV8mXQ=\n\tdep\tgolang.org/x/sys\tv0.49.0\th1:XbzkgYJHdqh/8m2Uu0W/dQv8nktxx4BFHp1M0gROTXA=\n\tbuild\t-buildmode=exe\n\tbuild\t-compiler=gc\n\tbuild\t-trimpath=true\n\tbuild\tCGO_ENABLED=0\n\tbuild\tGOARCH=amd64\n\tbuild\tGOOS=linux\n\tbuild\tGOAMD64=v1\n",
   "files": {
     "floe-host-desktop-service": {
       "executable": true,
-      "sha256": "cc6766a3164b5b308b3c6e7a0ac1939072349d877c0f9e0127b17e105deaff3d",
-      "size_bytes": 4481148
+      "sha256": "e59e8d23932d4c5f901b2989111aa38afa83a43e796452e24f6ea514ca70cd8d",
+      "size_bytes": 4485244
     }
   },
   "sources": {
@@ -16,7 +16,7 @@
     "hostdesktop/deployment.go": "f390a4692d4aaf5fb4e84d2487907a5da0f60749e4a835cc25f5f8c850961a3b",
     "hostdesktop/deployment_driver_linux.go": "fcf47b9467b6eb1c29918f1c50192d766ac261ac257d5e74faeb1a84f885a3e8",
     "hostdesktop/deployment_health_linux.go": "7591139e1c07c10468d72ffb26f6a56b0811171dd87fdf70e9d92719c221372b",
-    "hostdesktop/deployment_linux.go": "6af16e8b1119f61b633747880373cc59c5a210f0dff5c35d0d052ab08ad9eeaa",
+    "hostdesktop/deployment_linux.go": "a5f77910b390d460bbd11e6b2504cedcde68be997e7a89626fe2d8ab455e09c9",
     "hostdesktop/deployment_media_linux.go": "4d8f21012ee96d652b92c66c97a0a6daf66740d1fb1e6656c77c1a8f910c9cd9",
     "hostdesktop/deployment_other.go": "3ef91d0966d4d9bf1dcb62ab81117a8e4abf7d8ccef0b4339d6416f4fa6ad29f",
     "hostdesktop/login_authority_linux.go": "e3f8f154a4ae09a1b21cacbe45b11cf7efa749cc3e91cd297be73f2610625532",
