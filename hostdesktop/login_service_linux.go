@@ -253,13 +253,17 @@ func (s *loginServer) attachment(ctx context.Context, conn, media *net.UnixConn,
 		}
 	}
 	defer closeText()
-	type textResult struct {
+	type textTransfer struct {
 		id, generation uint64
-		code           string
-		prepared       bool
+		controlHeld    bool
+	}
+	type textResult struct {
+		transfer *textTransfer
+		code     string
+		prepared bool
 	}
 	textResults := make(chan textResult, 1)
-	textPending := false
+	var textPending *textTransfer
 	releaseControl := func() { _ = input.release(); s.claim(conn, "view") }
 	defer releaseControl()
 	go func() { <-lifetime.Done(); releaseControl() }()
@@ -296,11 +300,14 @@ func (s *loginServer) attachment(ctx context.Context, conn, media *net.UnixConn,
 	authority := loginAuthority{generation: generation, release: input.release, mode: "view", state: "unavailable", attempts: &s.unlockLimiter}
 	picture := HostDesktopPicture{Mode: "auto", MaxDimension: 1920, FrameRate: 30}
 	transition := func(seat loginSeatState, mode string) bool {
-		closeText()
 		reset := seat != authority.seat
 		if authority.transition(seat, mode) != nil {
 			return false
 		}
+		// Revoke input before waiting for the clipboard child to exit. Retired
+		// transfer results cannot change a successor's input or pending state.
+		textPending = nil
+		closeText()
 		if reset {
 			_ = s.wakeDisplay(lifetime, seat)
 		}
@@ -323,7 +330,7 @@ func (s *loginServer) attachment(ctx context.Context, conn, media *net.UnixConn,
 		commandSource := commands
 		// Preserve input order while a selection transfer is pending. Seat,
 		// media and cancellation remain live; text cannot block revocation.
-		if textPending {
+		if textPending != nil {
 			commandSource = nil
 		}
 		select {
@@ -341,7 +348,7 @@ func (s *loginServer) attachment(ctx context.Context, conn, media *net.UnixConn,
 				}
 				continue
 			}
-			if textPending {
+			if textPending != nil {
 				// Cancel the selection and retire queued text/key commands. A
 				// successor needs a new painted frame; cancellation never replays.
 				if !transition(authority.seat, authority.mode) || !state(0) {
@@ -354,10 +361,7 @@ func (s *loginServer) attachment(ctx context.Context, conn, media *net.UnixConn,
 				return
 			}
 		case result := <-textResults:
-			if !result.prepared {
-				textPending = false
-			}
-			if result.generation != authority.generation {
+			if result.transfer != textPending || result.transfer.generation != authority.generation {
 				continue
 			}
 			if result.prepared {
@@ -371,7 +375,7 @@ func (s *loginServer) attachment(ctx context.Context, conn, media *net.UnixConn,
 				for _, key := range []struct {
 					code    string
 					pressed bool
-				}{{"ControlLeft", true}, {"KeyV", true}, {"KeyV", false}, {"ControlLeft", false}} {
+				}{{"ControlLeft", true}, {"KeyV", true}, {"KeyV", false}} {
 					current, err := readSeat()
 					if err != nil || current != authority.seat {
 						_ = input.release()
@@ -381,18 +385,27 @@ func (s *loginServer) attachment(ctx context.Context, conn, media *net.UnixConn,
 					if input.inputPhysical(&HostDesktopInput{Kind: "key", Code: key.code, Pressed: key.pressed}, false) != nil {
 						return
 					}
+					if key.code == "ControlLeft" {
+						result.transfer.controlHeld = true
+					}
 				}
 				continue
 			}
-			textPending = false
+			// The compositor may defer key delivery through its input method.
+			// Keep the chord modifier until the target requests the selection,
+			// then release it before admitting the next client input.
+			if result.transfer.controlHeld && input.inputPhysical(&HostDesktopInput{Kind: "key", Code: "ControlLeft", Pressed: false}, false) != nil {
+				return
+			}
+			textPending = nil
 			if result.code != "" {
 				closeText()
-				if !replyError(result.id, result.code) {
+				if !replyError(result.transfer.id, result.code) {
 					return
 				}
 			} else {
 				worker.interacted(authority.generation)
-				if !write(HostDesktopMessage{Version: 1, Type: "result", ID: result.id, Generation: authority.generation}) {
+				if !write(HostDesktopMessage{Version: 1, Type: "result", ID: result.transfer.id, Generation: authority.generation}) {
 					return
 				}
 			}
@@ -519,16 +532,16 @@ func (s *loginServer) attachment(ctx context.Context, conn, media *net.UnixConn,
 							continue
 						}
 					}
-					textPending = true
-					child, id, generation, text := textWorker, command.ID, authority.generation, command.Input.Text
+					textPending = &textTransfer{id: command.ID, generation: authority.generation}
+					child, transfer, text := textWorker, textPending, command.Input.Text
 					go func() {
 						prepared := func() {
 							select {
-							case textResults <- textResult{id: id, generation: generation, prepared: true}:
+							case textResults <- textResult{transfer: transfer, prepared: true}:
 							case <-lifetime.Done():
 							}
 						}
-						result := textResult{id: id, generation: generation, code: child.paste(id, text, prepared)}
+						result := textResult{transfer: transfer, code: child.paste(transfer.id, text, prepared)}
 						select {
 						case textResults <- result:
 						case <-lifetime.Done():

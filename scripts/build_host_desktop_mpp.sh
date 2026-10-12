@@ -9,7 +9,7 @@ test ! -e "$output"
 mkdir -p "$output"
 cd "$source_root"
 cc -std=c11 -O2 -Wall -Wextra -Werror -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
-  -Wl,-z,relro,-z,now -Wl,--build-id=none -I native/host-desktop/vendor/mpp native/host-desktop/mpp.c -ldl -o "$output/desktop-mpp"
+  -Wl,-z,relro,-z,now -Wl,--build-id=none -I native/host-desktop/mpp/api native/host-desktop/mpp.c -ldl -o "$output/desktop-mpp"
 strip --strip-unneeded "$output/desktop-mpp"
 python3 - "$source_root" "$output" <<'PY'
 import hashlib
@@ -39,7 +39,7 @@ if set(needed) - allowed:
 digest = lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
 paths = ['native/host-desktop/mpp.c', 'native/host-desktop/native_pixels.h', 'native/host-desktop/drm/Dockerfile',
     'scripts/build_host_desktop_mpp.sh']
-paths += [str(p.relative_to(source)) for p in sorted((source / 'native/host-desktop/vendor/mpp').iterdir()) if p.is_file()]
+paths += [str(p.relative_to(source)) for p in sorted((source / 'native/host-desktop/mpp/api').iterdir()) if p.is_file()]
 record = {'version':1, 'architecture':architecture, 'builder_image':os.environ['FLOE_MPP_BUILDER_IMAGE'],
     'compiler':subprocess.check_output(['cc','--version'],text=True).splitlines()[0],
     'signed_builder_packages':Path('/builder-packages.sha256').read_text().splitlines(),

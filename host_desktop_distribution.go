@@ -16,7 +16,7 @@ import (
 
 const hostDesktopContract = "host-desktop-media-v1"
 
-//go:embed host_desktop_catalog.json host_desktop_releases.json host_desktop_contract.py host_desktop_wire.py host_desktop_identity.py host_desktop_input.py host_desktop_portal.py host_desktop_pipewire.py host_desktop_x11.py host_desktop_xcapture.py host_desktop_media.py host_desktop_drm.py host_desktop_login_text.py host_desktop_pixels.py host_desktop_encoder.py host_desktop_helper.py host_desktop_selfcheck.py native/host-desktop/dist native/host-desktop/vendor native/host-desktop/mpp/dist native/host-desktop/drm/dist native/host-desktop/service/dist
+//go:embed host_desktop_catalog.json host_desktop_releases.json host_desktop_contract.py host_desktop_wire.py host_desktop_identity.py host_desktop_input.py host_desktop_portal.py host_desktop_pipewire.py host_desktop_x11.py host_desktop_xcapture.py host_desktop_media.py host_desktop_drm.py host_desktop_login_text.py host_desktop_pixels.py host_desktop_encoder.py host_desktop_helper.py host_desktop_selfcheck.py native/host-desktop/dist native/host-desktop/vendor native/host-desktop/mpp/dist native/host-desktop/mpp/api native/host-desktop/drm/dist native/host-desktop/service/dist
 var hostDesktopDistribution embed.FS
 
 type hostDesktopRelease struct {
@@ -105,7 +105,7 @@ func hostDesktopFiles(architecture string) (map[string][]byte, error) {
 		}
 		files[name] = data
 	}
-	const mppHeaders = "native/host-desktop/vendor/mpp"
+	const mppHeaders = "native/host-desktop/mpp/api"
 	headers, err := hostDesktopDistribution.ReadDir(mppHeaders)
 	if err != nil {
 		return nil, err

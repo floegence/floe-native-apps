@@ -7,13 +7,21 @@ import (
 	"context"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 )
 
 func TestLoginTextQualificationClient(t *testing.T) {
+	for _, mode := range []string{"text", "readonly", "cancel"} {
+		t.Run(mode, func(t *testing.T) { qualifyLoginText(t, mode) })
+	}
+}
+
+func qualifyLoginText(t *testing.T, mode string) {
 	socket, root, fixture := os.Getenv("FLOE_LOGIN_SERVICE_CLIENT_SOCKET"), os.Getenv("FLOE_LOGIN_MEDIA_ROOT"), os.Getenv("FLOE_LOGIN_TEXT_FIXTURE")
 	if socket == "" || fixture == "" {
 		t.Skip("native text qualification not requested")
@@ -23,7 +31,20 @@ func TestLoginTextQualificationClient(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), 25*time.Second)
 	defer cancel()
-	target := exec.CommandContext(ctx, filepath.Join(root, "floe", "host-desktop", "python3"), fixture, root)
+	python := filepath.Join(root, "floe", "host-desktop", "python3")
+	if os.Getenv("FLOE_LOGIN_QUALIFY_SYSTEM_TEXT") == "1" {
+		python = "/usr/bin/python3"
+	}
+	target := exec.CommandContext(ctx, python, fixture, root)
+	target.Env = append(os.Environ(), "FLOE_LOGIN_TEXT_CASE="+mode)
+	if os.Getenv("FLOE_LOGIN_QUALIFY_SYSTEM_TEXT") == "1" {
+		account, err := user.LookupId(strconv.Itoa(os.Getuid()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		target.Env = append(target.Env, "HOME="+account.HomeDir,
+			"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/"+strconv.Itoa(os.Getuid())+"/bus")
+	}
 	output, err := target.StdoutPipe()
 	if err != nil {
 		t.Fatal(err)
@@ -64,11 +85,18 @@ func TestLoginTextQualificationClient(t *testing.T) {
 				}
 			case message := <-connection.Control():
 				if message.Type == "error" {
+					if message.Code == "GENERATION_RETIRED" && message.ID >= 1000000 {
+						// Cancellation retires media receipts queued for the old paint.
+						continue
+					}
 					t.Fatalf("text qualification: %s", message.Code)
 				}
 				if message.Type == "state" {
 					if message.State != "active" {
 						t.Fatal("text requires active desktop")
+					}
+					if generation != message.Generation {
+						frame = 0
 					}
 					generation = message.Generation
 				}
@@ -83,28 +111,57 @@ func TestLoginTextQualificationClient(t *testing.T) {
 		}
 	}
 	request(HostDesktopCommand{Method: "connect", Mode: "control", Picture: &HostDesktopPicture{Mode: "auto", MaxDimension: 1920, FrameRate: 30}})
-	for frame == 0 {
-		select {
-		case message := <-connection.Media():
-			if message.Type == "frame" {
-				frame = message.FrameID
-				request(HostDesktopCommand{Method: "frame_ack", FrameID: frame})
+	paint := func() {
+		for frame == 0 {
+			select {
+			case message := <-connection.Media():
+				if message.Type == "frame" && message.Generation == generation {
+					frame = message.FrameID
+					request(HostDesktopCommand{Method: "frame_ack", FrameID: frame})
+				}
+			case message := <-connection.Control():
+				if message.Type == "error" {
+					if message.Code == "GENERATION_RETIRED" && message.ID >= 1000000 {
+						continue
+					}
+					t.Fatal(message.Code)
+				}
+			case <-ctx.Done():
+				t.Fatal("text first frame timeout")
 			}
-		case message := <-connection.Control():
-			if message.Type == "error" {
-				t.Fatal(message.Code)
-			}
-		case <-ctx.Done():
-			t.Fatal("text first frame timeout")
 		}
 	}
-	for _, text := range []string{"ab", "C", "\u4e2d\u6587", "\U0001f600", "$"} {
-		started := time.Now()
-		request(HostDesktopCommand{Method: "input", Input: &HostDesktopInput{Kind: "paste", Text: text}})
-		t.Logf("text transfer receipt=%s", time.Since(started))
-	}
-	for _, down := range []bool{true, false} {
-		request(HostDesktopCommand{Method: "input", Input: &HostDesktopInput{Kind: "key", Code: "Enter", Pressed: down}})
+	paint()
+	if mode != "text" {
+		command := HostDesktopCommand{Method: "input", Input: &HostDesktopInput{Kind: "paste", Text: "bounded qualifier"}}
+		if mode == "readonly" {
+			request(command)
+		} else {
+			sequence++
+			command.Version, command.ID, command.Generation = 1, sequence, generation
+			if err := connection.Send(command, false); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if !scanner.Scan() || scanner.Text() != "PASTE_CHORD_READY" {
+			t.Fatal("target did not observe the paste chord")
+		}
+		if mode == "cancel" {
+			request(HostDesktopCommand{Method: "release_input"})
+			paint()
+		}
+		for _, down := range []bool{true, false} {
+			request(HostDesktopCommand{Method: "input", Input: &HostDesktopInput{Kind: "key", Code: "KeyA", Pressed: down}})
+		}
+	} else {
+		for _, text := range []string{"ab", "C", "\u4e2d\u6587", "\U0001f600", "$"} {
+			started := time.Now()
+			request(HostDesktopCommand{Method: "input", Input: &HostDesktopInput{Kind: "paste", Text: text}})
+			t.Logf("text transfer receipt=%s", time.Since(started))
+		}
+		for _, down := range []bool{true, false} {
+			request(HostDesktopCommand{Method: "input", Input: &HostDesktopInput{Kind: "key", Code: "Enter", Pressed: down}})
+		}
 	}
 	if !scanner.Scan() || !strings.Contains(scanner.Text(), `"matched": true`) {
 		t.Fatal("target document did not match confirmed client text")
@@ -112,5 +169,5 @@ func TestLoginTextQualificationClient(t *testing.T) {
 	if err = target.Wait(); err != nil {
 		t.Fatal("text target failed")
 	}
-	t.Log("rapid ASCII, Unicode, emoji and following Enter reached the target document")
+	t.Log("target verified document input or modifier release after readonly transfer/cancellation")
 }

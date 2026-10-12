@@ -22,7 +22,10 @@ from gi.repository import Gtk
 Gtk.init([])
 window = Gtk.Window(title='Native desktop text qualification')
 window.set_default_size(800, 400)
-entry = Gtk.Entry()
+entry = Gtk.TextView()
+case = os.environ.get('FLOE_LOGIN_TEXT_CASE', 'text')
+if case != 'text':
+    entry.set_editable(False)
 window.add(entry)
 window.show_all()
 entry.grab_focus()
@@ -39,12 +42,30 @@ def ready():
 
 def activated(_entry):
     global passed
-    passed = entry.get_text() == expected
-    print(json.dumps({'matched': passed, 'characters': len(entry.get_text())}), flush=True)
+    buffer = entry.get_buffer()
+    text = buffer.get_text(buffer.get_start_iter(), buffer.get_end_iter(), True)
+    passed = text == expected
+    print(json.dumps({'matched': passed, 'characters': len(text)}), flush=True)
     Gtk.main_quit()
 
 
-entry.connect('activate', activated)
+def key(widget, event):
+    if case != 'text':
+        if event.keyval in (ord('v'), ord('V')):
+            print('PASTE_CHORD_READY', flush=True)
+        if event.keyval in (ord('a'), ord('A')):
+            global passed
+            passed = not bool(event.state & 4)
+            print(json.dumps({'matched': passed, 'modifier_released': passed}), flush=True)
+            Gtk.main_quit()
+            return True
+    if event.keyval == 65293:
+        activated(widget)
+        return True
+    return False
+
+
+entry.connect('key-press-event', key)
 GLib.timeout_add(100, ready)
 GLib.timeout_add_seconds(20, lambda: Gtk.main_quit())
 try:

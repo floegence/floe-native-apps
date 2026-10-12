@@ -1431,9 +1431,11 @@ Rockchip encoding uses the same private `NativeEncoder` request owner with a
 verified glibc `desktop-mpp` worker. It dynamically resolves the existing
 `librockchip_mpp.so.1`; no driver, device ACL, system package or global loader
 override is installed. The complete MPP 1.1.0 API headers and original MIT and
-Apache license texts are pinned in `native/host-desktop/vendor/mpp/source.json`.
+Apache license texts are pinned in `native/host-desktop/mpp/api/source.json`.
 `scripts/build_host_desktop_mpp.sh` uses the pinned DRM glibc builder and binds
-those sources, the shared-slot boundary and the worker into its manifest.
+those sources, the shared-slot boundary and the worker into its manifest. The API
+closure lives outside `vendor`: Go module archives omit nested vendored packages.
+Source checks verify that every embedded desktop asset survives module packing.
 MPP consumes limited-range BT.709 NV12 and marks that color contract in H.264.
 One synchronous frame is outstanding; actual driver probes decide availability.
 `qualification/host_desktop_encoder.py` accepts either native backend and checks
@@ -1497,7 +1499,12 @@ Concurrent clipboard-manager and application readers have a bounded transfer
 window. Selection admission is not a document receipt; the opt-in
 `FLOE_LOGIN_QUALIFY_TEXT=1` and `FLOE_LOGIN_TEXT_FIXTURE` qualifier checks rapid
 ASCII, Unicode, emoji and following Enter in the actual GTK document.
-The attachment version requires an explicit service update for older installs.
+The root attachment holds the paste modifier through selection completion or
+error, and releases input before waiting for helper cancellation. A retired
+transfer cannot clear a successor transfer or release successor keys. The
+`FLOE_LOGIN_QUALIFY_SYSTEM_TEXT=1` option uses the real user HOME/session bus and
+system GTK input method; it also checks readonly-target and cancellation modifier
+release. The attachment version requires an explicit service update for older installs.
 
 DRM capture keeps its idle sampling budget but wakes immediately on the first
 admitted interaction. Continuous input retains the configured frame-rate bound.

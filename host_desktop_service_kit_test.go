@@ -5,10 +5,42 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"testing"
+
+	modzip "golang.org/x/mod/zip"
 )
+
+type desktopModuleFile struct {
+	name string
+	fs   fs.FS
+}
+
+func (f desktopModuleFile) Path() string                 { return f.name }
+func (f desktopModuleFile) Lstat() (os.FileInfo, error)  { return fs.Stat(f.fs, f.name) }
+func (f desktopModuleFile) Open() (io.ReadCloser, error) { return f.fs.Open(f.name) }
+
+func TestHostDesktopDistributionSurvivesGoModuleArchive(t *testing.T) {
+	files := []modzip.File{desktopModuleFile{"go.mod", os.DirFS(".")}}
+	if err := fs.WalkDir(hostDesktopDistribution, ".", func(name string, entry fs.DirEntry, err error) error {
+		if err == nil && !entry.IsDir() {
+			files = append(files, desktopModuleFile{name, hostDesktopDistribution})
+		}
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	checked, err := modzip.CheckFiles(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(checked.Omitted) != 0 {
+		t.Fatalf("published Go module omits required desktop distribution assets: %v", checked.Omitted)
+	}
+}
 
 func TestHostDesktopServiceArtifactsMatchReviewedBuild(t *testing.T) {
 	for _, architecture := range []string{"amd64", "arm64"} {
