@@ -9,7 +9,7 @@ export function unpackDesktopMedia(buffer) {
       header.bytes !== buffer.byteLength - 4 - length) throw new Error('MEDIA_INVALID');
   if (header.type === 'frame') {
     if (header.bytes < 1 || !Number.isSafeInteger(header.frame_id) || header.frame_id < 1 ||
-        !['h264', 'png'].includes(header.codec) ||
+        !['h264', 'vp9', 'png'].includes(header.codec) ||
         (header.cursor !== undefined && !['embedded', 'separate'].includes(header.cursor)) ||
         !Number.isInteger(header.width) || header.width < 2 || header.width > 8192 ||
         !Number.isInteger(header.height) || header.height < 2 || header.height > 8192 ||
@@ -72,6 +72,16 @@ export class DesktopPaintOrder {
 
 export class HostDesktopPlayer {
   static supported() { return globalThis.isSecureContext === true && typeof VideoDecoder !== 'undefined' && typeof createImageBitmap !== 'undefined'; }
+  static async supportedCodecs(maxDimension = 2560) {
+    const codecs = ['h264'];
+    try {
+      const level = maxDimension > 2560 ? '62' : '51';
+      const value = await VideoDecoder.isConfigSupported({ codec: `vp09.00.${level}.08`, codedWidth: maxDimension,
+        codedHeight: maxDimension, hardwareAcceleration: 'no-preference', optimizeForLatency: true });
+      if (value.supported) codecs.unshift('vp9');
+    } catch { /* Offer only codecs positively supported by this client. */ }
+    return codecs;
+  }
   constructor(canvas, { acknowledge, recover, painted = () => {}, statistics = () => {}, audioState = () => {}, workletURL }) {
     this.canvas = canvas;
     this.context = canvas.getContext('2d', { alpha: false, desynchronized: true });
@@ -82,7 +92,7 @@ export class HostDesktopPlayer {
     this.frames = new Map(); this.incoming = []; this.refinements = new Set();
     this.epoch = 0;
     this.processing = false; this.closed = false; this.recovering = false;
-    this.decoder = null; this.audioDecoder = null; this.audio = null; this.speaker = null;
+    this.decoder = null; this.decoderCodec = null; this.audioDecoder = null; this.audio = null; this.speaker = null;
     this.gain = null; this.volume = 1; this.muted = false;
     this.audioStarting = null;
     this.audioPending = 0;
@@ -104,6 +114,7 @@ export class HostDesktopPlayer {
     this.order.reset(generation); this.recovering = false; this.needsKey = true; this.flushing = false;
     this.lastDraw = 0; this.draws = this.bytes = 0; this.intervals = [];
     this.frames.clear(); this.incoming = []; this.refinements.clear();
+    this.decoderCodec = null;
     clearTimeout(this.idle);
     cancelAnimationFrame(this.confirmation);
     clearTimeout(this.confirmationTask);
@@ -217,6 +228,7 @@ export class HostDesktopPlayer {
             continue;
           }
           if (this.needsKey && !header.key) { this.fail('KEYFRAME_REQUIRED'); break; }
+          if (this.decoder && header.codec !== this.decoderCodec) { this.fail('VIDEO_CODEC_CHANGED'); break; }
           if (!this.decoder) await this.configure(header);
           if (epoch !== this.epoch || header.generation !== this.order.generation || this.closed || this.recovering) continue;
           if (!this.decoder || this.decoder.state !== 'configured' || this.frames.size >= 4 || this.decoder.decodeQueueSize >= 4) {
@@ -266,8 +278,9 @@ export class HostDesktopPlayer {
   }
   async configure(header) {
     const epoch = this.epoch;
-    if (!header.key || !header.description || !/^avc1\.[0-9a-f]{6}$/i.test(header.profile)) throw new Error('KEYFRAME_REQUIRED');
-    const description = Uint8Array.from(atob(header.description), char => char.charCodeAt(0));
+    if (!header.key || (header.codec === 'vp9' ? !/^vp09\.00\.(41|51|62)\.08$/.test(header.profile) :
+        !header.description || !/^avc1\.[0-9a-f]{6}$/i.test(header.profile))) throw new Error('KEYFRAME_REQUIRED');
+    const description = header.codec === 'vp9' ? undefined : Uint8Array.from(atob(header.description), char => char.charCodeAt(0));
     let configuration, decoderPath;
     for (const preference of ['prefer-hardware', 'no-preference', 'prefer-software']) {
       const candidate = { codec: header.profile, codedWidth: header.width, codedHeight: header.height,
@@ -292,6 +305,7 @@ export class HostDesktopPlayer {
       error: () => { if (this.decoder === decoder) this.fail('DECODE_FAILED'); },
     });
     this.decoder = decoder;
+    this.decoderCodec = header.codec;
     decoder.configure(configuration);
   }
   schedule(image, header) {

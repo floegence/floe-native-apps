@@ -3,7 +3,7 @@
 PipeWire owns cursor metadata acquisition; GStreamer owns embedded capture and
 codecs; XCB owns authenticated X11
 acquisition. Only a latest unencoded sample may be replaced; already encoded
-H.264 references are delivered in order until reset.
+video references are delivered in order until reset.
 """
 import base64
 from collections import deque
@@ -19,24 +19,30 @@ ENCODERS = (
     ('vah264enc', 'vah264enc rate-control=cbr key-int-max=120 bitrate=16000'),
     ('vaapih264enc', 'vaapih264enc rate-control=cbr keyframe-period=120 bitrate=16000'),
     ('nvh264enc', 'nvh264enc zerolatency=true bframes=0 gop-size=120 bitrate=16000'),
+    ('vp9enc', 'vp9enc deadline=1 cpu-used=8 end-usage=1 target-bitrate=4000000 lag-in-frames=0 '
+        'threads=4 row-mt=true tile-columns=2 keyframe-max-dist=120'),
     ('x264enc', 'x264enc tune=zerolatency speed-preset=ultrafast bitrate=16000 key-int-max=120 bframes=0 threads=4'),
     ('openh264enc', 'openh264enc complexity=low rate-control=bitrate bitrate=16000000 multi-thread=4 gop-size=120'),
 )
 
 
-def select_encoder(Gst):
+def select_encoder(Gst, codecs=('h264',)):
     """Exercise a test pattern before selecting a codec; never read the desktop."""
     from host_desktop_encoder import available
-    for backend in ('nvidia-nvenc', 'rockchip-mpp'):
+    for backend in (('nvidia-nvenc', 'rockchip-mpp') if 'h264' in codecs else ()):
         if available(backend):
             return backend, ''
     for name, specification in ENCODERS:
+        codec = 'vp9' if name == 'vp9enc' else 'h264'
+        if codec not in codecs:
+            continue
         if not Gst.ElementFactory.find(name):
             continue
         pipeline = None
         try:
             pipeline = Gst.parse_launch('videotestsrc num-buffers=2 ! video/x-raw,width=64,height=64,framerate=60/1 ! '
-                'videoconvert ! video/x-raw,format=I420 ! ' + specification + ' ! h264parse ! fakesink')
+                'videoconvert ! video/x-raw,format=I420 ! ' + specification +
+                (' ! video/x-vp9 ! fakesink' if codec == 'vp9' else ' ! h264parse ! fakesink'))
             pipeline.set_state(Gst.State.PLAYING)
             message = pipeline.get_bus().timed_pop_filtered(3 * Gst.SECOND, Gst.MessageType.ERROR | Gst.MessageType.EOS)
             if message is not None and message.type == Gst.MessageType.EOS:
@@ -55,6 +61,11 @@ class DesktopMedia:
         self.Gst, self.GLib = Gst, GLib
         self.generation, self.picture = generation, picture
         self.encoder_name, self.encoder_spec = encoder
+        codecs = picture.get('codecs', ['h264'])
+        selected_codec = 'vp9' if self.encoder_name == 'vp9enc' else 'h264'
+        if (selected_codec not in codecs or 'vp9' in codecs and self.encoder_name in ('x264enc', 'openh264enc')):
+            self.encoder_name, self.encoder_spec = select_encoder(Gst, codecs)
+        self.codec = 'vp9' if self.encoder_name == 'vp9enc' else 'h264'
         self.emit, self.failed = emit, failed
         self.credit = FrameCredit()
         self.capture = self.encoding = self.audio = None
@@ -226,6 +237,10 @@ class DesktopMedia:
         fps = self.picture['frame_rate']
         bitrate = {'auto': 16000, 'clarity': 24000, 'smooth': 12000, 'data': 6000}[self.picture['mode']]
         specification = self.encoder_spec.replace('bitrate=16000000', 'bitrate=' + str(bitrate * 1000)) if self.encoder_name == 'openh264enc' else self.encoder_spec.replace('bitrate=16000', 'bitrate=' + str(bitrate))
+        if self.codec == 'vp9':
+            base = {'auto': 6000000, 'clarity': 8000000, 'smooth': 4000000, 'data': 2000000}[self.picture['mode']]
+            target = max(256000, round(base * output_width * output_height / (1920 * 1080)))
+            specification = self.encoder_spec.replace('target-bitrate=4000000', 'target-bitrate=' + str(target))
         if self.encoder_name in ('nvidia-nvenc', 'rockchip-mpp'):
             from host_desktop_encoder import NativeEncoder
             self.native_encoder = NativeEncoder(output_width, output_height, fps, bitrate * 1000, self.encoder_name)
@@ -242,8 +257,8 @@ class DesktopMedia:
             prefix = ('appsrc name=source is-live=true format=time do-timestamp=true block=false ! '
                 f'videoconvertscale n-threads=4 ! video/x-raw,format=I420,width={output_width},height={output_height} ! '
                 + specification + ' ! ')
-        self.encoding = self._pipeline(prefix + 'h264parse config-interval=-1 ! '
-            'video/x-h264,stream-format=avc,alignment=au ! '
+        parser = 'video/x-vp9 ! ' if self.codec == 'vp9' else 'h264parse config-interval=-1 ! video/x-h264,stream-format=avc,alignment=au ! '
+        self.encoding = self._pipeline(prefix + parser +
             'appsink name=encoded max-buffers=4 drop=false emit-signals=true sync=false async=false', 'encoding')
         if self.native_encoder:
             self.encoding.get_by_name('raw').connect('new-sample', self._native_sample,
@@ -336,23 +351,30 @@ class DesktopMedia:
             return self.Gst.FlowReturn.OK
         buffer = sample.get_buffer()
         caps = sample.get_caps().get_structure(0)
-        description = caps.get_value('codec_data')
+        description = caps.get_value('codec_data') if self.codec == 'h264' else None
         config = description.extract_dup(0, description.get_size()) if description is not None else b''
         data = buffer.extract_dup(0, buffer.get_size())
         key = not buffer.has_flags(self.Gst.BufferFlags.DELTA_UNIT)
         def publish():
             if self.closed or generation != self.generation:
                 return False
-            if not self.submitted or len(config) < 4:
+            if not self.submitted or self.codec == 'h264' and len(config) < 4:
                 self._fail('VIDEO_PROTOCOL_INVALID')
                 return False
             frame, timestamp = self.submitted.popleft()
             self.encoding_busy = False
             metadata = {'type': 'frame', 'generation': self.generation, 'frame_id': frame,
                 'timestamp': timestamp, 'width': self.encoding_size[2], 'height': self.encoding_size[3],
-                'codec': 'h264', 'key': key, 'encoder': self.encoder_name, 'cursor': self.cursor_presentation}
-            if key:
+                'codec': self.codec, 'key': key, 'encoder': self.encoder_name, 'cursor': self.cursor_presentation}
+            if key and self.codec == 'h264':
                 metadata.update(description=base64.b64encode(config).decode(), profile='avc1.' + config[1:4].hex())
+            elif key:
+                # VP9 profile 0 is eight-bit 4:2:0. Choose the smallest level
+                # covering the declared size and sample rate.
+                pixels = self.encoding_size[2] * self.encoding_size[3]
+                rate = pixels * self.picture['frame_rate']
+                level = '41' if pixels <= 2359296 and rate <= 160432128 else '51' if pixels <= 8912896 and rate <= 588251136 else '62'
+                metadata['profile'] = 'vp09.00.' + level + '.08'
             self.emit(metadata, data)
             self._schedule_produce()
             return False
@@ -392,7 +414,9 @@ class DesktopMedia:
 
     def _settled(self):
         now = time.monotonic()
-        return now - self.changed_at >= 0.15 and now - self.interacted_at >= 0.3
+        # Keep full-frame lossless work out of ordinary typing/clicking pauses.
+        # The final settled picture still receives the exact PNG refinement.
+        return now - self.changed_at >= 0.15 and now - self.interacted_at >= 1.0
 
     def recover(self, generation):
         # Stop only the encoder before changing generation. Output already

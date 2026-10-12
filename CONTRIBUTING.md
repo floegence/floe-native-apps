@@ -1213,7 +1213,7 @@ checks. Hashes identify the build; they do not replace license/source obligation
 The current-user host desktop is distinct from an application's private display.
 `HostDesktopForPlatform` supplies the Linux `host-desktop-media-v1` component through
 `Manager`; neither the catalog nor installation authorizes capture. Its original
-Alpine archives include GStreamer, PipeWire, Opus and H.264 encoders. The private
+Alpine archives include GStreamer, PipeWire, Opus, H.264 and VP9 encoders. The private
 wrapper scopes their loader, GIO, GStreamer and PipeWire paths to this helper only.
 It does not start a compositor, PipeWire server, session manager or system service.
 `ResolveHostDesktopTools` verifies the embedded helper snapshot; consumers must
@@ -1307,25 +1307,33 @@ native admission is not a receipt from the application's document. The SDK does
 not send speculative Escape/Enter or invoke application menus to hide this boundary.
 
 `HostDesktopClientResource` provides the WebCodecs player and AudioWorklet modules.
+Linux consumers may offer the bounded `picture.codecs` list after
+`HostDesktopPlayer.supportedCodecs(maxDimension)` positively probes the client.
+An omitted offer retains H.264. Available hardware H.264 remains preferred;
+software capture selects realtime VP9 when the client offers it. VP9 uses
+eight-bit 4:2:0 with no lookahead, frame dropping or spatial resampling, and
+resolution-scaled picture-mode bitrate. The reported encoder/codec identifies
+the exercised path. A failed capability probe never selects an encoder for
+desktop pixels. macOS capture remains H.264; offer that codec to its adapter.
 Consumers own authenticated control/media channels, published remote-input and
 pointer controllers, clipboard consent/fallback UI, and all product controls.
 Reset the player on each native generation and bind input only after its painted
 callback. Hardware preference negotiation reports the selected preference; this
 is not proof that a browser used a particular hardware decoder. A slow client
 cannot grow the native frame pipeline, decoder queue or audio queue indefinitely.
-Encoded H.264 dependencies are retained until an explicit recovery generation;
+Encoded video dependencies are retained until an explicit recovery generation;
 late PNG refinements cannot replace a newer video frame.
 Decoder recovery keeps the authorized capture running and retires held input and
 frame credits. Linux replaces only its encoder; macOS forces a new keyframe on
 its existing encoder. Queued video, audio and refinements retain their original
 generation and cannot authorize or overwrite the successor. Recovery starts a
-fresh H.264 dependency chain.
+fresh video dependency chain.
 Decoded pictures draw immediately, including while an earlier paint receipt is
 pending. A receipt names only the latest picture unchanged between an animation
 refresh and its following task; overwritten pictures receive no individual
 receipt. The newest cumulative receipt releases older frame credits. Reset
 retires every outstanding receipt. PNG decoding runs independently of ordered
-H.264 dependencies, with at most four retained refinements.
+video dependencies, with at most four retained refinements.
 Linux X11 and metadata-capable Wayland control sessions send bounded cursor PNG/shape/hotspot messages instead
 of burning the host cursor into video. Cursor-only motion does not encode a frame.
 The browser uses the local system pointer with that image; cursor messages never
@@ -1347,9 +1355,11 @@ When the pinned PipeWire client leaves that system-memory plane unmapped, captur
 maps its bounded backing file read-only, retains the mapping for that buffer's
 lifetime, and releases it on removal or stream closure. The producer keeps its
 file descriptor; DMA-BUF remains outside this CPU capture contract.
-Static refinements wait for both changed pixels and input to settle; an input
+Static refinements wait for changed pixels to settle for 150 ms and input to be
+idle for one second, so normal editing pauses do not enqueue full-frame PNG work.
+The final static picture still receives lossless refinement. An input
 event during PNG encoding retires the candidate before transport admission.
-Already admitted H.264 dependencies and binary packets remain ordered. This is
+Already admitted video dependencies and binary packets remain ordered. This is
 not DMA-BUF zero-copy, libei input or network congestion adaptation.
 Video and refinement
 `timestamp` values identify the latest changed source pixels on the host's

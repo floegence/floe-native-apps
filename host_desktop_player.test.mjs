@@ -31,6 +31,46 @@ test('reject truncated, oversized, and unknown media without allocating a decode
   assert.throws(() => unpackDesktopMedia(new ArrayBuffer(2)));
 });
 
+test('software codec negotiation offers VP9 only after a positive decoder probe', async () => {
+  const { HostDesktopPlayer } = await import('./host_desktop_player.mjs');
+  const original = globalThis.VideoDecoder;
+  try {
+    for (const supported of [true, false]) {
+      globalThis.VideoDecoder = class { static async isConfigSupported() { return { supported }; } };
+      assert.deepEqual(await HostDesktopPlayer.supportedCodecs(), supported ? ['vp9', 'h264'] : ['h264']);
+    }
+    globalThis.VideoDecoder = class { static async isConfigSupported() { throw Error('unavailable'); } };
+    assert.deepEqual(await HostDesktopPlayer.supportedCodecs(), ['h264']);
+  } finally { globalThis.VideoDecoder = original; }
+});
+
+test('VP9 key and delta frames use the ordered decoder without AVC description', async () => {
+  const f = await playerFixture();
+  const originals = ['VideoDecoder', 'EncodedVideoChunk'].map(key => [key, globalThis[key]]);
+  const chunks = []; let configuration, decoder;
+  globalThis.EncodedVideoChunk = class { constructor(value) { Object.assign(this, value); } };
+  globalThis.VideoDecoder = class {
+    static async isConfigSupported(config) { return { supported: true, config }; }
+    constructor(callbacks) { this.callbacks = callbacks; this.decodeQueueSize = 0; decoder = this; }
+    configure(config) { configuration = config; this.state = 'configured'; }
+    decode(chunk) { chunks.push(chunk); this.callbacks.output({ timestamp: chunk.timestamp, id: chunk.timestamp, close() {} }); }
+    close() { this.state = 'closed'; }
+  };
+  try {
+    f.player.receive(packet({ codec: 'vp9', key: true, profile: 'vp09.00.51.08' }));
+    await new Promise(resolve => setImmediate(resolve));
+    f.player.receive(packet({ codec: 'vp9', key: false, frame_id: 2 }));
+    f.tick();
+    assert.equal(configuration.codec, 'vp09.00.51.08');
+    assert.equal(configuration.description, undefined);
+    assert.deepEqual(chunks.map(x => [x.type, x.timestamp]), [['key', 1], ['delta', 2]]);
+    assert.deepEqual(f.acknowledgements, [[1, 2]]);
+  } finally {
+    f.player.close();
+    for (const [key, value] of originals) { if (value === undefined) delete globalThis[key]; else globalThis[key] = value; }
+  }
+});
+
 test('a delayed refinement cannot overwrite newer video or another display', () => {
   const order = new DesktopPaintOrder(); order.reset(1);
   const old = { generation: 1, frame_id: 2 }, current = { generation: 1, frame_id: 3 };

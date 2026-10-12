@@ -17,13 +17,17 @@ from host_desktop_wire import Writer, read_command
 
 
 def picture_value(value):
-    if (not isinstance(value, dict) or set(value) - {'mode', 'max_dimension', 'frame_rate', 'audio', 'native_pixels'} or
+    if (not isinstance(value, dict) or set(value) - {'mode', 'max_dimension', 'frame_rate', 'audio', 'native_pixels', 'codecs'} or
             not {'mode', 'max_dimension', 'frame_rate', 'audio'}.issubset(value) or
             type(value.get('native_pixels', False)) is not bool or
             value['mode'] not in ('auto', 'clarity', 'smooth', 'data') or
             type(value['max_dimension']) is not int or value['max_dimension'] not in (1600, 1920, 2560, 3840, 4096) or
             type(value['frame_rate']) is not int or value['frame_rate'] not in (15, 30, 60) or
             type(value['audio']) is not bool):
+        raise DesktopError('INVALID_ARGUMENT')
+    codecs = value.get('codecs', ['h264'])
+    if (not isinstance(codecs, list) or not 1 <= len(codecs) <= 2 or
+            any(codec not in ('h264', 'vp9') for codec in codecs) or len(set(codecs)) != len(codecs)):
         raise DesktopError('INVALID_ARGUMENT')
     return dict(value)
 

@@ -3,7 +3,7 @@ import unittest
 from unittest.mock import patch
 from types import SimpleNamespace
 
-from host_desktop_helper import HostDesktop, portal_displays
+from host_desktop_helper import HostDesktop, portal_displays, picture_value
 from host_desktop_contract import DesktopError
 from host_desktop_input import HeldInput
 
@@ -269,6 +269,17 @@ class HelperTests(unittest.TestCase):
             self.desktop.held.key(29, True)
         self.desktop.held.release()
         self.assertEqual(self.backend.calls, [('release', 29)])
+
+
+class PictureCodecTests(unittest.TestCase):
+    def test_video_offer_is_optional_known_unique_and_bounded(self):
+        picture = dict(mode='smooth', max_dimension=2560, frame_rate=60, audio=False)
+        self.assertEqual(picture_value(picture), picture)
+        for codecs in (['h264'], ['vp9'], ['vp9', 'h264']):
+            self.assertEqual(picture_value(dict(picture, codecs=codecs))['codecs'], codecs)
+        for codecs in ([], ['av1'], ['vp9', 'vp9'], ['vp9', 'h264', 'vp9'], None, 'vp9', [{}]):
+            with self.subTest(codecs=codecs), self.assertRaisesRegex(DesktopError, 'INVALID_ARGUMENT'):
+                picture_value(dict(picture, codecs=codecs))
 
 
 if __name__ == '__main__':

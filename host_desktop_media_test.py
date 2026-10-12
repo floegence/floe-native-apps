@@ -25,6 +25,44 @@ class PixelComparisonTests(unittest.TestCase):
 
 
 class SchedulerTests(unittest.TestCase):
+    def test_software_codec_selection_is_explicit_and_hardware_h264_stays_preferred(self):
+        loop = SimpleNamespace(timeout_add=lambda *_: 1)
+        for encoder, offer, selected in (
+                ('x264enc', ['h264'], 'x264enc'),
+                ('x264enc', ['vp9', 'h264'], 'vp9enc'),
+                ('nvidia-nvenc', ['vp9', 'h264'], 'nvidia-nvenc'),
+                ('nvidia-nvenc', ['vp9'], 'vp9enc')):
+            with self.subTest(encoder=encoder, offer=offer), patch('host_desktop_media.select_encoder', return_value=('vp9enc', '')) as choose:
+                media = DesktopMedia(None, loop, 1, {'frame_rate': 60, 'codecs': offer}, (encoder, ''), lambda *_: None, lambda *_: None)
+                self.assertEqual(media.encoder_name, selected)
+                self.assertEqual(choose.call_count, int(selected != encoder))
+
+    def test_vp9_reference_frames_keep_identity_without_avc_configuration(self):
+        callbacks, outputs, failures = [], [], []
+        loop = SimpleNamespace(timeout_add=lambda *_: 1, idle_add=lambda callback: callbacks.append(callback) or 1)
+        gst = SimpleNamespace(FlowReturn=SimpleNamespace(OK='ok'), BufferFlags=SimpleNamespace(DELTA_UNIT=1))
+        media = DesktopMedia(gst, loop, 1, {'frame_rate': 60, 'codecs': ['vp9']}, ('vp9enc', ''),
+            lambda *args: outputs.append(args), failures.append)
+        media.encoding_size = (1920, 1280, 1920, 1280)
+        buffer = Mock()
+        buffer.get_size.return_value = 3
+        buffer.extract_dup.return_value = b'vp9'
+        sample, sink = Mock(), Mock()
+        sink.emit.return_value = sample
+        sample.get_buffer.return_value = buffer
+        for key in (True, False):
+            media.submitted.append((media.credit.reserve(), 100))
+            buffer.has_flags.return_value = not key
+            media._encoded(sink, 1)
+            while callbacks:
+                callbacks.pop(0)()
+        self.assertEqual(failures, [])
+        self.assertEqual([m['frame_id'] for m, _ in outputs], [1, 2])
+        self.assertEqual(outputs[0][0]['profile'], 'vp09.00.51.08')
+        self.assertNotIn('profile', outputs[1][0])
+        self.assertNotIn('description', outputs[0][0])
+        self.assertEqual(outputs[0][0]['codec'], 'vp9')
+
     def test_input_dimensions_require_live_capture_and_ignore_encoder_resize(self):
         loop = SimpleNamespace(timeout_add=lambda *_: 1)
         media = DesktopMedia(None, loop, 1, {'frame_rate': 60}, ('fixture', ''), lambda *_: None, lambda *_: None)
@@ -49,10 +87,12 @@ class SchedulerTests(unittest.TestCase):
             self.assertTrue(media._settled())
             media.interacted()
             self.assertFalse(media._settled())
-        with patch('host_desktop_media.time.monotonic', return_value=10.6):
+        with patch('host_desktop_media.time.monotonic', return_value=10.99):
+            self.assertFalse(media._settled())
+        with patch('host_desktop_media.time.monotonic', return_value=11.21):
             self.assertTrue(media._settled())
-        media.changed_at = 10.59
-        with patch('host_desktop_media.time.monotonic', return_value=10.6):
+        media.changed_at = 11.2
+        with patch('host_desktop_media.time.monotonic', return_value=11.21):
             self.assertFalse(media._settled())
 
     def test_lost_pipewire_source_invalidates_target_and_requests_display_reconnect(self):

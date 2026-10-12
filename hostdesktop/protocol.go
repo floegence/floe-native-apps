@@ -50,11 +50,12 @@ type HostDesktopCapabilities struct {
 }
 
 type HostDesktopPicture struct {
-	Mode         string `json:"mode"`
-	MaxDimension int    `json:"max_dimension"`
-	FrameRate    int    `json:"frame_rate"`
-	Audio        bool   `json:"audio"`
-	NativePixels bool   `json:"native_pixels,omitempty"`
+	Mode         string   `json:"mode"`
+	MaxDimension int      `json:"max_dimension"`
+	FrameRate    int      `json:"frame_rate"`
+	Audio        bool     `json:"audio"`
+	NativePixels bool     `json:"native_pixels,omitempty"`
+	Codecs       []string `json:"codecs,omitempty"`
 }
 
 // HostDesktopServiceStatus is the stable, redacted status of the optional
@@ -172,6 +173,18 @@ func hostDesktopServiceName(name string) bool { return name == "login-screen" }
 func (p HostDesktopPicture) valid() bool {
 	if p.Mode != "auto" && p.Mode != "clarity" && p.Mode != "smooth" && p.Mode != "data" {
 		return false
+	}
+	if p.Codecs != nil {
+		if len(p.Codecs) < 1 || len(p.Codecs) > 2 {
+			return false
+		}
+		seen := map[string]bool{}
+		for _, codec := range p.Codecs {
+			if codec != "h264" && codec != "vp9" || seen[codec] {
+				return false
+			}
+			seen[codec] = true
+		}
 	}
 	dimension := p.MaxDimension == 1600 || p.MaxDimension == 1920 || p.MaxDimension == 2560 || p.MaxDimension == 3840 || p.MaxDimension == 4096
 	return (p.FrameRate == 15 || p.FrameRate == 30 || p.FrameRate == 60) && dimension
@@ -341,7 +354,10 @@ func (message HostDesktopMessage) valid() bool {
 		if message.Cursor != "" && message.Cursor != "embedded" && message.Cursor != "separate" {
 			return false
 		}
-		return desktopID(message.Generation) && desktopID(message.FrameID) && message.Width >= 2 && message.Width <= 8192 && message.Height >= 2 && message.Height <= 8192 && message.Width*message.Height <= 16<<20 && message.Bytes > 0 && (message.Codec == "h264" || message.Codec == "png") && message.Timestamp >= 0
+		if message.Codec == "vp9" && message.Key && message.Profile != "vp09.00.41.08" && message.Profile != "vp09.00.51.08" && message.Profile != "vp09.00.62.08" {
+			return false
+		}
+		return desktopID(message.Generation) && desktopID(message.FrameID) && message.Width >= 2 && message.Width <= 8192 && message.Height >= 2 && message.Height <= 8192 && message.Width*message.Height <= 16<<20 && message.Bytes > 0 && (message.Codec == "h264" || message.Codec == "vp9" || message.Codec == "png") && message.Timestamp >= 0
 	case "cursor":
 		if p := message.CursorPosition; p != nil && (p.Width < 2 || p.Width > 8192 || p.Height < 2 || p.Height > 8192 || p.Width*p.Height > 16<<20 || p.X < -512 || p.X > p.Width+512 || p.Y < -512 || p.Y > p.Height+512) {
 			return false

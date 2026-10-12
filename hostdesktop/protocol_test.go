@@ -29,6 +29,31 @@ func TestHostDesktopFramingKeepsControlAndMediaBoundaries(t *testing.T) {
 	}
 }
 
+func TestHostDesktopNegotiatesOnlyBoundedKnownVideoCodecs(t *testing.T) {
+	picture := HostDesktopPicture{Mode: "smooth", MaxDimension: 2560, FrameRate: 60}
+	for _, codecs := range [][]string{nil, {"h264"}, {"vp9", "h264"}} {
+		picture.Codecs = codecs
+		if !picture.valid() {
+			t.Fatalf("reject supported offer %v", codecs)
+		}
+	}
+	for _, codecs := range [][]string{{}, {"av1"}, {"vp9", "vp9"}, {"vp9", "h264", "vp9"}} {
+		picture.Codecs = codecs
+		if picture.valid() {
+			t.Fatalf("accept invalid offer %v", codecs)
+		}
+	}
+	frame := HostDesktopMessage{Version: 1, Type: "frame", Generation: 1, FrameID: 1, Codec: "vp9", Width: 1920, Height: 1280, Key: true, Profile: "vp09.00.51.08", Data: []byte{1, 2, 3}}
+	var wire bytes.Buffer
+	if err := WriteHostDesktopMessage(&wire, frame); err != nil {
+		t.Fatal(err)
+	}
+	got, err := ReadHostDesktopMessage(&wire)
+	if err != nil || got.Codec != "vp9" || got.Profile != frame.Profile {
+		t.Fatalf("VP9 frame lost identity: %+v %v", got, err)
+	}
+}
+
 func TestHostDesktopRejectsOversizedAndTruncatedNativeMessages(t *testing.T) {
 	for _, size := range []uint32{0, hostDesktopHeaderLimit + 1, 0xffffffff} {
 		var header [4]byte

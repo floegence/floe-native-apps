@@ -32,7 +32,7 @@ try:
     del pixels
 finally:
     pool.close()
-for name in ('pipewiresrc', 'pulsesrc', 'h264parse', 'pngenc', 'opusenc', 'opusdec', 'openh264dec'):
+for name in ('pipewiresrc', 'pulsesrc', 'h264parse', 'pngenc', 'opusenc', 'opusdec', 'openh264dec', 'vp9enc', 'vp9dec'):
     if not Gst.ElementFactory.find(name):
         raise RuntimeError('required media element missing: ' + name)
 encoder, specification = select_encoder(Gst)
@@ -42,6 +42,9 @@ for label, description, minimum in (
     ('video', 'videotestsrc num-buffers=8 pattern=smpte ! video/x-raw,width=320,height=180,framerate=60/1 ! '
         'videoconvert ! video/x-raw,format=I420 ! ' + portable_specification + ' ! h264parse ! openh264dec ! '
         'videoconvert ! video/x-raw,format=BGRA ! appsink name=decoded sync=false', 320 * 180 * 4),
+    ('vp9', 'videotestsrc num-buffers=8 pattern=smpte ! video/x-raw,width=320,height=180,framerate=60/1 ! '
+        'videoconvert ! video/x-raw,format=I420 ! ' + next(spec for name, spec in ENCODERS if name == 'vp9enc') +
+        ' ! vp9dec ! videoconvert ! video/x-raw,format=BGRA ! appsink name=decoded sync=false', 320 * 180 * 4),
     ('audio', 'audiotestsrc num-buffers=8 wave=sine ! audioconvert ! audioresample ! '
         'audio/x-raw,rate=48000,channels=2 ! opusenc frame-size=20 ! opusdec ! '
         'appsink name=decoded sync=false', 1),
@@ -59,46 +62,47 @@ for label, description, minimum in (
 
 # Exercise the actual bounded scheduler and static-first-frame refinement, not
 # only independent encoder elements. This remains a synthetic installation test.
-loop = GLib.MainLoop()
-frames, errors = [], []
+for codec in ('h264', 'vp9'):
+    loop = GLib.MainLoop()
+    frames, errors = [], []
 
 
-def output(message, payload):
-    if message['type'] != 'frame':
-        return
-    if not payload or message['width'] != 320 or message['height'] != 180:
-        errors.append('invalid synthetic frame')
+    def output(message, payload):
+        if message['type'] != 'frame':
+            return
+        if not payload or message['width'] != 320 or message['height'] != 180:
+            errors.append('invalid synthetic frame')
+            loop.quit()
+            return
+        frames.append((message['frame_id'], message['codec']))
+        GLib.idle_add(lambda: (media.acknowledge(message['frame_id']), False)[1])
+        if message['codec'] == 'png':
+            if payload[:8] != b'\x89PNG\r\n\x1a\n':
+                errors.append('invalid refinement')
+            loop.quit()
+
+
+    def failed(code):
+        errors.append(code)
         loop.quit()
-        return
-    frames.append((message['frame_id'], message['codec']))
-    GLib.idle_add(lambda: (media.acknowledge(message['frame_id']), False)[1])
-    if message['codec'] == 'png':
-        if payload[:8] != b'\x89PNG\r\n\x1a\n':
-            errors.append('invalid refinement')
-        loop.quit()
+        return False
 
 
-def failed(code):
-    errors.append(code)
-    loop.quit()
-    return False
-
-
-media = DesktopMedia(Gst, GLib, 1, {'mode': 'clarity', 'max_dimension': 1920, 'frame_rate': 60, 'audio': False},
-                     (encoder, specification), output, failed)
-media.capture = media._pipeline('videotestsrc num-buffers=1 pattern=smpte ! '
-    'video/x-raw,format=BGRA,width=320,height=180,framerate=60/1 ! '
-    'appsink name=frames max-buffers=1 drop=true emit-signals=true sync=false', 'capture')
-timeout = GLib.timeout_add_seconds(8, lambda: failed('SYNTHETIC_FRAME_TIMEOUT'))
-try:
-    media._start_capture()
-    loop.run()
-finally:
-    media.close()
-    if not errors:
-        GLib.source_remove(timeout)
-if errors or [codec for _, codec in frames] != ['h264', 'png'] or frames[0][0] >= frames[1][0]:
-    raise RuntimeError('production scheduler failed: ' + repr((errors, frames)))
+    media = DesktopMedia(Gst, GLib, 1, {'mode': 'clarity', 'max_dimension': 1920, 'frame_rate': 60, 'audio': False, 'codecs': [codec]},
+                         (encoder, specification), output, failed)
+    media.capture = media._pipeline('videotestsrc num-buffers=1 pattern=smpte ! '
+        'video/x-raw,format=BGRA,width=320,height=180,framerate=60/1 ! '
+        'appsink name=frames max-buffers=1 drop=true emit-signals=true sync=false', 'capture')
+    timeout = GLib.timeout_add_seconds(8, lambda: failed('SYNTHETIC_FRAME_TIMEOUT'))
+    try:
+        media._start_capture()
+        loop.run()
+    finally:
+        media.close()
+        if not errors:
+            GLib.source_remove(timeout)
+    if errors or [codec for _, codec in frames] != [codec, 'png'] or frames[0][0] >= frames[1][0]:
+        raise RuntimeError('production scheduler failed: ' + repr((errors, frames)))
 # A signal must revoke and exit even if a Runtime still holds stdin open.
 # An invalid command confirms startup without querying the user's desktop.
 with tempfile.TemporaryDirectory(prefix='floe-desktop-selfcheck-') as state:
@@ -130,4 +134,4 @@ with tempfile.TemporaryDirectory(prefix='floe-desktop-selfcheck-') as state:
         child.communicate(timeout=4)
         os.close(reader)
 print(json.dumps({'video' : 'decoded', 'audio': 'decoded', 'encoder': encoder,
-                  'static_frame': 'h264_then_lossless_refinement', 'signal_shutdown': 'clean'}))
+                  'vp9': 'decoded', 'static_frame': 'h264_and_vp9_then_lossless_refinement', 'signal_shutdown': 'clean'}))
