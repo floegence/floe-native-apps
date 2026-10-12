@@ -48,7 +48,7 @@ class PortalGrantTests(unittest.TestCase):
             self.assertEqual(grant.begin_restore(), 'single-use-token')
             self.assertIsNone(PortalGrant(directory).begin_restore())
 
-    def test_refuse_symlink_and_readable_token(self):
+    def test_refuse_symlink_token(self):
         with tempfile.TemporaryDirectory() as directory:
             grant = PortalGrant(directory)
             target = Path(directory, 'other')
@@ -57,11 +57,27 @@ class PortalGrantTests(unittest.TestCase):
             with self.assertRaises(DesktopError):
                 grant.begin_restore()
             self.assertEqual(target.read_text(), '{"version":1,"token":"private"}')
-            os.unlink(grant.path)
+
+    def test_refuse_group_and_world_access_without_exposing_token(self):
+        with tempfile.TemporaryDirectory() as directory:
+            grant = PortalGrant(directory)
             grant.save('token')
-            os.chmod(grant.path, 0o644)
-            with self.assertRaises(DesktopError):
-                grant.begin_restore()
+            original = Path(grant.path).read_bytes()
+            token_info = os.stat(grant.path)
+            real_fstat = os.fstat
+            for mask in (0o040, 0o004, 0o020, 0o002):
+                with self.subTest(mask=mask):
+                    def exposed_token_stat(fd):
+                        info = real_fstat(fd)
+                        if (info.st_dev, info.st_ino) == (token_info.st_dev, token_info.st_ino):
+                            # Model unsafe metadata while the real token stays private.
+                            return os.stat_result((info.st_mode | mask, *info[1:]))
+                        return info
+                    with patch('host_desktop_portal.os.fstat', side_effect=exposed_token_stat):
+                        with self.assertRaisesRegex(DesktopError, 'RESTORE_TOKEN_INVALID'):
+                            grant.begin_restore()
+                    self.assertEqual(Path(grant.path).read_bytes(), original)
+                    self.assertEqual(os.stat(grant.path).st_mode & 0o777, 0o600)
 
     def test_consume_rejects_invalid_token_without_repair(self):
         with tempfile.TemporaryDirectory() as directory:

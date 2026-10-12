@@ -128,7 +128,10 @@ removes the overlay and the next painted frame selects embedded ownership.
 
 The SSH user prepares and self-checks the pinned media closure before the
 administrator transaction. The transaction verifies its archive digest, rejects
-links and special files, and installs immutable root-owned files. Version-one
+links and special files, and installs immutable root-owned files. Extraction
+uses a directory-bound `os.Root` for every archive path in addition to the shared
+header budget; an existing symlink cannot redirect writes outside that root.
+File permissions are set through the opened file descriptor. Version-one
 service records have an explicit version-two upgrade; failed upgrades restore
 the exact old policy bytes, unit and activation state. Incompatible service
 protocols report `SERVICE_UPDATE_REQUIRED`, without a legacy attachment path.

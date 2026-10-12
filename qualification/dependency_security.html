@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Qualification dependency security smoke check</title>
+<script src="./node_modules/dompurify/dist/purify.min.js"></script>
+<script src="./node_modules/katex/dist/katex.min.js"></script>
+<pre id="result">Running</pre>
+<div id="diagram"></div>
+<script type="module">
+import mermaid from './node_modules/mermaid/dist/mermaid.esm.min.mjs';
+
+const assert = (condition, message) => { if (!condition) throw new Error(message); };
+try {
+  const sanitized = DOMPurify.sanitize('<img src="data:," onerror="alert(1)"><script>alert(1)<\/script><b>safe</b>');
+  const fragment = document.createElement('template');
+  fragment.innerHTML = sanitized;
+  assert(!fragment.content.querySelector('script,[onerror]'), 'unsafe content survived sanitization');
+  assert(fragment.content.querySelector('b')?.textContent === 'safe', 'safe formatting was lost');
+
+  const math = katex.renderToString(String.raw`\frac{1}{2}+\sqrt{x^2}`, {throwOnError: true, trust: false});
+  assert(math.includes('katex-mathml') && math.includes('<math'), 'KaTeX did not render math');
+  const untrusted = katex.renderToString(String.raw`\href{javascript:alert(1)}{unsafe}`, {trust: false});
+  assert(!untrusted.includes('href="javascript:'), 'KaTeX allowed an untrusted link');
+
+  mermaid.initialize({startOnLoad: false, securityLevel: 'strict'});
+  const {svg} = await mermaid.render('math-smoke', 'flowchart LR\n A["$$x^2$$"] --> B["safe"]');
+  document.querySelector('#diagram').innerHTML = svg;
+  assert(document.querySelector('#diagram svg .katex'), 'Mermaid did not render the patched KaTeX integration');
+  assert(document.querySelector('#diagram').textContent.includes('safe'), 'Mermaid lost the ordinary label');
+  document.querySelector('#result').textContent = JSON.stringify({status: 'passed', dompurify: DOMPurify.version,
+    katex: katex.version, checks: ['sanitization', 'math', 'untrusted-link', 'mermaid-math']});
+} catch (error) {
+  document.querySelector('#result').textContent = JSON.stringify({status: 'failed', error: String(error)});
+  throw error;
+}
+</script>
+</html>

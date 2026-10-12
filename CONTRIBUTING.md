@@ -29,6 +29,14 @@ macOS in GitHub Actions. `go mod tidy -diff` must produce no changes, and
 `govulncheck`; keep their real checksums in `go.sum`. Do not add runtime
 libraries solely to create a checksum file.
 
+The qualification-only npm tree pins DOMPurify 3.4.16 and KaTeX 0.18.2 through
+overrides while Monaco and Mermaid still require vulnerable versions. Remove
+each override when all parent constraints accept the patched release; verify
+`npm audit --prefix qualification` and the Mermaid math/sanitization smoke check
+(`qualification/dependency_security.html`, served from the qualification tree)
+before changing these pins. These packages are test tooling, not SDK runtime
+assets. Keep browser execution in explicit qualification, outside source CI.
+
 Add a focused regression test for a behavior change. Tests must preserve the
 fail-closed extraction, ownership, cancellation, and activation boundaries.
 Keep network and graphical tests out of ordinary source CI. Do not weaken

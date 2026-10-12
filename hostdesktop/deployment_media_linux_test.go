@@ -70,6 +70,25 @@ func TestLoginMediaPreparedClosureExtraction(t *testing.T) {
 	}
 }
 
+func TestLoginMediaExtractionCannotFollowDestinationSymlinkOutsideRoot(t *testing.T) {
+	d, request, _, _ := fixtureLoginDeployment(t)
+	destination := filepath.Join(d.root, "media")
+	if err := os.MkdirAll(destination, 0700); err != nil {
+		t.Fatal(err)
+	}
+	outside := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(destination, "floe")); err != nil {
+		t.Fatal(err)
+	}
+	if err := loginExtractMedia(t.Context(), filepath.Join(request.SourceDirectory, "media.tar.gz"), destination); err == nil {
+		t.Fatal("extraction followed a destination symlink outside its root")
+	}
+	entries, err := os.ReadDir(outside)
+	if err != nil || len(entries) != 0 {
+		t.Fatal("extraction modified files outside its root", err)
+	}
+}
+
 func TestLoginMediaUpgradeRestoresExactVersionOneRecord(t *testing.T) {
 	d, request, systemd, _ := fixtureLoginDeployment(t)
 	if err := d.manage(t.Context(), request); err != nil {
