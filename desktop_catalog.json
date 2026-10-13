@@ -1,8 +1,8 @@
 [
   {
-    "id": "alpine-3.23-desktop-14.0.2-amd64-r7",
+    "id": "alpine-3.23-desktop-14.0.2-amd64-r8",
     "architecture": "amd64",
-    "size_bytes": 142829754,
+    "size_bytes": 142829768,
     "installed_bytes": 406137590,
     "artifacts": [
       {
@@ -2946,18 +2946,18 @@
         ]
       },
       {
-        "name": "zlib-1.3.2-r0.apk",
-        "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/zlib-1.3.2-r0.apk",
-        "sha256": "f56dea63692059bd65854bb179b7551971a441000b0d98c5b031291ca0450b56",
-        "size_bytes": 56191,
+        "name": "zlib-1.3.2-r1.apk",
+        "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/zlib-1.3.2-r1.apk",
+        "sha256": "ee62e1864c235901e2aa4d1868c7ae8f7cc5d0740a98c48a2525332eb4bfda73",
+        "size_bytes": 56205,
         "format": "apk",
         "license": "Zlib",
         "source": "https://gitlab.alpinelinux.org/alpine/aports/-/tree/3.23-stable/main/zlib",
         "mirrors": [
-          "https://mirrors.edge.kernel.org/alpine/v3.23/main/x86_64/zlib-1.3.2-r0.apk",
-          "https://mirrors.aliyun.com/alpine/v3.23/main/x86_64/zlib-1.3.2-r0.apk",
-          "https://mirrors.tuna.tsinghua.edu.cn/alpine/v3.23/main/x86_64/zlib-1.3.2-r0.apk",
-          "https://mirrors.ustc.edu.cn/alpine/v3.23/main/x86_64/zlib-1.3.2-r0.apk"
+          "https://mirrors.edge.kernel.org/alpine/v3.23/main/x86_64/zlib-1.3.2-r1.apk",
+          "https://mirrors.aliyun.com/alpine/v3.23/main/x86_64/zlib-1.3.2-r1.apk",
+          "https://mirrors.tuna.tsinghua.edu.cn/alpine/v3.23/main/x86_64/zlib-1.3.2-r1.apk",
+          "https://mirrors.ustc.edu.cn/alpine/v3.23/main/x86_64/zlib-1.3.2-r1.apk"
         ]
       },
       {
@@ -2982,9 +2982,9 @@
     }
   },
   {
-    "id": "alpine-3.23-desktop-14.0.2-arm64-r7",
+    "id": "alpine-3.23-desktop-14.0.2-arm64-r8",
     "architecture": "arm64",
-    "size_bytes": 137945560,
+    "size_bytes": 137945577,
     "installed_bytes": 402750501,
     "artifacts": [
       {
@@ -5943,18 +5943,18 @@
         ]
       },
       {
-        "name": "zlib-1.3.2-r0.apk",
-        "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/aarch64/zlib-1.3.2-r0.apk",
-        "sha256": "ecda4cc94fd18f90182f1d3a615889df5e0db9cf78926d11627dd23e06d2e6e8",
-        "size_bytes": 54314,
+        "name": "zlib-1.3.2-r1.apk",
+        "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/aarch64/zlib-1.3.2-r1.apk",
+        "sha256": "82d52fa82a46c73aae8b9f95d7f31a196137f3ce4a000980cdbbfc05c245e7bf",
+        "size_bytes": 54331,
         "format": "apk",
         "license": "Zlib",
         "source": "https://gitlab.alpinelinux.org/alpine/aports/-/tree/3.23-stable/main/zlib",
         "mirrors": [
-          "https://mirrors.edge.kernel.org/alpine/v3.23/main/aarch64/zlib-1.3.2-r0.apk",
-          "https://mirrors.aliyun.com/alpine/v3.23/main/aarch64/zlib-1.3.2-r0.apk",
-          "https://mirrors.tuna.tsinghua.edu.cn/alpine/v3.23/main/aarch64/zlib-1.3.2-r0.apk",
-          "https://mirrors.ustc.edu.cn/alpine/v3.23/main/aarch64/zlib-1.3.2-r0.apk"
+          "https://mirrors.edge.kernel.org/alpine/v3.23/main/aarch64/zlib-1.3.2-r1.apk",
+          "https://mirrors.aliyun.com/alpine/v3.23/main/aarch64/zlib-1.3.2-r1.apk",
+          "https://mirrors.tuna.tsinghua.edu.cn/alpine/v3.23/main/aarch64/zlib-1.3.2-r1.apk",
+          "https://mirrors.ustc.edu.cn/alpine/v3.23/main/aarch64/zlib-1.3.2-r1.apk"
         ]
       },
       {

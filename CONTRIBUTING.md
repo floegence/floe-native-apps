@@ -170,6 +170,13 @@ expanded budgets are recalculated from the original archives. Installed `r6`
 recipes retain their exact identities and files; native binaries and the
 physical desktop media recipe are unchanged.
 
+Catalog revision `r8` refreshes zlib to 1.3.2-r1 and openjpeg to 2.5.4-r2 after
+the publisher retired the previous archives. The private desktop uses `r8`,
+the Xpra recipe uses `r7`, and the physical desktop's content digest changes.
+Both architecture closures require publisher signatures and full acquisition
+and installed-stack qualification. Previous installed recipes retain their
+identities and files; this update does not alter native workers or codecs.
+
 The graphical check covers Unix sockets and three WebSocket attachments. Each
 attachment must paint, deliver fresh input, and preserve the fixture's process
 identity; each browser-style detach must leave its window available for the next

@@ -3290,5 +3290,585 @@
         "executable": true
       }
     }
+  },
+  {
+    "version": "v0.22.38",
+    "id": "alpine-3.23-host-desktop-1-amd64",
+    "digest": "d5c9c2ceda5c1aaa05b01901df7a88c27fb6e37c2e511a5f6477a1e104706605",
+    "architecture": "amd64",
+    "files": {
+      "desktop-drm": {
+        "sha256": "df380a2f819ec02cd60c83715e4c4c7059975efb21b86e3f2f1e04e43190d9c8",
+        "size_bytes": 79840,
+        "common": false,
+        "executable": true
+      },
+      "desktop-mpp": {
+        "sha256": "c49b2fd0eb798e8fb07d83d3c26a5dd4f6a1106cfb271674350de053187d3f2e",
+        "size_bytes": 22424,
+        "common": false,
+        "executable": true
+      },
+      "desktop-nvenc": {
+        "sha256": "6c4314c82a9c2a95ec8e1494a34c4e9999af0151f7aa6b113c25d63af69f857f",
+        "size_bytes": 18328,
+        "common": false,
+        "executable": true
+      },
+      "drm-build.json": {
+        "sha256": "d602dcb4515971813b9006d1ff6bde4ae7989da6fa36a1ffcd63bc208b2278af",
+        "size_bytes": 26913,
+        "common": false,
+        "executable": false
+      },
+      "dynlink_cuda.h": {
+        "sha256": "2c74cf9b0ace0503ca18d2c43645d6cb1ec0dd7ea7163f7880bba5141586f275",
+        "size_bytes": 21936,
+        "common": false,
+        "executable": false
+      },
+      "floe-host-desktop-service": {
+        "sha256": "e59e8d23932d4c5f901b2989111aa38afa83a43e796452e24f6ea514ca70cd8d",
+        "size_bytes": 4485244,
+        "common": false,
+        "executable": true
+      },
+      "host_desktop_contract.py": {
+        "sha256": "c7e2d03d3d3330d848314b58499007cf41b13063306913ce94f9d4771d1138da",
+        "size_bytes": 3820,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_drm.py": {
+        "sha256": "3fc6b9436a6f8f9b620b9e551f9d37365b65151cdd50ac8b23c586bbb4201cb7",
+        "size_bytes": 22263,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_encoder.py": {
+        "sha256": "82e339b31695b21dad51718b41b6b4d044930c691ae4aa7f833fb8a2673979a7",
+        "size_bytes": 5020,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_helper.py": {
+        "sha256": "7c81fa8867eed2ec181de6428382436119a9622a6c179606f18a304385df8833",
+        "size_bytes": 28771,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_identity.py": {
+        "sha256": "2a19207530ef0d178c78934f8103f45a8b1e54b53905dd91b8d70eaa29c8d945",
+        "size_bytes": 7240,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_input.py": {
+        "sha256": "f45bc4ab354cc926fbf114b5c131c64fb669bcb4db76fc4ece9cec5813a0784f",
+        "size_bytes": 3113,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_login_text.py": {
+        "sha256": "984c3f347b9411e8e0a2a14fa6e2cf7eea30a280f605efcf9298f583aff2f38a",
+        "size_bytes": 9875,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_media.py": {
+        "sha256": "b00683e66bfc6c75bec5bbd5388725f622f6ab5995fca41920e73171e572602c",
+        "size_bytes": 27237,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_pipewire.py": {
+        "sha256": "d893c5d7ecff08adf04b280c6ca5f84b81275d66e18ba13a45bcee097178e579",
+        "size_bytes": 23568,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_pixels.py": {
+        "sha256": "c4a7c42a9e811c2387e2d4678a79247863f109f95118b82bf37e0a4df59b028a",
+        "size_bytes": 7816,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_portal.py": {
+        "sha256": "b076fd1bfae3dfa22de3bf5a535dd02a67e9797221c475b63f5d32beabdb22be",
+        "size_bytes": 26485,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_selfcheck.py": {
+        "sha256": "a6da5b7353dc0aff572e68cabd447416b0b5f98a90f3c050b018ba7a3df38c09",
+        "size_bytes": 7754,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_wire.py": {
+        "sha256": "6729da1deed9728acf2e902239ea7c25bd78b69281e5f534eaaf7e5cd640e2b4",
+        "size_bytes": 3421,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_x11.py": {
+        "sha256": "be28d0c2e72a1e6e1fd878bfc3e40d723db985ce2f2e4b45507e9c3d44b9bfe5",
+        "size_bytes": 4762,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_xcapture.py": {
+        "sha256": "6b9130976367f5e4591c19f4c5d30b79493e6ac5c35bf526ea03e437a3e5b6d1",
+        "size_bytes": 18344,
+        "common": false,
+        "executable": false
+      },
+      "libdrmtap.LICENSE": {
+        "sha256": "a6db0e06dbfbfcd2f0875c5790cccbf7cd20b7b4fef7947086926f127cde0052",
+        "size_bytes": 1079,
+        "common": false,
+        "executable": false
+      },
+      "mpp-LICENSE.Apache-2.0": {
+        "sha256": "ed57d96d27be775b22f9571d3724ef84e0d0b8f24b805ec7f87a32189de19a9c",
+        "size_bytes": 9805,
+        "common": false,
+        "executable": false
+      },
+      "mpp-LICENSE.MIT": {
+        "sha256": "323c587d0ccf10e376f8bf9a7f31fb4ca6078105194b42e0b1e0ee2bc9bde71f",
+        "size_bytes": 1372,
+        "common": false,
+        "executable": false
+      },
+      "mpp-build.json": {
+        "sha256": "10fd2c498a8d1c43aa29892a2180ff0301ef712068c1ebaeaab72ec1735e20db",
+        "size_bytes": 25171,
+        "common": false,
+        "executable": false
+      },
+      "mpp-mpp_bit.h": {
+        "sha256": "75d841425b25d78d433b87b3111b0a34ecf6d30b48eb3e0c744f905f53d81826",
+        "size_bytes": 3143,
+        "common": false,
+        "executable": false
+      },
+      "mpp-mpp_buffer.h": {
+        "sha256": "c9d7e42030dae2c88dbede35da31e9f2bd4d8847a9a276f02ee2397df5dd75b3",
+        "size_bytes": 14089,
+        "common": false,
+        "executable": false
+      },
+      "mpp-mpp_err.h": {
+        "sha256": "ba479121d90eb86724c52ce941b232bcdfed63cabec68927e41376cb3078eaca",
+        "size_bytes": 1407,
+        "common": false,
+        "executable": false
+      },
+      "mpp-mpp_frame.h": {
+        "sha256": "81acdadbe66791a5d82094954f86af6c3ce10b581b7888d3d1145ab36d78bf74",
+        "size_bytes": 22356,
+        "common": false,
+        "executable": false
+      },
+      "mpp-mpp_meta.h": {
+        "sha256": "40bc4a742fdde60ba57ec8d859adc60ab81bcca4773a648dd73052ecfff3faf3",
+        "size_bytes": 9472,
+        "common": false,
+        "executable": false
+      },
+      "mpp-mpp_packet.h": {
+        "sha256": "75654c948549c12f4c974896006eecb2133b874366299bb2d8db73fa9c645e18",
+        "size_bytes": 3433,
+        "common": false,
+        "executable": false
+      },
+      "mpp-mpp_task.h": {
+        "sha256": "eda5e6b1052bd5d0141450562373ac4b75c6b43eef165df9c4fec762b7001e9f",
+        "size_bytes": 8369,
+        "common": false,
+        "executable": false
+      },
+      "mpp-rk_mpi.h": {
+        "sha256": "96dbae7d90e91baaac38821fc06c74a327cac888007841fe5937798259193646",
+        "size_bytes": 11490,
+        "common": false,
+        "executable": false
+      },
+      "mpp-rk_mpi_cmd.h": {
+        "sha256": "4f35750f6ad5b18fdaee5b097f315c85e826037785340f0f7fa7cc72ae03cc3b",
+        "size_bytes": 10211,
+        "common": false,
+        "executable": false
+      },
+      "mpp-rk_mpp_cfg.h": {
+        "sha256": "bc3a1d0d371c70665671411a60b3f6957e53179703aa7e2d6afc227bc97b2999",
+        "size_bytes": 1366,
+        "common": false,
+        "executable": false
+      },
+      "mpp-rk_type.h": {
+        "sha256": "1f671775f242dc0a0e80b575aceb5c1686e7e4c1db82336f5ee90ce182569ed3",
+        "size_bytes": 6474,
+        "common": false,
+        "executable": false
+      },
+      "mpp-rk_vdec_cfg.h": {
+        "sha256": "8b678a1f5df8905470a27d04cfedc7dfa6b927b8fd93b73bbcdf4ae5046486b6",
+        "size_bytes": 1685,
+        "common": false,
+        "executable": false
+      },
+      "mpp-rk_vdec_cmd.h": {
+        "sha256": "b75bb3fcc55843503b65937ca6b3a8e34f4e1719066fb8c498eab5b0e6342867",
+        "size_bytes": 2530,
+        "common": false,
+        "executable": false
+      },
+      "mpp-rk_venc_cfg.h": {
+        "sha256": "7ffc1b18d90faa627e7fcd6f6eac73298fea7e686bd2a1c6c7a776a91ab49353",
+        "size_bytes": 2180,
+        "common": false,
+        "executable": false
+      },
+      "mpp-rk_venc_cmd.h": {
+        "sha256": "e46597acfbe40a0d06d25df1f1cd017ea1af4d3e18c52a33111058c04e5f7fc6",
+        "size_bytes": 46147,
+        "common": false,
+        "executable": false
+      },
+      "mpp-rk_venc_rc.h": {
+        "sha256": "ee933d283efbc8c1cc259709c37525ebb72384a2f44e5e4c66dcd08dde3f6977",
+        "size_bytes": 2229,
+        "common": false,
+        "executable": false
+      },
+      "mpp-rk_venc_ref.h": {
+        "sha256": "06c661d58b629198f69b73e0bd9593a7aadbcd6982c577483094ef4d25940c31",
+        "size_bytes": 9649,
+        "common": false,
+        "executable": false
+      },
+      "mpp-source.json": {
+        "sha256": "4d595dfe43e0ce76d3ace2cf65fb641afa73ab010758eef13747395a4339e423",
+        "size_bytes": 1638,
+        "common": false,
+        "executable": false
+      },
+      "nvEncodeAPI.h": {
+        "sha256": "dbdaa8bcbc2b9325bd24bc68b36170a8432411518040e8d4c8421608cf217425",
+        "size_bytes": 291178,
+        "common": false,
+        "executable": false
+      },
+      "nvenc-build.json": {
+        "sha256": "ed481a2def56fd23dd218598f552f0c41f09446898bda342871c3758cc1298c4",
+        "size_bytes": 23147,
+        "common": false,
+        "executable": false
+      },
+      "python3": {
+        "sha256": "a93c466ebc9ed28634dc7439b9dba55696a2e5901a9e9327e99c266a9a19cca7",
+        "size_bytes": 812,
+        "common": false,
+        "executable": true
+      },
+      "service-build.json": {
+        "sha256": "de8424d9ba6a36ccf60b80f080a8d084a2bc1b72c3058f83dd45085d7e8fd71f",
+        "size_bytes": 4129,
+        "common": false,
+        "executable": false
+      }
+    }
+  },
+  {
+    "version": "v0.22.38",
+    "id": "alpine-3.23-host-desktop-1-arm64",
+    "digest": "73484fde471927a1479f340bd3f47ef03102a3902d71db77593e0334b2826c73",
+    "architecture": "arm64",
+    "files": {
+      "desktop-drm": {
+        "sha256": "1e541f185e95ac9e42c67f8c55b0fef5a6785779db1f2cf32c9447fe492dd42a",
+        "size_bytes": 79776,
+        "common": false,
+        "executable": true
+      },
+      "desktop-mpp": {
+        "sha256": "9374681aca81cce339599b657137af93591329cbd3a2a3ad7beaf6adaf2b8159",
+        "size_bytes": 18256,
+        "common": false,
+        "executable": true
+      },
+      "desktop-nvenc": {
+        "sha256": "3759fdfaa287e989e8bf1a865f66dbbcbd5509a49d92ee37896853f889e24358",
+        "size_bytes": 14160,
+        "common": false,
+        "executable": true
+      },
+      "drm-build.json": {
+        "sha256": "20dde4cf6f5c41d583ec7d339f053602c86c3ea45267fd9d6cc483fecd39ac3a",
+        "size_bytes": 26687,
+        "common": false,
+        "executable": false
+      },
+      "dynlink_cuda.h": {
+        "sha256": "2c74cf9b0ace0503ca18d2c43645d6cb1ec0dd7ea7163f7880bba5141586f275",
+        "size_bytes": 21936,
+        "common": false,
+        "executable": false
+      },
+      "floe-host-desktop-service": {
+        "sha256": "44d4fa05bb2df26b1208bd521ac0dd98a3747607f91470f777e79335d4b01b75",
+        "size_bytes": 4259964,
+        "common": false,
+        "executable": true
+      },
+      "host_desktop_contract.py": {
+        "sha256": "c7e2d03d3d3330d848314b58499007cf41b13063306913ce94f9d4771d1138da",
+        "size_bytes": 3820,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_drm.py": {
+        "sha256": "3fc6b9436a6f8f9b620b9e551f9d37365b65151cdd50ac8b23c586bbb4201cb7",
+        "size_bytes": 22263,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_encoder.py": {
+        "sha256": "82e339b31695b21dad51718b41b6b4d044930c691ae4aa7f833fb8a2673979a7",
+        "size_bytes": 5020,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_helper.py": {
+        "sha256": "7c81fa8867eed2ec181de6428382436119a9622a6c179606f18a304385df8833",
+        "size_bytes": 28771,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_identity.py": {
+        "sha256": "2a19207530ef0d178c78934f8103f45a8b1e54b53905dd91b8d70eaa29c8d945",
+        "size_bytes": 7240,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_input.py": {
+        "sha256": "f45bc4ab354cc926fbf114b5c131c64fb669bcb4db76fc4ece9cec5813a0784f",
+        "size_bytes": 3113,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_login_text.py": {
+        "sha256": "984c3f347b9411e8e0a2a14fa6e2cf7eea30a280f605efcf9298f583aff2f38a",
+        "size_bytes": 9875,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_media.py": {
+        "sha256": "b00683e66bfc6c75bec5bbd5388725f622f6ab5995fca41920e73171e572602c",
+        "size_bytes": 27237,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_pipewire.py": {
+        "sha256": "d893c5d7ecff08adf04b280c6ca5f84b81275d66e18ba13a45bcee097178e579",
+        "size_bytes": 23568,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_pixels.py": {
+        "sha256": "c4a7c42a9e811c2387e2d4678a79247863f109f95118b82bf37e0a4df59b028a",
+        "size_bytes": 7816,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_portal.py": {
+        "sha256": "b076fd1bfae3dfa22de3bf5a535dd02a67e9797221c475b63f5d32beabdb22be",
+        "size_bytes": 26485,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_selfcheck.py": {
+        "sha256": "a6da5b7353dc0aff572e68cabd447416b0b5f98a90f3c050b018ba7a3df38c09",
+        "size_bytes": 7754,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_wire.py": {
+        "sha256": "6729da1deed9728acf2e902239ea7c25bd78b69281e5f534eaaf7e5cd640e2b4",
+        "size_bytes": 3421,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_x11.py": {
+        "sha256": "be28d0c2e72a1e6e1fd878bfc3e40d723db985ce2f2e4b45507e9c3d44b9bfe5",
+        "size_bytes": 4762,
+        "common": false,
+        "executable": false
+      },
+      "host_desktop_xcapture.py": {
+        "sha256": "6b9130976367f5e4591c19f4c5d30b79493e6ac5c35bf526ea03e437a3e5b6d1",
+        "size_bytes": 18344,
+        "common": false,
+        "executable": false
+      },
+      "libdrmtap.LICENSE": {
+        "sha256": "a6db0e06dbfbfcd2f0875c5790cccbf7cd20b7b4fef7947086926f127cde0052",
+        "size_bytes": 1079,
+        "common": false,
+        "executable": false
+      },
+      "mpp-LICENSE.Apache-2.0": {
+        "sha256": "ed57d96d27be775b22f9571d3724ef84e0d0b8f24b805ec7f87a32189de19a9c",
+        "size_bytes": 9805,
+        "common": false,
+        "executable": false
+      },
+      "mpp-LICENSE.MIT": {
+        "sha256": "323c587d0ccf10e376f8bf9a7f31fb4ca6078105194b42e0b1e0ee2bc9bde71f",
+        "size_bytes": 1372,
+        "common": false,
+        "executable": false
+      },
+      "mpp-build.json": {
+        "sha256": "1302d5230668c819c99f349f846dd6db3e3490ff2d71a2abd4d28ade51468fc7",
+        "size_bytes": 25020,
+        "common": false,
+        "executable": false
+      },
+      "mpp-mpp_bit.h": {
+        "sha256": "75d841425b25d78d433b87b3111b0a34ecf6d30b48eb3e0c744f905f53d81826",
+        "size_bytes": 3143,
+        "common": false,
+        "executable": false
+      },
+      "mpp-mpp_buffer.h": {
+        "sha256": "c9d7e42030dae2c88dbede35da31e9f2bd4d8847a9a276f02ee2397df5dd75b3",
+        "size_bytes": 14089,
+        "common": false,
+        "executable": false
+      },
+      "mpp-mpp_err.h": {
+        "sha256": "ba479121d90eb86724c52ce941b232bcdfed63cabec68927e41376cb3078eaca",
+        "size_bytes": 1407,
+        "common": false,
+        "executable": false
+      },
+      "mpp-mpp_frame.h": {
+        "sha256": "81acdadbe66791a5d82094954f86af6c3ce10b581b7888d3d1145ab36d78bf74",
+        "size_bytes": 22356,
+        "common": false,
+        "executable": false
+      },
+      "mpp-mpp_meta.h": {
+        "sha256": "40bc4a742fdde60ba57ec8d859adc60ab81bcca4773a648dd73052ecfff3faf3",
+        "size_bytes": 9472,
+        "common": false,
+        "executable": false
+      },
+      "mpp-mpp_packet.h": {
+        "sha256": "75654c948549c12f4c974896006eecb2133b874366299bb2d8db73fa9c645e18",
+        "size_bytes": 3433,
+        "common": false,
+        "executable": false
+      },
+      "mpp-mpp_task.h": {
+        "sha256": "eda5e6b1052bd5d0141450562373ac4b75c6b43eef165df9c4fec762b7001e9f",
+        "size_bytes": 8369,
+        "common": false,
+        "executable": false
+      },
+      "mpp-rk_mpi.h": {
+        "sha256": "96dbae7d90e91baaac38821fc06c74a327cac888007841fe5937798259193646",
+        "size_bytes": 11490,
+        "common": false,
+        "executable": false
+      },
+      "mpp-rk_mpi_cmd.h": {
+        "sha256": "4f35750f6ad5b18fdaee5b097f315c85e826037785340f0f7fa7cc72ae03cc3b",
+        "size_bytes": 10211,
+        "common": false,
+        "executable": false
+      },
+      "mpp-rk_mpp_cfg.h": {
+        "sha256": "bc3a1d0d371c70665671411a60b3f6957e53179703aa7e2d6afc227bc97b2999",
+        "size_bytes": 1366,
+        "common": false,
+        "executable": false
+      },
+      "mpp-rk_type.h": {
+        "sha256": "1f671775f242dc0a0e80b575aceb5c1686e7e4c1db82336f5ee90ce182569ed3",
+        "size_bytes": 6474,
+        "common": false,
+        "executable": false
+      },
+      "mpp-rk_vdec_cfg.h": {
+        "sha256": "8b678a1f5df8905470a27d04cfedc7dfa6b927b8fd93b73bbcdf4ae5046486b6",
+        "size_bytes": 1685,
+        "common": false,
+        "executable": false
+      },
+      "mpp-rk_vdec_cmd.h": {
+        "sha256": "b75bb3fcc55843503b65937ca6b3a8e34f4e1719066fb8c498eab5b0e6342867",
+        "size_bytes": 2530,
+        "common": false,
+        "executable": false
+      },
+      "mpp-rk_venc_cfg.h": {
+        "sha256": "7ffc1b18d90faa627e7fcd6f6eac73298fea7e686bd2a1c6c7a776a91ab49353",
+        "size_bytes": 2180,
+        "common": false,
+        "executable": false
+      },
+      "mpp-rk_venc_cmd.h": {
+        "sha256": "e46597acfbe40a0d06d25df1f1cd017ea1af4d3e18c52a33111058c04e5f7fc6",
+        "size_bytes": 46147,
+        "common": false,
+        "executable": false
+      },
+      "mpp-rk_venc_rc.h": {
+        "sha256": "ee933d283efbc8c1cc259709c37525ebb72384a2f44e5e4c66dcd08dde3f6977",
+        "size_bytes": 2229,
+        "common": false,
+        "executable": false
+      },
+      "mpp-rk_venc_ref.h": {
+        "sha256": "06c661d58b629198f69b73e0bd9593a7aadbcd6982c577483094ef4d25940c31",
+        "size_bytes": 9649,
+        "common": false,
+        "executable": false
+      },
+      "mpp-source.json": {
+        "sha256": "4d595dfe43e0ce76d3ace2cf65fb641afa73ab010758eef13747395a4339e423",
+        "size_bytes": 1638,
+        "common": false,
+        "executable": false
+      },
+      "nvEncodeAPI.h": {
+        "sha256": "dbdaa8bcbc2b9325bd24bc68b36170a8432411518040e8d4c8421608cf217425",
+        "size_bytes": 291178,
+        "common": false,
+        "executable": false
+      },
+      "nvenc-build.json": {
+        "sha256": "08baf7db90e77c87ed8693eb7b15de3df89cd608cdaab57bcc1983dd1a8f994a",
+        "size_bytes": 22949,
+        "common": false,
+        "executable": false
+      },
+      "python3": {
+        "sha256": "f8fdd44e9bed7ff338e69e49e708196cbb30dfed86470ac5141d831780e5ad15",
+        "size_bytes": 813,
+        "common": false,
+        "executable": true
+      },
+      "service-build.json": {
+        "sha256": "62e492f6ff60644326b534d79f5b6af219bf9284a66f0f85fb3b5ad68fe190f5",
+        "size_bytes": 4131,
+        "common": false,
+        "executable": false
+      }
+    }
   }
 ]
