@@ -84,8 +84,9 @@ func hostDesktopFiles(architecture string) (map[string][]byte, error) {
 		files[entry.Name()] = data
 	}
 	// Own native binaries, provenance and permissively licensed API headers are
-	// bound into the same preparation digest as the helper. Host driver libraries
-	// are never downloaded or copied into the isolated media runtime.
+	// bound into the same preparation digest as the helper. The media catalog
+	// separately pins the private musl VA-API driver; host driver libraries are
+	// never copied into this runtime or changed on the host.
 	for name, path := range map[string]string{
 		"floe-host-desktop-service": "native/host-desktop/service/dist/" + architecture + "/floe-host-desktop-service",
 		"service-build.json":        "native/host-desktop/service/dist/" + architecture + "/manifest.json",
@@ -122,8 +123,9 @@ func hostDesktopFiles(architecture string) (map[string][]byte, error) {
 		"export PYTHONHOME=\"$ROOT/usr\" PYTHONNOUSERSITE=1 PYTHONDONTWRITEBYTECODE=1\n" +
 		"export GI_TYPELIB_PATH=\"$ROOT/usr/lib/girepository-1.0\" GIO_MODULE_DIR=\"$ROOT/usr/lib/gio/modules\"\n" +
 		"export GST_PLUGIN_SYSTEM_PATH_1_0=\"$ROOT/usr/lib/gstreamer-1.0\" GST_REGISTRY=/dev/null GST_REGISTRY_FORK=no\n" +
+		"export LIBVA_DRIVERS_PATH=\"$ROOT/usr/lib/dri\"\n" +
 		"export PIPEWIRE_MODULE_DIR=\"$ROOT/usr/lib/pipewire-0.3\" SPA_PLUGIN_DIR=\"$ROOT/usr/lib/spa-0.2\" PIPEWIRE_CONFIG_DIR=\"$ROOT/usr/share/pipewire\"\n" +
-		"unset PYTHONPATH GIO_EXTRA_MODULES GTK_PATH LD_PRELOAD LD_LIBRARY_PATH GST_PLUGIN_PATH GST_PLUGIN_PATH_1_0 GST_PLUGIN_SYSTEM_PATH\n" +
+		"unset PYTHONPATH GIO_EXTRA_MODULES GTK_PATH LD_PRELOAD LD_LIBRARY_PATH GST_PLUGIN_PATH GST_PLUGIN_PATH_1_0 GST_PLUGIN_SYSTEM_PATH LIBVA_DRIVER_NAME\n" +
 		"exec \"$ROOT/lib/ld-musl-" + loader + ".so.1\" --library-path \"$ROOT/lib:$ROOT/usr/lib:$ROOT/usr/lib/pipewire-0.3:$ROOT/usr/lib/pulseaudio:$ROOT/usr/lib/libproxy\" \"$ROOT/usr/bin/python3\" \"$@\"\n")
 	return files, nil
 }

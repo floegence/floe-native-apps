@@ -1,7 +1,7 @@
 import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
-from host_desktop_media import DesktopMedia, equal_pixels
+from host_desktop_media import DesktopMedia, equal_pixels, select_encoder
 from host_desktop_contract import DesktopError
 
 
@@ -25,6 +25,58 @@ class PixelComparisonTests(unittest.TestCase):
 
 
 class SchedulerTests(unittest.TestCase):
+    def test_failed_av1_probe_cannot_select_desktop_pixels(self):
+        pipelines = [Mock(), Mock()]
+        pipelines[0].get_bus.return_value.timed_pop_filtered.return_value.type = 1
+        pipelines[1].get_bus.return_value.timed_pop_filtered.return_value.type = 2
+        gst = SimpleNamespace(SECOND=1, MessageType=SimpleNamespace(ERROR=1, EOS=2),
+            State=SimpleNamespace(PLAYING='play', NULL='null'),
+            ElementFactory=SimpleNamespace(find=lambda name: name in ('vaav1enc', 'vp9enc')),
+            parse_launch=Mock(side_effect=pipelines))
+        with patch('host_desktop_encoder.available', return_value=False):
+            encoder, _ = select_encoder(gst, ['av1', 'vp9', 'h264'])
+        self.assertEqual(encoder, 'vp9enc')
+        self.assertIn('width=128,height=96', gst.parse_launch.call_args_list[0].args[0])
+        self.assertIn('format=NV12', gst.parse_launch.call_args_list[0].args[0])
+        self.assertIn('av1parse', gst.parse_launch.call_args_list[0].args[0])
+        for pipeline in pipelines:
+            self.assertEqual(pipeline.set_state.call_args.args, ('null',))
+
+    def test_av1_uses_actual_sequence_level_and_rejects_unoffered_pixel_profiles(self):
+        for fields, profile in (
+                ({'profile': 'main', 'tier': 'main', 'level': '5.0', 'chroma-format': '4:2:0',
+                  'bit-depth-luma': 8, 'bit-depth-chroma': 8}, 'av01.0.12M.08'),
+                ({'profile': 'main', 'tier': 'main', 'level': '6.0', 'chroma-format': '4:2:0',
+                  'bit-depth-luma': 8, 'bit-depth-chroma': 8}, 'av01.0.16M.08'),
+                ({'profile': 'main', 'tier': 'main', 'level': '5.0', 'chroma-format': '4:2:0',
+                  'bit-depth-luma': 10, 'bit-depth-chroma': 10}, None)):
+            with self.subTest(fields=fields):
+                callbacks, outputs, failures = [], [], []
+                loop = SimpleNamespace(timeout_add=lambda *_: 1, idle_add=lambda callback, *args: callbacks.append(lambda: callback(*args)) or 1)
+                gst = SimpleNamespace(FlowReturn=SimpleNamespace(OK='ok', ERROR='error'), BufferFlags=SimpleNamespace(DELTA_UNIT=1))
+                media = DesktopMedia(gst, loop, 1, {'frame_rate': 60, 'codecs': ['av1']}, ('vaav1enc', ''),
+                    lambda *args: outputs.append(args), failures.append)
+                media.encoding_size = (1920, 1280, 1920, 1280)
+                media.submitted.append((media.credit.reserve(), 100))
+                sample, buffer, sink, caps = Mock(), Mock(), Mock(), Mock()
+                sink.emit.return_value = sample
+                sample.get_buffer.return_value = buffer
+                sample.get_caps.return_value.get_structure.return_value = caps
+                caps.get_value.side_effect = fields.get
+                buffer.get_size.return_value = 3
+                buffer.extract_dup.return_value = b'av1'
+                buffer.has_flags.return_value = False
+                media._encoded(sink, 1)
+                while callbacks:
+                    callbacks.pop(0)()
+                if profile:
+                    self.assertEqual(failures, [])
+                    self.assertEqual(outputs[0][0]['profile'], profile)
+                    self.assertNotIn('description', outputs[0][0])
+                else:
+                    self.assertEqual(failures, ['VIDEO_PROTOCOL_INVALID'])
+                    self.assertEqual(outputs, [])
+
     def test_native_output_preserves_the_admitted_codec_time_after_a_stall(self):
         gst = SimpleNamespace(SECOND=1_000_000_000, MapFlags=SimpleNamespace(READ=1),
             FlowReturn=SimpleNamespace(OK='ok', ERROR='error'), Buffer=SimpleNamespace(new_wrapped=Mock()))

@@ -14,6 +14,7 @@ gi.require_version('Gst', '1.0')
 from gi.repository import Gst, GLib
 from host_desktop_media import DesktopMedia, select_encoder, ENCODERS
 from host_desktop_pixels import FramePool
+from host_desktop_contract import DesktopError
 
 # The client-node module depends on protocol-native by soname. Finding the
 # GStreamer element alone does not prove that the private loader can resolve
@@ -36,6 +37,12 @@ for name in ('pipewiresrc', 'pulsesrc', 'h264parse', 'pngenc', 'opusenc', 'opusd
     if not Gst.ElementFactory.find(name):
         raise RuntimeError('required media element missing: ' + name)
 encoder, specification = select_encoder(Gst)
+try:
+    av1_encoder = select_encoder(Gst, ('av1',))
+except DesktopError as error:
+    if error.code != 'VIDEO_ENCODER_UNAVAILABLE':
+        raise
+    av1_encoder = None
 # Always prove the portable codec closure as well as the selected production path.
 portable_specification = next(spec for name, spec in ENCODERS if name == 'x264enc')
 for label, description, minimum in (
@@ -57,6 +64,19 @@ for label, description, minimum in (
         if sample is None or sample.get_buffer().get_size() < minimum:
             message = pipeline.get_bus().pop_filtered(Gst.MessageType.ERROR)
             raise RuntimeError(label + ' round trip failed: ' + str(message.parse_error() if message else 'no pixels'))
+    finally:
+        pipeline.set_state(Gst.State.NULL)
+
+if av1_encoder:
+    pipeline = Gst.parse_launch('videotestsrc num-buffers=8 pattern=smpte ! '
+        'video/x-raw,width=320,height=180,framerate=60/1 ! videoconvert ! video/x-raw,format=NV12 ! '
+        + av1_encoder[1] + ' ! av1parse ! av1dec ! videoconvert ! video/x-raw,format=BGRA ! '
+        'appsink name=decoded sync=false')
+    try:
+        pipeline.set_state(Gst.State.PLAYING)
+        sample = pipeline.get_by_name('decoded').emit('try-pull-sample', 10 * Gst.SECOND)
+        if sample is None or sample.get_buffer().get_size() < 320 * 180 * 4:
+            raise RuntimeError('hardware AV1 round trip failed')
     finally:
         pipeline.set_state(Gst.State.NULL)
 
@@ -82,7 +102,7 @@ for count in (240, 1):
 
 # Exercise the actual bounded scheduler and static-first-frame refinement, not
 # only independent encoder elements. This remains a synthetic installation test.
-for codec in ('h264', 'vp9'):
+for codec in (('h264', 'vp9', 'av1') if av1_encoder else ('h264', 'vp9')):
     loop = GLib.MainLoop()
     frames, errors = [], []
 
@@ -109,7 +129,7 @@ for codec in ('h264', 'vp9'):
 
 
     media = DesktopMedia(Gst, GLib, 1, {'mode': 'clarity', 'max_dimension': 1920, 'frame_rate': 60, 'audio': False, 'codecs': [codec]},
-                         (encoder, specification), output, failed)
+                         av1_encoder if codec == 'av1' else (encoder, specification), output, failed)
     media.capture = media._pipeline('videotestsrc num-buffers=1 pattern=smpte ! '
         'video/x-raw,format=BGRA,width=320,height=180,framerate=60/1 ! '
         'appsink name=frames max-buffers=1 drop=true emit-signals=true sync=false', 'capture')
@@ -154,4 +174,5 @@ with tempfile.TemporaryDirectory(prefix='floe-desktop-selfcheck-') as state:
         child.communicate(timeout=4)
         os.close(reader)
 print(json.dumps({'video' : 'decoded', 'audio': 'decoded', 'encoder': encoder, 'vp9_reference_chain': 'generation_keyframe_only',
-                  'vp9': 'decoded', 'static_frame': 'h264_and_vp9_then_lossless_refinement', 'signal_shutdown': 'clean'}))
+                  'vp9': 'decoded', 'av1': 'decoded' if av1_encoder else 'unavailable',
+                  'static_frame': 'negotiated_video_then_lossless_refinement', 'signal_shutdown': 'clean'}))

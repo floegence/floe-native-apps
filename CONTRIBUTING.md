@@ -1320,8 +1320,15 @@ not send speculative Escape/Enter or invoke application menus to hide this bound
 `HostDesktopClientResource` provides the WebCodecs player and AudioWorklet modules.
 Linux consumers may offer the bounded `picture.codecs` list after
 `HostDesktopPlayer.supportedCodecs(maxDimension)` positively probes the client.
-An omitted offer retains H.264. Available hardware H.264 remains preferred;
-software capture selects realtime VP9 when the client offers it. VP9 uses
+An omitted offer retains H.264. Available native NVIDIA/Rockchip H.264 remains
+preferred. When the client offers AV1, Intel VA-API prefers a positively probed
+AV1 encoder over its H.264 path; software capture selects realtime VP9 when
+the client offers it. AV1 is eight-bit Main-profile 4:2:0, OBU stream with temporal
+unit alignment, no lookahead or reordered pictures, and a bounded quantizer of
+128. Keyframe metadata carries the encoder's actual sequence level. Its target
+bitrate follows the same resolution-scaled picture-mode budget as VP9. An active
+encoder failure suspends the session instead of changing its reference chain.
+VP9 uses
 eight-bit 4:2:0 with no lookahead, frame dropping or spatial resampling, and
 resolution-scaled picture-mode bitrate. Its maximum quantizer is bounded at 48
 to retain small screen glyphs without lowering resolution or increasing the
@@ -1442,6 +1449,17 @@ installation identities. An upgrade verifies the old installation without
 rewriting it and activates the new digest only after its own installed check.
 Public `ResolveHostDesktopTools` still accepts only the current helper contract;
 an older installation remains identifiable without becoming new session code.
+
+The amd64 physical desktop catalog pins the publisher-signed Intel media driver
+and GMM library alongside their complete musl dependencies. `LIBVA_DRIVERS_PATH`
+is private to the prepared media interpreter, and inherited driver-name overrides
+are removed. These original Alpine archives retain license/source metadata and
+remain at their publisher; no aggregate driver binary is redistributed. The
+driver runs only as the Runtime user with its existing render-device access.
+Preparation never installs a system package, copies a host driver, changes a
+device ACL, or loads this driver into the privileged DRM exporter. Hardware is
+advertised only after a synthetic encode succeeds, and actual dimensions must
+still encode successfully. arm64 retains its existing portable/native closure.
 
 The portable media stack retains its isolated musl ABI. NVIDIA encoding uses a
 separate, verified `desktop-nvenc` worker built natively for amd64/arm64 against

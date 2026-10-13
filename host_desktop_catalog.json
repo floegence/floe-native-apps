@@ -2,8 +2,8 @@
   {
     "id": "alpine-3.23-host-desktop-1-amd64",
     "architecture": "amd64",
-    "size_bytes": 167064462,
-    "installed_bytes": 456563043,
+    "size_bytes": 179132544,
+    "installed_bytes": 497451868,
     "artifacts": [
       {
         "name": "a52dec-0.8.0-r11.apk",
@@ -718,6 +718,26 @@
           "https://mirrors.tuna.tsinghua.edu.cn/alpine/v3.23/community/x86_64/imath-3.1.12-r0.apk",
           "https://mirrors.ustc.edu.cn/alpine/v3.23/community/x86_64/imath-3.1.12-r0.apk"
         ]
+      },
+      {
+        "name": "intel-gmmlib-22.9.0-r0.apk",
+        "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/community/x86_64/intel-gmmlib-22.9.0-r0.apk",
+        "mirrors": [],
+        "sha256": "91a83d546b6df4a019a1b3f541324288811d681c0860862199cb4d6e9d167598",
+        "size_bytes": 296058,
+        "format": "apk",
+        "license": "MIT",
+        "source": "https://gitlab.alpinelinux.org/alpine/aports/-/tree/3.23-stable/community/intel-gmmlib"
+      },
+      {
+        "name": "intel-media-driver-25.4.6-r0.apk",
+        "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/community/x86_64/intel-media-driver-25.4.6-r0.apk",
+        "mirrors": [],
+        "sha256": "9c5c4277f24a7b25f8879fb2ee366a7fb708df1cee8c1ad0c96e133e38801d43",
+        "size_bytes": 11772024,
+        "format": "apk",
+        "license": "BSD-3-Clause AND MIT",
+        "source": "https://gitlab.alpinelinux.org/alpine/aports/-/tree/3.23-stable/community/intel-media-driver"
       },
       {
         "name": "lame-libs-3.100-r5.apk",

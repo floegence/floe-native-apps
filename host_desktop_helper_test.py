@@ -275,9 +275,9 @@ class PictureCodecTests(unittest.TestCase):
     def test_video_offer_is_optional_known_unique_and_bounded(self):
         picture = dict(mode='smooth', max_dimension=2560, frame_rate=60, audio=False)
         self.assertEqual(picture_value(picture), picture)
-        for codecs in (['h264'], ['vp9'], ['vp9', 'h264']):
+        for codecs in (['h264'], ['vp9'], ['av1'], ['av1', 'vp9', 'h264']):
             self.assertEqual(picture_value(dict(picture, codecs=codecs))['codecs'], codecs)
-        for codecs in ([], ['av1'], ['vp9', 'vp9'], ['vp9', 'h264', 'vp9'], None, 'vp9', [{}]):
+        for codecs in ([], ['av2'], ['vp9', 'vp9'], ['av1', 'vp9', 'h264', 'av1'], None, 'vp9', [{}]):
             with self.subTest(codecs=codecs), self.assertRaisesRegex(DesktopError, 'INVALID_ARGUMENT'):
                 picture_value(dict(picture, codecs=codecs))
 

@@ -91,6 +91,10 @@ def build(architecture, alpine):
             add(dependency)
     for seed in SEEDS:
         add(seed)
+    if architecture == 'amd64':
+        # Intel's musl userspace driver stays in the verified private closure;
+        # it neither installs a host driver nor grants access to a GPU device.
+        add('intel-media-driver')
     directory = BASE / 'media-archives' / architecture
     directory.mkdir(parents=True, exist_ok=True)
     def artifact(record):

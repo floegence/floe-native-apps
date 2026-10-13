@@ -16,6 +16,11 @@ from host_desktop_pixels import equal_pixels
 
 
 ENCODERS = (
+    # Intel VA-API AV1 keeps screen text readable at the target bitrate while
+    # moving the expensive encode off the Runtime CPU. It is selected only
+    # after a positive client offer and an isolated test-pattern probe.
+    ('vaav1enc', 'vaav1enc gf-group-size=1 hierarchical-level=1 key-int-max=1024 '
+        'rate-control=cbr bitrate=4741 mbbrc=enabled max-qp=128'),
     ('vah264enc', 'vah264enc rate-control=cbr key-int-max=120 bitrate=16000'),
     ('vaapih264enc', 'vaapih264enc rate-control=cbr keyframe-period=120 bitrate=16000'),
     ('nvh264enc', 'nvh264enc zerolatency=true bframes=0 gop-size=120 bitrate=16000'),
@@ -28,6 +33,25 @@ ENCODERS = (
 )
 
 
+def _codec_for_encoder(name):
+    if name == 'vp9enc':
+        return 'vp9'
+    if name == 'vaav1enc':
+        return 'av1'
+    return 'h264'
+
+
+def _av1_profile(caps):
+    """Bind WebCodecs configuration to the encoder's actual sequence level."""
+    level = caps.get_value('level')
+    levels = [f'{major}.{minor}' for major in range(2, 8) for minor in range(4)]
+    if (caps.get_value('profile') != 'main' or caps.get_value('tier') != 'main' or
+            caps.get_value('chroma-format') != '4:2:0' or caps.get_value('bit-depth-luma') != 8 or
+            caps.get_value('bit-depth-chroma') != 8 or level not in levels):
+        raise DesktopError('VIDEO_PROTOCOL_INVALID')
+    return f'av01.0.{levels.index(level):02d}M.08'
+
+
 def select_encoder(Gst, codecs=('h264',)):
     """Exercise a test pattern before selecting a codec; never read the desktop."""
     from host_desktop_encoder import available
@@ -35,16 +59,19 @@ def select_encoder(Gst, codecs=('h264',)):
         if available(backend):
             return backend, ''
     for name, specification in ENCODERS:
-        codec = 'vp9' if name == 'vp9enc' else 'h264'
+        codec = _codec_for_encoder(name)
         if codec not in codecs:
             continue
         if not Gst.ElementFactory.find(name):
             continue
         pipeline = None
         try:
-            pipeline = Gst.parse_launch('videotestsrc num-buffers=2 ! video/x-raw,width=64,height=64,framerate=60/1 ! '
-                'videoconvert ! video/x-raw,format=I420 ! ' + specification +
-                (' ! video/x-vp9 ! fakesink' if codec == 'vp9' else ' ! h264parse ! fakesink'))
+            width, height = (128, 96) if name.startswith('va') else (64, 64)
+            pixel_format = 'NV12' if name.startswith('va') else 'I420'
+            sink = {'vp9': 'video/x-vp9', 'av1': 'av1parse ! video/x-av1,stream-format=obu-stream',
+                    'h264': 'h264parse'}[codec]
+            pipeline = Gst.parse_launch(f'videotestsrc num-buffers=2 ! video/x-raw,width={width},height={height},framerate=60/1 ! '
+                f'videoconvert ! video/x-raw,format={pixel_format} ! {specification} ! {sink} ! fakesink')
             pipeline.set_state(Gst.State.PLAYING)
             message = pipeline.get_bus().timed_pop_filtered(3 * Gst.SECOND, Gst.MessageType.ERROR | Gst.MessageType.EOS)
             if message is not None and message.type == Gst.MessageType.EOS:
@@ -64,10 +91,12 @@ class DesktopMedia:
         self.generation, self.picture = generation, picture
         self.encoder_name, self.encoder_spec = encoder
         codecs = picture.get('codecs', ['h264'])
-        selected_codec = 'vp9' if self.encoder_name == 'vp9enc' else 'h264'
-        if (selected_codec not in codecs or 'vp9' in codecs and self.encoder_name in ('x264enc', 'openh264enc')):
+        selected_codec = _codec_for_encoder(self.encoder_name)
+        if (selected_codec not in codecs or
+                'av1' in codecs and self.encoder_name in ('vah264enc', 'vaapih264enc', 'x264enc', 'openh264enc', 'vp9enc') or
+                'vp9' in codecs and self.encoder_name in ('x264enc', 'openh264enc')):
             self.encoder_name, self.encoder_spec = select_encoder(Gst, codecs)
-        self.codec = 'vp9' if self.encoder_name == 'vp9enc' else 'h264'
+        self.codec = _codec_for_encoder(self.encoder_name)
         self.emit, self.failed = emit, failed
         self.credit = FrameCredit()
         self.capture = self.encoding = self.audio = None
@@ -239,10 +268,11 @@ class DesktopMedia:
         fps = self.picture['frame_rate']
         bitrate = {'auto': 16000, 'clarity': 24000, 'smooth': 12000, 'data': 6000}[self.picture['mode']]
         specification = self.encoder_spec.replace('bitrate=16000000', 'bitrate=' + str(bitrate * 1000)) if self.encoder_name == 'openh264enc' else self.encoder_spec.replace('bitrate=16000', 'bitrate=' + str(bitrate))
-        if self.codec == 'vp9':
+        if self.codec in ('vp9', 'av1'):
             base = {'auto': 6000000, 'clarity': 8000000, 'smooth': 4000000, 'data': 2000000}[self.picture['mode']]
             target = max(256000, round(base * output_width * output_height / (1920 * 1080)))
-            specification = self.encoder_spec.replace('target-bitrate=4000000', 'target-bitrate=' + str(target))
+            specification = (self.encoder_spec.replace('target-bitrate=4000000', 'target-bitrate=' + str(target))
+                if self.codec == 'vp9' else self.encoder_spec.replace('bitrate=4741', 'bitrate=' + str(round(target / 1000))))
         if self.encoder_name in ('nvidia-nvenc', 'rockchip-mpp'):
             from host_desktop_encoder import NativeEncoder
             self.native_encoder = NativeEncoder(output_width, output_height, fps, bitrate * 1000, self.encoder_name)
@@ -256,10 +286,13 @@ class DesktopMedia:
                 'appsrc name=compressed is-live=true format=time do-timestamp=true block=false '
                 'caps=video/x-h264,stream-format=byte-stream,alignment=au ! ')
         else:
+            pixel_format = 'NV12' if self.encoder_name.startswith('va') else 'I420'
             prefix = ('appsrc name=source is-live=true format=time do-timestamp=true block=false ! '
-                f'videoconvertscale n-threads=4 ! video/x-raw,format=I420,width={output_width},height={output_height} ! '
+                f'videoconvertscale n-threads=4 ! video/x-raw,format={pixel_format},width={output_width},height={output_height} ! '
                 + specification + ' ! ')
-        parser = 'video/x-vp9 ! ' if self.codec == 'vp9' else 'h264parse config-interval=-1 ! video/x-h264,stream-format=avc,alignment=au ! '
+        parser = ('video/x-vp9 ! ' if self.codec == 'vp9' else
+                  'av1parse ! video/x-av1,stream-format=obu-stream,alignment=tu ! ' if self.codec == 'av1' else
+                  'h264parse config-interval=-1 ! video/x-h264,stream-format=avc,alignment=au ! ')
         self.encoding = self._pipeline(prefix + parser +
             'appsink name=encoded max-buffers=4 drop=false emit-signals=true sync=false async=false', 'encoding')
         if self.native_encoder:
@@ -362,6 +395,11 @@ class DesktopMedia:
         config = description.extract_dup(0, description.get_size()) if description is not None else b''
         data = buffer.extract_dup(0, buffer.get_size())
         key = not buffer.has_flags(self.Gst.BufferFlags.DELTA_UNIT)
+        try:
+            av1_profile = _av1_profile(caps) if key and self.codec == 'av1' else None
+        except DesktopError as error:
+            self._fail(error.code)
+            return self.Gst.FlowReturn.ERROR
         def publish():
             if self.closed or generation != self.generation:
                 return False
@@ -375,13 +413,15 @@ class DesktopMedia:
                 'codec': self.codec, 'key': key, 'encoder': self.encoder_name, 'cursor': self.cursor_presentation}
             if key and self.codec == 'h264':
                 metadata.update(description=base64.b64encode(config).decode(), profile='avc1.' + config[1:4].hex())
-            elif key:
+            elif key and self.codec == 'vp9':
                 # VP9 profile 0 is eight-bit 4:2:0. Choose the smallest level
                 # covering the declared size and sample rate.
                 pixels = self.encoding_size[2] * self.encoding_size[3]
                 rate = pixels * self.picture['frame_rate']
                 level = '41' if pixels <= 2359296 and rate <= 160432128 else '51' if pixels <= 8912896 and rate <= 588251136 else '62'
                 metadata['profile'] = 'vp09.00.' + level + '.08'
+            elif key:
+                metadata['profile'] = av1_profile
             self.emit(metadata, data)
             self._schedule_produce()
             return False

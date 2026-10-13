@@ -175,12 +175,12 @@ func (p HostDesktopPicture) valid() bool {
 		return false
 	}
 	if p.Codecs != nil {
-		if len(p.Codecs) < 1 || len(p.Codecs) > 2 {
+		if len(p.Codecs) < 1 || len(p.Codecs) > 3 {
 			return false
 		}
 		seen := map[string]bool{}
 		for _, codec := range p.Codecs {
-			if codec != "h264" && codec != "vp9" || seen[codec] {
+			if codec != "h264" && codec != "vp9" && codec != "av1" || seen[codec] {
 				return false
 			}
 			seen[codec] = true
@@ -357,7 +357,10 @@ func (message HostDesktopMessage) valid() bool {
 		if message.Codec == "vp9" && message.Key && message.Profile != "vp09.00.41.08" && message.Profile != "vp09.00.51.08" && message.Profile != "vp09.00.62.08" {
 			return false
 		}
-		return desktopID(message.Generation) && desktopID(message.FrameID) && message.Width >= 2 && message.Width <= 8192 && message.Height >= 2 && message.Height <= 8192 && message.Width*message.Height <= 16<<20 && message.Bytes > 0 && (message.Codec == "h264" || message.Codec == "vp9" || message.Codec == "png") && message.Timestamp >= 0
+		if message.Codec == "av1" && message.Key && !hostDesktopAV1Profile(message.Profile) {
+			return false
+		}
+		return desktopID(message.Generation) && desktopID(message.FrameID) && message.Width >= 2 && message.Width <= 8192 && message.Height >= 2 && message.Height <= 8192 && message.Width*message.Height <= 16<<20 && message.Bytes > 0 && (message.Codec == "h264" || message.Codec == "vp9" || message.Codec == "av1" || message.Codec == "png") && message.Timestamp >= 0
 	case "cursor":
 		if p := message.CursorPosition; p != nil && (p.Width < 2 || p.Width > 8192 || p.Height < 2 || p.Height > 8192 || p.Width*p.Height > 16<<20 || p.X < -512 || p.X > p.Width+512 || p.Y < -512 || p.Y > p.Height+512) {
 			return false
@@ -375,6 +378,12 @@ func (message HostDesktopMessage) valid() bool {
 		return message.Bytes == 0 && (message.Text == nil || hostDesktopText(*message.Text, 1<<20))
 	}
 	return false
+}
+
+func hostDesktopAV1Profile(profile string) bool {
+	return len(profile) == 13 && strings.HasPrefix(profile, "av01.0.") && strings.HasSuffix(profile, "M.08") &&
+		profile[7] >= '0' && profile[7] <= '2' && profile[8] >= '0' && profile[8] <= '9' &&
+		(profile[7] != '2' || profile[8] <= '3')
 }
 
 // ReadHostDesktopMessage reads bounded native framing without starting a helper,

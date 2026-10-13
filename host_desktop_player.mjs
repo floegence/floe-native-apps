@@ -9,7 +9,7 @@ export function unpackDesktopMedia(buffer) {
       header.bytes !== buffer.byteLength - 4 - length) throw new Error('MEDIA_INVALID');
   if (header.type === 'frame') {
     if (header.bytes < 1 || !Number.isSafeInteger(header.frame_id) || header.frame_id < 1 ||
-        !['h264', 'vp9', 'png'].includes(header.codec) ||
+        !['h264', 'vp9', 'av1', 'png'].includes(header.codec) ||
         (header.cursor !== undefined && !['embedded', 'separate'].includes(header.cursor)) ||
         !Number.isInteger(header.width) || header.width < 2 || header.width > 8192 ||
         !Number.isInteger(header.height) || header.height < 2 || header.height > 8192 ||
@@ -80,6 +80,12 @@ export class HostDesktopPlayer {
         codedHeight: maxDimension, hardwareAcceleration: 'no-preference', optimizeForLatency: true });
       if (value.supported) codecs.unshift('vp9');
     } catch { /* Offer only codecs positively supported by this client. */ }
+    try {
+      const level = maxDimension > 2560 ? '16' : '14';
+      const value = await VideoDecoder.isConfigSupported({ codec: `av01.0.${level}M.08`, codedWidth: maxDimension,
+        codedHeight: maxDimension, hardwareAcceleration: 'no-preference', optimizeForLatency: true });
+      if (value.supported) codecs.unshift('av1');
+    } catch { /* AV1 remains unavailable unless positively supported. */ }
     return codecs;
   }
   constructor(canvas, { acknowledge, recover, painted = () => {}, statistics = () => {}, audioState = () => {}, workletURL }) {
@@ -278,9 +284,9 @@ export class HostDesktopPlayer {
   }
   async configure(header) {
     const epoch = this.epoch;
-    if (!header.key || (header.codec === 'vp9' ? !/^vp09\.00\.(41|51|62)\.08$/.test(header.profile) :
+    if (!header.key || (header.codec === 'vp9' ? !/^vp09\.00\.(41|51|62)\.08$/.test(header.profile) : header.codec === 'av1' ? !/^av01\.0\.(0[0-9]|1[0-9]|2[0-3])M\.08$/.test(header.profile) :
         !header.description || !/^avc1\.[0-9a-f]{6}$/i.test(header.profile))) throw new Error('KEYFRAME_REQUIRED');
-    const description = header.codec === 'vp9' ? undefined : Uint8Array.from(atob(header.description), char => char.charCodeAt(0));
+    const description = header.codec === 'h264' ? Uint8Array.from(atob(header.description), char => char.charCodeAt(0)) : undefined;
     let configuration, decoderPath;
     for (const preference of ['prefer-hardware', 'no-preference', 'prefer-software']) {
       const candidate = { codec: header.profile, codedWidth: header.width, codedHeight: header.height,

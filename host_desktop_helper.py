@@ -26,8 +26,8 @@ def picture_value(value):
             type(value['audio']) is not bool):
         raise DesktopError('INVALID_ARGUMENT')
     codecs = value.get('codecs', ['h264'])
-    if (not isinstance(codecs, list) or not 1 <= len(codecs) <= 2 or
-            any(codec not in ('h264', 'vp9') for codec in codecs) or len(set(codecs)) != len(codecs)):
+    if (not isinstance(codecs, list) or not 1 <= len(codecs) <= 3 or
+            any(codec not in ('h264', 'vp9', 'av1') for codec in codecs) or len(set(codecs)) != len(codecs)):
         raise DesktopError('INVALID_ARGUMENT')
     return dict(value)
 

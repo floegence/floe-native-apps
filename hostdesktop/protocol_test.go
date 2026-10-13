@@ -31,13 +31,13 @@ func TestHostDesktopFramingKeepsControlAndMediaBoundaries(t *testing.T) {
 
 func TestHostDesktopNegotiatesOnlyBoundedKnownVideoCodecs(t *testing.T) {
 	picture := HostDesktopPicture{Mode: "smooth", MaxDimension: 2560, FrameRate: 60}
-	for _, codecs := range [][]string{nil, {"h264"}, {"vp9", "h264"}} {
+	for _, codecs := range [][]string{nil, {"h264"}, {"vp9", "h264"}, {"av1", "vp9", "h264"}} {
 		picture.Codecs = codecs
 		if !picture.valid() {
 			t.Fatalf("reject supported offer %v", codecs)
 		}
 	}
-	for _, codecs := range [][]string{{}, {"av1"}, {"vp9", "vp9"}, {"vp9", "h264", "vp9"}} {
+	for _, codecs := range [][]string{{}, {"av2"}, {"vp9", "vp9"}, {"av1", "vp9", "h264", "av1"}} {
 		picture.Codecs = codecs
 		if picture.valid() {
 			t.Fatalf("accept invalid offer %v", codecs)
@@ -51,6 +51,20 @@ func TestHostDesktopNegotiatesOnlyBoundedKnownVideoCodecs(t *testing.T) {
 	got, err := ReadHostDesktopMessage(&wire)
 	if err != nil || got.Codec != "vp9" || got.Profile != frame.Profile {
 		t.Fatalf("VP9 frame lost identity: %+v %v", got, err)
+	}
+	av1 := HostDesktopMessage{Version: 1, Type: "frame", Generation: 1, FrameID: 2, Codec: "av1", Width: 1920, Height: 1280, Key: true, Profile: "av01.0.12M.08", Data: []byte{1, 2, 3}}
+	if err := WriteHostDesktopMessage(&wire, av1); err != nil {
+		t.Fatal(err)
+	}
+	got, err = ReadHostDesktopMessage(&wire)
+	if err != nil || got.Codec != "av1" || got.Profile != av1.Profile {
+		t.Fatalf("AV1 frame lost identity: %+v %v", got, err)
+	}
+	for _, profile := range []string{"av01.1.12M.08", "av01.0.24M.08", "av01.0.12H.08", "av01.0.12M.10", "av01.0.zzM.08", ""} {
+		av1.Profile = profile
+		if err := WriteHostDesktopMessage(&wire, av1); err == nil {
+			t.Fatalf("accept unsupported AV1 profile %q", profile)
+		}
 	}
 }
 
