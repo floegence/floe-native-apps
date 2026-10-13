@@ -814,7 +814,11 @@ short-frame qualification.
 TestNativeLegacyComponentUpdate -v` exercises a real r1-to-r2 local update and
 rejects every network request. Supply only a disposable state with original
 verified archive cache entries. The release workflow runs this on both native
-architectures using the published v0.2.1 installer to construct the old state.
+architectures using the published v0.22.29 installer to construct the old state.
+Retired libpng, OpenJPEG and zlib archives are retained only as qualification
+fixtures. Their original bytes match that published catalog's sizes and hashes;
+they retain publisher signatures and package license/source provenance. The
+workflow supplies these original cache entries without relabeling a newer stack.
 
 ## Client input qualification
 
