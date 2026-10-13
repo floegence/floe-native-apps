@@ -10,8 +10,8 @@ import (
 	"time"
 )
 
-// The caller provides a disposable copy of a published r1 installation and its
-// archive cache. Never point this opt-in test at a user's production state.
+// The caller provides a disposable copy of a retained published installation
+// and its verified archive cache. Never point this opt-in test at production.
 func TestNativeLegacyComponentUpdate(t *testing.T) {
 	root := os.Getenv("FLOE_TEST_LEGACY_STATE")
 	if root == "" {

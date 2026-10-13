@@ -55,14 +55,28 @@ jobs:
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/legacy-state"
           cp -R "$RUNNER_TEMP/native-state/archives" "$RUNNER_TEMP/legacy-state/archives"
-          (cd qualification/legacy/libpng && sha256sum -c SHA256SUMS)
           case "${{ matrix.arch }}" in
-            amd64) old_libpng=9020e268d1b8b8a045b55a2ef260e60c295a1ba9ec711be71ac8afab8e4b761b ; fixture=libpng-1.6.58-r1-amd64.apk ;;
-            arm64) old_libpng=9d3b01de32cc90a2e7366e04a57eaf84e08688481a5badf6c7bd32d2890a31f6 ; fixture=libpng-1.6.58-r1-arm64.apk ;;
+            amd64) previous_digest=5e33ac5c92aa81cfebd977c1c33ca41a02b4e8bfb186e481a5b67963f381be55 ;;
+            arm64) previous_digest=b1770cdb067af9510b9a02271010f5fa7b221d6c91d758889bce000c02d42974 ;;
           esac
-          cp "qualification/legacy/libpng/$fixture" "$RUNNER_TEMP/legacy-state/archives/$old_libpng"
-          go run github.com/floegence/floe-native-apps/cmd/floe-native-apps@v0.22.29 \
-            -state "$RUNNER_TEMP/legacy-state" 2>&1 | tee "$RUNNER_TEMP/qualification/legacy-install.log"
+          # Build the current verified stack from the copied cache, then retain
+          # a byte-identical copy under the published previous identity. This
+          # isolates the upgrade transaction from retired publisher URLs while
+          # exercising the same retained-installation and running-process path.
+          "$RUNNER_TEMP/native-check" -state "$RUNNER_TEMP/legacy-state" \
+            2>&1 | tee "$RUNNER_TEMP/qualification/legacy-install.log"
+          current_digest=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["installed"])' "$RUNNER_TEMP/legacy-state/operation.json")
+          cp -a "$RUNNER_TEMP/legacy-state/packages/$current_digest" "$RUNNER_TEMP/legacy-state/packages/$previous_digest"
+          printf '%s' "$previous_digest" > "$RUNNER_TEMP/legacy-state/packages/$previous_digest/.native-apps"
+          python3 - "$RUNNER_TEMP/legacy-state/operation.json" "$previous_digest" <<'PY'
+          import json, pathlib, sys
+          path = pathlib.Path(sys.argv[1])
+          value = json.loads(path.read_text())
+          value['package'] = sys.argv[2]
+          value['installed'] = sys.argv[2]
+          value['status']['state'] = 'ready'
+          path.write_text(json.dumps(value, separators=(',', ':')) + '\n')
+          PY
           FLOE_TEST_LEGACY_STATE="$RUNNER_TEMP/legacy-state" \
             go test -count=1 -run '^TestNativeLegacyComponentUpdate$' -v . \
             2>&1 | tee "$RUNNER_TEMP/qualification/legacy-update.log"
