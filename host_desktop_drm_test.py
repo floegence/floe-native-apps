@@ -8,19 +8,101 @@ import threading
 import time
 import unittest
 import zlib
+from contextlib import contextmanager
 from types import SimpleNamespace
+from unittest.mock import patch
 from host_desktop_drm import DRMCapture, cursor_png
 from host_desktop_contract import DesktopError
 
 
 class DRMWorkerTests(unittest.TestCase):
+    def run_capture_workload(self, fps, inputs=(), motion=False):
+        clock = SimpleNamespace(now=10., end=14.2, value=0)
+        capture = DRMCapture.__new__(DRMCapture)
+        capture.lock = threading.Lock()
+        capture.stop = SimpleNamespace(is_set=lambda: clock.now >= clock.end)
+        capture.enabled, capture.probing, capture.epoch = True, None, 1
+        capture.reset, capture.fps = False, fps
+        capture.hot_until = 10.
+        capture.width = capture.height = 0
+        capture.previous = capture.pool = None
+        captured, delivered = [], []
+        events = []
+        for at in inputs:
+            events.extend(((10. + at, capture.interacted),
+                           (10. + at + .008, lambda: setattr(clock, 'value', clock.value + 1))))
+        events.sort(key=lambda item: item[0])
+
+        class Wake:
+            signaled = False
+
+            def clear(self):
+                self.signaled = False
+
+            def set(self):
+                self.signaled = True
+
+            def wait(self, duration):
+                until = min(clock.end, clock.now + duration)
+                while events and events[0][0] <= until and not self.signaled:
+                    clock.now, callback = events.pop(0)
+                    callback()
+                if not self.signaled:
+                    clock.now = until
+
+        capture.wake = Wake()
+
+        def descriptor(_):
+            captured.append(clock.now)
+            value = int((clock.now - 10.) * fps + 1e-6) if motion else clock.value
+            return memoryview(bytes((value % 256,)) * 16), 2, 2, 8, 0x34325258
+
+        @contextmanager
+        def mapped(_, pixels):
+            yield pixels
+
+        capture.descriptor = descriptor
+        capture.queue_sample = lambda *_: delivered.append((clock.now, clock.value))
+        capture.Gst = None
+        capture.GLib = SimpleNamespace(idle_add=lambda callback, *args: callback(*args))
+        capture.failed = lambda error: self.fail(error)
+        pool = SimpleNamespace(capture=lambda pixels, *_, **__: bytes(pixels))
+        with patch('host_desktop_drm.time.monotonic', lambda: clock.now), \
+                patch('host_desktop_drm.FramePool', lambda *_: pool), \
+                patch('host_desktop_drm.mapped_pixels', mapped), \
+                patch('host_desktop_drm.equal_pixels', lambda a, b: a == b):
+            capture.capture()
+        return captured, delivered
+
+    def test_static_typing_returns_to_idle_between_inputs_and_paints_promptly(self):
+        inputs = [.42 * n for n in range(1, 10)]
+        captured, delivered = self.run_capture_workload(60, inputs)
+        self.assertLess(len(captured), 80,
+                        'unchanged frames must not keep full-rate conversion between typing events')
+        for value, at in enumerate(inputs, 1):
+            painted = next(t for t, v in delivered if v == value)
+            self.assertLess(painted - (10. + at), .06,
+                            'returning to idle must retain immediate input response')
+
+    def test_continuous_motion_retains_configured_capture_cadence(self):
+        for fps in (15, 30, 60):
+            with self.subTest(fps=fps):
+                captured, _ = self.run_capture_workload(fps, motion=True)
+                self.assertGreaterEqual(len(captured), int(4.2 * fps) - 1)
+                self.assertLessEqual(max(b - a for a, b in zip(captured, captured[1:])),
+                                     1 / fps + 1e-6)
+
+    def test_unchanged_desktop_keeps_five_hz_polling_after_startup(self):
+        captured, _ = self.run_capture_workload(60)
+        self.assertLessEqual(len(captured), 27)
+
     def test_probe_and_retired_epoch_release_the_converter_slot(self):
         for enabled, retire in ((False, False), (True, True)):
             capture = DRMCapture.__new__(DRMCapture)
             capture.lock = threading.Lock()
             capture.stop, capture.wake = threading.Event(), threading.Event()
             capture.enabled, capture.probing, capture.epoch = enabled, (lambda *_: None), 1
-            capture.hot_until = capture.changed_at = 0
+            capture.hot_until = 0
             capture.reset, capture.fps = False, 60
             capture.GLib = SimpleNamespace(idle_add=lambda *_: None)
             capture.failed = lambda *_: self.fail('unexpected capture error')
@@ -87,7 +169,7 @@ class DRMWorkerTests(unittest.TestCase):
     def test_first_input_wakes_idle_capture_without_bypassing_active_cadence(self):
         capture = DRMCapture.__new__(DRMCapture)
         capture.lock, capture.wake = threading.Lock(), threading.Event()
-        capture.hot_until = capture.changed_at = -1
+        capture.hot_until, capture.fps = -1, 60
         waiting = threading.Event()
         elapsed = []
         def idle():

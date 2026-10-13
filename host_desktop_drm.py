@@ -78,7 +78,7 @@ class DRMCapture:
         self.reset = True
         self.epoch = 0
         self.fps = 30
-        self.hot_until = self.changed_at = 0
+        self.hot_until = 0
         self.settle_until = 0
         self.width = self.height = 0
         self.previous = self.pool = None
@@ -117,7 +117,7 @@ class DRMCapture:
             self.cursor_previous = None
             self.cursor_shape = None
             self.pending_cursor = None
-            self.hot_until = time.monotonic() + .5
+            self.hot_until = time.monotonic() + 3 / fps
             self.settle_until = time.monotonic() + 2 if settle else 0
             self.wake.set()
 
@@ -138,8 +138,8 @@ class DRMCapture:
     def interacted(self):
         with self.lock:
             now = time.monotonic()
-            idle = now >= max(self.hot_until, self.changed_at + .5)
-            self.hot_until = now + .3
+            idle = now >= self.hot_until
+            self.hot_until = max(self.hot_until, now + 3 / self.fps)
             if idle:
                 self.wake.set()
 
@@ -187,7 +187,6 @@ class DRMCapture:
                     self.wake.clear()
                     enabled, probe, epoch = self.enabled, self.probing, self.epoch
                     reset = self.reset
-                    fps = self.fps if time.monotonic() < max(self.hot_until, self.changed_at + .5) else 5
                 if not enabled and not probe:
                     self.wake.wait(.02)
                     continue
@@ -238,17 +237,22 @@ class DRMCapture:
                 if current is None:
                     break
                 previous = self.previous
+                changed = previous is None
                 if previous is not None:
                     with mapped_pixels(self.Gst, previous) as a, mapped_pixels(self.Gst, current) as b:
-                        if equal_pixels(a, b):
-                            self.wake.wait(max(0, 1 / fps - (time.monotonic() - started)))
-                            continue
+                        changed = not equal_pixels(a, b)
                 with self.lock:
                     if epoch != self.epoch:
                         continue
-                    self.previous = current
-                    self.changed_at = time.monotonic()
-                self.queue_sample(epoch, current, width, height)
+                    now = time.monotonic()
+                    if changed:
+                        self.previous = current
+                        # A few frame intervals cover asynchronous input updates;
+                        # only actual motion keeps full-rate conversion running.
+                        self.hot_until = max(self.hot_until, now + 3 / self.fps)
+                    fps = self.fps if now < self.hot_until else 5
+                if changed:
+                    self.queue_sample(epoch, current, width, height)
                 self.wake.wait(max(0, 1 / fps - (time.monotonic() - started)))
         except DesktopError as error:
             if not self.stop.is_set(): self.GLib.idle_add(self.failed, error.code)

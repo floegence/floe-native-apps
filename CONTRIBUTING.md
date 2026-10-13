@@ -1574,6 +1574,12 @@ release. The attachment version requires an explicit service update for older in
 
 DRM capture keeps its idle sampling budget but wakes immediately on the first
 admitted interaction. Continuous input retains the configured frame-rate bound.
+An interaction or changed image grants three configured frame intervals of
+active capture; unchanged pixels then return to five-Hz polling. Repeated static
+typing cannot hold full-rate GPU conversion between separate inputs. A changed
+image immediately restores the active cadence, including when discovered by an
+idle poll. The capture-loop workload tests cover static typing response,
+unchanged polling and continuous motion at 15, 30 and 60 FPS.
 Capture backend selection never changes to conceal slow kernel display probing.
 The root seat observer also binds GNOME’s actual cached logind locker session:
 `XDG_SESSION_ID` from the verified compositor, or logind User.Display for a
