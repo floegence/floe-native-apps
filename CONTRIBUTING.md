@@ -1323,7 +1323,10 @@ Linux consumers may offer the bounded `picture.codecs` list after
 An omitted offer retains H.264. Available hardware H.264 remains preferred;
 software capture selects realtime VP9 when the client offers it. VP9 uses
 eight-bit 4:2:0 with no lookahead, frame dropping or spatial resampling, and
-resolution-scaled picture-mode bitrate. The reported encoder/codec identifies
+resolution-scaled picture-mode bitrate. Its maximum quantizer is bounded at 48
+to retain small screen glyphs without lowering resolution or increasing the
+configured target bitrate. This is not a universal CPU or visual-quality parity
+claim; consumers must qualify their real host and client. The reported encoder/codec identifies
 the exercised path. A failed capability probe never selects an encoder for
 desktop pixels. macOS capture remains H.264; offer that codec to its adapter.
 Linux codec timestamps advance by the admitted frame ordinal and requested

@@ -19,8 +19,10 @@ ENCODERS = (
     ('vah264enc', 'vah264enc rate-control=cbr key-int-max=120 bitrate=16000'),
     ('vaapih264enc', 'vaapih264enc rate-control=cbr keyframe-period=120 bitrate=16000'),
     ('nvh264enc', 'nvh264enc zerolatency=true bframes=0 gop-size=120 bitrate=16000'),
+    # Preserve small screen glyphs by bounding the worst-case quantizer while
+    # retaining the realtime deadline, target bitrate and ordered references.
     ('vp9enc', 'vp9enc deadline=1 cpu-used=8 end-usage=1 target-bitrate=4000000 lag-in-frames=0 '
-        'threads=4 row-mt=true tile-columns=2 keyframe-mode=disabled'),
+        'threads=4 row-mt=true tile-columns=2 max-quantizer=48 keyframe-mode=disabled'),
     ('x264enc', 'x264enc tune=zerolatency speed-preset=ultrafast bitrate=16000 key-int-max=120 bframes=0 threads=4'),
     ('openh264enc', 'openh264enc complexity=low rate-control=bitrate bitrate=16000000 multi-thread=4 gop-size=120'),
 )
