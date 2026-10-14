@@ -151,6 +151,11 @@ static int converter(int sock,int pixels_fd) {
  if(pixels==MAP_FAILED)return 64;
  drmtap_ctx *ctx=drmtap_open_render(NULL);
  if(!ctx){munmap(pixels,MAX_BYTES);return 69;}
+ /* Materialized GPU/CPU conversions land in the inherited completion slot.
+  * Linear scanout may still borrow its source mapping and needs the copy below. */
+ if(drmtap_set_output_buffer(ctx,pixels,MAX_BYTES)!=0) {
+  drmtap_close(ctx);munmap(pixels,MAX_BYTES);return 69;
+ }
  for(;;) {
   export_packet packet;int fd=-1;
   if(receive_packet(sock,&packet,sizeof(packet),&fd)!=0)break;
@@ -175,7 +180,7 @@ static int converter(int sock,int pixels_fd) {
   if(result==0&&frame.data&&frame.stride>=frame.width*4&&(uint64_t)frame.stride*frame.height<=MAX_BYTES) {
    header[1]=frame.width;header[2]=frame.height;header[3]=frame.stride;header[4]=frame.format;header[5]=frame.stride*frame.height;
   } else if(result==0)header[0]=(uint32_t)-ENOTSUP;
-  if(header[5])memcpy(pixels,frame.data,header[5]);
+  if(header[5]&&frame.data!=pixels)memcpy(pixels,frame.data,header[5]);
   if(write_all(STDOUT_FILENO,header,sizeof(header))!=0)break;
  }
  drmtap_close(ctx);munmap(pixels,MAX_BYTES);return 0;
