@@ -59,8 +59,9 @@ class Writer:
         self.queue = queue.Queue(capacity)
         self.maximum, self.pending = maximum, 0
         self.lock = threading.Lock()
-        self.closed = False
-        threading.Thread(target=self._write, name='floe-desktop-output', daemon=True).start()
+        self.closed = self.closing = False
+        self.thread = threading.Thread(target=self._write, name='floe-desktop-output', daemon=True)
+        self.thread.start()
 
     def send(self, message, data=b''):
         value = packet(message, data)
@@ -69,10 +70,11 @@ class Writer:
                 return
             if self.pending + len(value) > self.maximum or self.queue.full():
                 self.closed = True
-                self.failed('TRANSPORT_BACKPRESSURE')
+            else:
+                self.pending += len(value)
+                self.queue.put_nowait(value)
                 return
-            self.pending += len(value)
-            self.queue.put_nowait(value)
+        self.failed('TRANSPORT_BACKPRESSURE')
 
     def _write(self):
         try:
@@ -89,11 +91,28 @@ class Writer:
                 with self.lock:
                     self.pending -= len(value)
         except OSError:
+            with self.lock:
+                if self.closed:
+                    return
+                self.closed = True
             self.failed('TRANSPORT_CLOSED')
 
-    def close(self):
+    def close(self, drain=False):
         with self.lock:
+            if self.closing:
+                return
+            self.closing = True
             self.closed = True
+            if not drain:
+                while not self.queue.empty():
+                    self.pending -= len(self.queue.get_nowait())
+        # A worker may finish with a final error packet. Give that ordered
+        # output a bounded chance to drain without extending live dispatch.
+        try:
+            self.queue.put(None, timeout=2 if drain else 0)
+        except queue.Full:
             while not self.queue.empty():
                 self.queue.get_nowait()
             self.queue.put_nowait(None)
+        if drain:
+            self.thread.join(timeout=2)

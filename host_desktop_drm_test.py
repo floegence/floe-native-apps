@@ -11,32 +11,11 @@ import zlib
 from contextlib import contextmanager
 from types import SimpleNamespace
 from unittest.mock import patch
-from host_desktop_drm import DRMCapture, MediaOutput, cursor_png
+from host_desktop_drm import DRMCapture, cursor_png
 from host_desktop_contract import DesktopError
 
 
 class DRMWorkerTests(unittest.TestCase):
-    def test_media_output_keeps_dispatcher_independent_of_a_blocked_pipe(self):
-        started, release, failures = threading.Event(), threading.Event(), []
-
-        def blocked_write(_fd, view):
-            started.set()
-            self.assertTrue(release.wait(1))
-            return len(view)
-
-        loop = SimpleNamespace(idle_add=lambda callback, code: callback(code))
-        with patch('host_desktop_drm.os.write', blocked_write):
-            output = MediaOutput(loop, failures.append)
-            output.emit({'type': 'frame', 'frame_id': 1}, b'first')
-            self.assertTrue(started.wait(1))
-            # A second packet can be admitted while the first frame is still
-            # blocked in the transport writer; the GLib caller never writes.
-            output.emit({'type': 'frame', 'frame_id': 2}, b'second')
-            release.set()
-            output.thread.join(1)
-            output.close()
-        self.assertFalse(failures)
-
     def run_capture_workload(self, fps, inputs=(), motion=False):
         clock = SimpleNamespace(now=10., end=14.2, value=0)
         capture = DRMCapture.__new__(DRMCapture)

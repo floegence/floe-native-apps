@@ -9,7 +9,6 @@ import array
 import errno
 import json
 import os
-import queue
 import signal
 import socket
 import struct
@@ -20,66 +19,9 @@ import zlib
 
 from host_desktop_contract import DesktopError
 from host_desktop_pixels import FramePool, equal_pixels, mapped_pixels, native_pixels
+from host_desktop_wire import Writer
 
 CAPTURE_BYTES = 64 << 20
-OUTPUT_QUEUE_PACKETS = 16
-
-
-class MediaOutput:
-    """Serialize media packets off the GLib dispatcher.
-
-    A remote desktop frame can be much larger than the pipe's atomic write
-    size. Blocking the dispatcher while SSH drains that frame also blocks
-    capture callbacks, encoder completion and frame acknowledgements. The
-    queue is deliberately bounded: frame credit limits normal video backlog,
-    while this bound also caps non-video packets during a stalled consumer.
-    """
-
-    def __init__(self, GLib, failed):
-        self.GLib = GLib
-        self.failed = failed
-        self.packets = queue.Queue(maxsize=OUTPUT_QUEUE_PACKETS)
-        self.closed = threading.Event()
-        self.stopping = threading.Event()
-        self.thread = threading.Thread(target=self._run, name='floe-desktop-output', daemon=True)
-        self.thread.start()
-
-    @staticmethod
-    def packet(metadata, payload=b''):
-        metadata = dict(metadata)
-        metadata.update(version=1, bytes=len(payload))
-        header = json.dumps(metadata, separators=(',', ':')).encode()
-        return struct.pack('!I', len(header)) + header + payload
-
-    def emit(self, metadata, payload=b''):
-        if self.closed.is_set() or self.stopping.is_set():
-            raise BrokenPipeError()
-        self.packets.put(self.packet(metadata, payload))
-
-    def _run(self):
-        try:
-            while True:
-                try:
-                    packet = self.packets.get(timeout=.1)
-                except queue.Empty:
-                    if self.stopping.is_set():
-                        return
-                    continue
-                view = memoryview(packet)
-                while view:
-                    count = os.write(1, view)
-                    if count <= 0:
-                        raise BrokenPipeError()
-                    view = view[count:]
-        except (BrokenPipeError, OSError):
-            if not self.closed.is_set():
-                self.closed.set()
-                self.GLib.idle_add(self.failed, 'MEDIA_OUTPUT_FAILED')
-
-    def close(self):
-        self.stopping.set()
-        self.thread.join(timeout=2)
-        self.closed.set()
 
 
 def capture_error(status):
@@ -452,11 +394,11 @@ def main():
     state = {'media': None, 'epoch': 0, 'cursor': None, 'failed': False}
     output = None
     def emit(metadata, payload=b''):
-        output.emit(metadata, payload)
+        output.send(metadata, payload)
     def failed(code):
         if not state['failed']:
             state['failed'] = True
-            if output is not None and not output.closed.is_set():
+            if output is not None and not output.closed:
                 emit({'type': 'error', 'code': code})
             loop.quit()
         return False
@@ -492,7 +434,7 @@ def main():
         if media and epoch == state['epoch']:
             emit({'type': 'error', 'generation': media.generation, 'code': 'DISPLAY_INACTIVE'})
         return False
-    output = MediaOutput(GLib, failed)
+    output = Writer(1, lambda code: GLib.idle_add(failed, code), 16, 80 << 20)
     capture = DRMCapture(Gst, GLib, socket.socket(fileno=3), args.worker, sample, cursor, geometry, suspended, failed)
     def dispatch(command):
         if state['failed']: return False
@@ -545,7 +487,7 @@ def main():
     finally:
         if state['media']: state['media'].close()
         capture.close()
-        output.close()
+        output.close(drain=True)
 
 
 if __name__ == '__main__':

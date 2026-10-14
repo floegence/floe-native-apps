@@ -1347,6 +1347,13 @@ Reset the player on each native generation and bind input only after its painted
 callback. Hardware preference negotiation reports the selected preference; this
 is not proof that a browser used a particular hardware decoder. A slow client
 cannot grow the native frame pipeline, decoder queue or audio queue indefinitely.
+The DRM media worker uses the same asynchronous `Writer` as the current-user
+helper, bounded to 16 packets and 80 MiB including the active write. Partial
+pipe writes preserve packet order without blocking the GLib dispatcher. Queue
+or byte saturation closes transport admission and reports failure; encoded
+dependencies are never discarded to make room. Worker shutdown gives a final
+queued error a bounded drain opportunity. This source behavior does not establish
+LAN performance or RustDesk parity; those require real paired Viewer evidence.
 Encoded video dependencies are retained until an explicit recovery generation;
 late PNG refinements cannot replace a newer video frame.
 Decoder recovery keeps the authorized capture running and retires held input and
