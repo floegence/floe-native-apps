@@ -103,6 +103,7 @@ export class HostDesktopPlayer {
     this.audioStarting = null;
     this.audioPending = 0;
     this.lastPaintHeader = null; this.confirmation = 0; this.confirmationTask = 0;
+    this.receipt = null; this.receiptTask = 0; this.lastReceipt = -Infinity;
     this.idle = 0; this.flushing = false; this.needsKey = true;
     this.bytes = 0; this.draws = 0; this.lastStatistic = performance.now(); this.lastDraw = 0;
     this.intervals = []; this.decoderPath = 'unconfigured';
@@ -124,7 +125,9 @@ export class HostDesktopPlayer {
     clearTimeout(this.idle);
     cancelAnimationFrame(this.confirmation);
     clearTimeout(this.confirmationTask);
+    clearTimeout(this.receiptTask);
     this.confirmation = this.confirmationTask = 0;
+    this.receipt = null; this.receiptTask = 0; this.lastReceipt = -Infinity;
     this.lastPaintHeader = null;
     this.cursorPending = null;
     this.cursor = null;
@@ -364,10 +367,26 @@ export class HostDesktopPlayer {
         this.confirmationTask = 0;
         if (this.closed || epoch !== this.epoch || !header || header.generation !== this.order.generation) return;
         if (this.lastPaintHeader !== header) { this.confirmPaint(); return; }
-        this.acknowledge(header.generation, header.frame_id);
+        // Return cumulative credit at most every 50 ms, below the four-frame
+        // window at 60 FPS. First and idle pictures return credit immediately;
+        // a settled followup has a deadline even if no more pixels arrive.
+        this.receipt = header;
+        const delay = 50 - (performance.now() - this.lastReceipt);
+        if (delay <= 0) {
+          clearTimeout(this.receiptTask);
+          this.sendReceipt(epoch);
+        } else if (!this.receiptTask) this.receiptTask = setTimeout(() => this.sendReceipt(epoch), delay);
         this.painted(header.generation, header.frame_id);
       }, 0);
     });
+  }
+  sendReceipt(epoch) {
+    if (this.closed || this.recovering || epoch !== this.epoch) return;
+    const header = this.receipt;
+    this.receipt = null; this.receiptTask = 0;
+    if (!header || header.generation !== this.order.generation) return;
+    this.lastReceipt = performance.now();
+    this.acknowledge(header.generation, header.frame_id);
   }
   fail(code) {
     if (this.closed || this.recovering) return;

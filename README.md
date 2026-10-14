@@ -479,6 +479,13 @@ view-only frames. Reset removes presentation and shape together. Cursor packets
 never grant painted input authority. Missing legacy presentation is treated as
 embedded, since those frames cannot promise cursor-free pixels.
 
+The player confirms pixels only after a rendering opportunity and the following
+task. During continuous presentation, cumulative frame receipts carry the newest
+confirmed picture at most every 50 ms. First and idle updates return credit
+immediately; a settled followup still returns credit by its pending deadline.
+Unconfirmed replacement pixels never enter that receipt. Reset, recovery and
+close cancel both pending confirmation and pending credit from the old generation.
+
 X11 control streams send XFixes shapes separately. Wayland selects portal cursor
 metadata only when advertised, consumes pixels and bounded `SPA_META_Cursor`
 through one public PipeWire stream, and uses the existing shape channel for

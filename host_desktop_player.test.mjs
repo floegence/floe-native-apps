@@ -99,26 +99,107 @@ test('audio backlog stays bounded and reset cannot replay old sound', () => {
   assert.deepEqual([...output[0]], [0,0,0,0,0,0]);
 });
 
-async function playerFixture() {
+async function playerFixture(clock = null) {
   const { HostDesktopPlayer } = await import('./host_desktop_player.mjs');
   const callbacks = new Map(), tasks = new Map(); let next = 0;
   globalThis.requestAnimationFrame = callback => { callbacks.set(++next, callback); return next; };
   globalThis.cancelAnimationFrame = id => callbacks.delete(id);
-  globalThis.setTimeout = (callback, delay, ...args) => delay === 0 ? (tasks.set(++next, callback), next) : nativeSetTimeout(callback, delay, ...args);
-  globalThis.clearTimeout = id => { tasks.delete(id); nativeClearTimeout(id); };
-  const draws = [], acknowledgements = [];
+  globalThis.setTimeout = (callback, delay, ...args) => delay === 0 ? (tasks.set(++next, callback), next) :
+    clock ? (clock.timers.set(++next, { callback, due: clock.now + delay }), next) : nativeSetTimeout(callback, delay, ...args);
+  globalThis.clearTimeout = id => { tasks.delete(id); clock?.timers.delete(id); nativeClearTimeout(id); };
+  const draws = [], acknowledgements = [], paints = [];
   const attributes = new Map();
   const canvas = { width:2, height:2, getContext:()=>({drawImage:image=>draws.push(image.id)}),
     setAttribute: (name, value) => attributes.set(name, value), removeAttribute: name => attributes.delete(name),
     getAttribute: name => attributes.get(name) };
-  const player = new HostDesktopPlayer(canvas, { acknowledge:(generation,id)=>acknowledgements.push([generation,id]), recover:code=>{throw Error(code);} });
+  const player = new HostDesktopPlayer(canvas, { acknowledge:(generation,id)=>acknowledgements.push([generation,id]),
+    painted:(generation,id)=>paints.push([generation,id]), recover:code=>{throw Error(code);} });
   player.reset(1);
   const frame = id => ({ id, close(){} });
   const refresh = () => { const scheduled=[...callbacks.values()]; callbacks.clear(); for(const callback of scheduled)callback(); };
   const afterRender = () => { const scheduled=[...tasks.values()]; tasks.clear(); for(const callback of scheduled)callback(); };
   const tick = () => { refresh(); afterRender(); };
-  return { player, frame, tick, refresh, afterRender, draws, acknowledgements };
+  return { player, frame, tick, refresh, afterRender, draws, acknowledgements, paints };
 }
+
+async function timedPlayerFixture(t) {
+  const clock = { now: 0, timers: new Map() };
+  t.mock.method(performance, 'now', () => clock.now);
+  const f = await playerFixture(clock);
+  t.after(() => {
+    f.player.close();
+    globalThis.setTimeout = nativeSetTimeout;
+    globalThis.clearTimeout = nativeClearTimeout;
+  });
+  f.advance = milliseconds => {
+    clock.now += milliseconds;
+    for (const [id, timer] of [...clock.timers]) {
+      if (timer.due <= clock.now && clock.timers.delete(id)) timer.callback();
+    }
+  };
+  f.schedule = (id, generation = 1) => f.player.schedule(f.frame(id), { generation, frame_id: id, width: 2, height: 2 });
+  f.timers = clock.timers;
+  return f;
+}
+
+test('continuous paint sends bounded cumulative receipts without authorizing unconfirmed pixels', async t => {
+  const f = await timedPlayerFixture(t);
+  f.schedule(1); f.tick();
+  assert.deepEqual(f.acknowledgements, [[1, 1]], 'the first static picture returns credit immediately');
+  f.advance(16); f.schedule(2); f.tick();
+  f.advance(16); f.schedule(3); f.tick();
+  f.advance(16); f.schedule(4); // Drawn, but it has not survived rendering yet.
+  assert.deepEqual(f.acknowledgements, [[1, 1]]);
+  assert.deepEqual(f.paints, [[1, 1], [1, 2], [1, 3]], 'local paint remains responsive');
+  assert.equal(f.timers.size, 1, 'all confirmed pictures share one bounded deadline');
+  f.advance(2);
+  assert.deepEqual(f.acknowledgements, [[1, 1], [1, 3]], 'a newer draw cannot enter the receipt');
+  f.tick(); f.advance(50);
+  assert.deepEqual(f.acknowledgements, [[1, 1], [1, 3], [1, 4]]);
+});
+
+test('a settled followup picture returns credit without another arriving frame', async t => {
+  const f = await timedPlayerFixture(t);
+  f.schedule(1); f.tick();
+  f.advance(10); f.schedule(2); f.tick();
+  f.advance(39);
+  assert.deepEqual(f.acknowledgements, [[1, 1]]);
+  f.advance(1);
+  assert.deepEqual(f.acknowledgements, [[1, 1], [1, 2]]);
+  assert.equal(f.timers.size, 0);
+  f.advance(500); f.schedule(3); f.tick();
+  assert.deepEqual(f.acknowledgements, [[1, 1], [1, 2], [1, 3]], 'a later idle update has no batching delay');
+});
+
+test('reset cancels confirmed pending receipts and a retired timer cannot touch its successor', async t => {
+  const f = await timedPlayerFixture(t);
+  f.schedule(1); f.tick();
+  f.advance(10); f.schedule(2); f.tick();
+  const retired = [...f.timers.values()].map(timer => timer.callback);
+  assert.equal(retired.length, 1);
+  f.player.reset(2);
+  assert.equal(f.timers.size, 0);
+  f.schedule(1, 2); f.tick();
+  f.advance(10); f.schedule(2, 2); f.tick();
+  for (const callback of retired) callback();
+  assert.deepEqual(f.acknowledgements, [[1, 1], [2, 1]]);
+  assert.equal(f.timers.size, 1, 'the successor retains its own receipt deadline');
+  f.advance(40);
+  assert.deepEqual(f.acknowledgements, [[1, 1], [2, 1], [2, 2]]);
+});
+
+for (const end of ['close', 'failure']) test(`${end} retires already confirmed pending receipts`, async t => {
+  const f = await timedPlayerFixture(t);
+  f.schedule(1); f.tick();
+  f.advance(10); f.schedule(2); f.tick();
+  const retired = [...f.timers.values()].map(timer => timer.callback);
+  if (end === 'close') f.player.close();
+  else { f.player.recover = () => {}; f.player.fail('DECODE_FAILED'); }
+  assert.equal(f.timers.size, 0);
+  f.advance(100);
+  for (const callback of retired) callback();
+  assert.deepEqual(f.acknowledgements, [[1, 1]]);
+});
 
 test('only current painted frames select separate cursor presentation', async () => {
   const f = await playerFixture();
