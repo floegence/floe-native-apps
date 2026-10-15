@@ -17,13 +17,15 @@ from host_desktop_wire import Writer, read_command
 
 
 def picture_value(value):
-    if (not isinstance(value, dict) or set(value) - {'mode', 'max_dimension', 'frame_rate', 'audio', 'native_pixels', 'codecs'} or
+    if (not isinstance(value, dict) or set(value) - {'mode', 'max_dimension', 'frame_rate', 'audio', 'native_pixels', 'codecs', 'frame_window'} or
             not {'mode', 'max_dimension', 'frame_rate', 'audio'}.issubset(value) or
             type(value.get('native_pixels', False)) is not bool or
             value['mode'] not in ('auto', 'clarity', 'smooth', 'data') or
             type(value['max_dimension']) is not int or value['max_dimension'] not in (1600, 1920, 2560, 3840, 4096) or
             type(value['frame_rate']) is not int or value['frame_rate'] not in (15, 30, 60) or
             type(value['audio']) is not bool):
+        raise DesktopError('INVALID_ARGUMENT')
+    if 'frame_window' in value and (not integer(value['frame_window'], 4, 6) or value['frame_window'] not in (4, 6)):
         raise DesktopError('INVALID_ARGUMENT')
     codecs = value.get('codecs', ['h264'])
     if (not isinstance(codecs, list) or not 1 <= len(codecs) <= 3 or
@@ -113,7 +115,7 @@ class HostDesktop:
                 'clipboard': clipboard, 'audio': audio, 'unattended': unattended,
                 'unlock': bool(self.login_service and self.service_state == 'active'),
                 'locked_screen': bool(self.login_service and self.service_state == 'active'),
-                'service': self.service_state,
+                'service': self.service_state, 'frame_window': 6,
                 'encoder': self.encoder[0] if self.encoder else '', 'displays': self.displays,
                 'authorization': self.authorization}
 

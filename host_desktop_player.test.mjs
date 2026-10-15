@@ -528,3 +528,26 @@ test('untrusted hotspots use an immediate arrow and position updates cannot gran
     for (const [key, value] of originals) { if (value === undefined) delete globalThis[key]; else globalThis[key] = value; }
   }
 });
+
+
+test('video windows require an explicit bounded generation setting', async () => {
+  const f = await playerFixture();
+  assert.equal(f.player.frameWindow, 4);
+  for (const invalid of [0, 5, 7, '6', null]) assert.throws(() => f.player.reset(2, invalid), /FRAME_WINDOW_INVALID/);
+  f.player.reset(2, 6);
+  f.player.processing = true;
+  const wire = id => {
+    const header = new TextEncoder().encode(JSON.stringify({ version: 1, type: 'frame', generation: 2, frame_id: id,
+      codec: 'h264', width: 2, height: 2, bytes: 1 }));
+    const data = new Uint8Array(5 + header.length); new DataView(data.buffer).setUint32(0, header.length);
+    data.set(header, 4); data[data.length - 1] = 1; return data.buffer;
+  };
+  for (let i = 1; i <= 6; i++) f.player.receive(wire(i));
+  assert.equal(f.player.incoming.length, 6);
+  assert.deepEqual(f.acknowledgements, [], 'buffer admission never grants paint authority');
+  assert.throws(() => f.player.receive(wire(7)), /VIDEO_QUEUE_LIMIT/);
+  f.player.reset(3);
+  assert.equal(f.player.frameWindow, 4, 'an unspecified successor restores the legacy window');
+  assert.equal(f.player.incoming.length, 0);
+  f.player.close();
+});

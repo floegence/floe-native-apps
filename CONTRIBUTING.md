@@ -119,6 +119,21 @@ extraction, or self-check behavior require this evidence; cross-compilation alon
 is insufficient. Fixture coverage is not a certification of every host kernel,
 security policy, GPU driver, or third-party application.
 
+## Physical desktop frame delivery
+
+Protocol v1 keeps a four-frame window when `picture.frame_window` is absent.
+A Linux adapter advertises `capabilities.frame_window: 6`; a compatible consumer
+may explicitly request six in `connect` and `configure`. An older adapter or
+consumer continues to omit the field. Consumers must enforce the selected
+window at their transport boundary and reset the player's window with each
+generation. The player defaults to four and accepts only four or six.
+macOS retains its qualified four-frame ScreenCaptureKit path; Windows remains
+unsupported for physical desktop capture. Audio and refinement limits are
+independent. Increasing video admission never acknowledges pixels: confirmed
+paint, ordered cumulative receipts, generation fences and input authority remain
+mandatory. A mixed installation must select four or fail explicitly before
+capture; it must never silently grant a larger window.
+
 ## Catalog maintenance
 
 The catalog is reviewed source, not runtime configuration. Acquire original

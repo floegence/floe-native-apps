@@ -9,6 +9,8 @@ import (
 // Root aliases preserve the published SDK API; the standalone service imports
 // only hostdesktop and cannot recursively embed distribution artifacts.
 const HostDesktopProtocolVersion = hostdesktop.HostDesktopProtocolVersion
+const HostDesktopDefaultFrameWindow = hostdesktop.HostDesktopDefaultFrameWindow
+const HostDesktopMaxFrameWindow = hostdesktop.HostDesktopMaxFrameWindow
 
 var ErrHostDesktopProtocol = hostdesktop.ErrHostDesktopProtocol
 

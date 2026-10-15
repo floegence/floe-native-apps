@@ -1,10 +1,10 @@
 {
   "architecture": "amd64",
-  "build_info": "/tmp/redeven-udesk26-rustdesk-baseline/av1-integration/service-amd64/floe-host-desktop-service: go1.27.2\n\tpath\tgithub.com/floegence/floe-native-apps/cmd/floe-host-desktop-service\n\tmod\tgithub.com/floegence/floe-native-apps\t(devel)\t\n\tdep\tgithub.com/godbus/dbus/v5\tv5.2.2\th1:TUR3TgtSVDmjiXOgAAyaZbYmIeP3DPkld3jgKGV8mXQ=\n\tdep\tgolang.org/x/sys\tv0.49.0\th1:XbzkgYJHdqh/8m2Uu0W/dQv8nktxx4BFHp1M0gROTXA=\n\tbuild\t-buildmode=exe\n\tbuild\t-compiler=gc\n\tbuild\t-trimpath=true\n\tbuild\tCGO_ENABLED=0\n\tbuild\tGOARCH=amd64\n\tbuild\tGOOS=linux\n\tbuild\tGOAMD64=v1\n",
+  "build_info": "/private/tmp/redeven-udesk26-rustdesk-baseline/window-c04/release-service-amd64/floe-host-desktop-service: go1.27.2\n\tpath\tgithub.com/floegence/floe-native-apps/cmd/floe-host-desktop-service\n\tmod\tgithub.com/floegence/floe-native-apps\t(devel)\t\n\tdep\tgithub.com/godbus/dbus/v5\tv5.2.2\th1:TUR3TgtSVDmjiXOgAAyaZbYmIeP3DPkld3jgKGV8mXQ=\n\tdep\tgolang.org/x/sys\tv0.49.0\th1:XbzkgYJHdqh/8m2Uu0W/dQv8nktxx4BFHp1M0gROTXA=\n\tbuild\t-buildmode=exe\n\tbuild\t-compiler=gc\n\tbuild\t-trimpath=true\n\tbuild\tCGO_ENABLED=0\n\tbuild\tGOARCH=amd64\n\tbuild\tGOOS=linux\n\tbuild\tGOAMD64=v1\n",
   "files": {
     "floe-host-desktop-service": {
       "executable": true,
-      "sha256": "90c8128093bfb7b85068f573ae44b21f81860246ae978fcbe7454ab6a0a9aed3",
+      "sha256": "1ba49e0c0342c0cc1b23d0bc7313e3d79dfa95999100c41f794b0e7ba76f564f",
       "size_bytes": 4489340
     }
   },
@@ -19,7 +19,7 @@
     "hostdesktop/deployment_linux.go": "a5f77910b390d460bbd11e6b2504cedcde68be997e7a89626fe2d8ab455e09c9",
     "hostdesktop/deployment_media_linux.go": "4d8f21012ee96d652b92c66c97a0a6daf66740d1fb1e6656c77c1a8f910c9cd9",
     "hostdesktop/deployment_other.go": "3ef91d0966d4d9bf1dcb62ab81117a8e4abf7d8ccef0b4339d6416f4fa6ad29f",
-    "hostdesktop/login_authority_linux.go": "e3f8f154a4ae09a1b21cacbe45b11cf7efa749cc3e91cd297be73f2610625532",
+    "hostdesktop/login_authority_linux.go": "5c99a6a434bcb3e18d22c1ccc0a037aaf7af02083d4ac407d4059c11cd9f68b2",
     "hostdesktop/login_capture_linux.go": "64390d261e46335157a5c47836a7a735e4cd51b8db335ed6bb4c52c437264a54",
     "hostdesktop/login_client.go": "957115417b8d2845400cb0a3724ebd0b8b357d6855b59c3d7aeb05b662881bab",
     "hostdesktop/login_compositor_linux.go": "28dad97837574b870f4449842d047e3ae060b571e436325b6dfdbc72c0a33fd6",
@@ -30,10 +30,10 @@
     "hostdesktop/login_media_socket_linux.go": "f927609c4d3e085c111808a9df0d9239b3aade4d37d31828e95fa34682a0843e",
     "hostdesktop/login_seat_linux.go": "26888a0a0851ea844d7ea881f5b694d67d9d95cf8d02defb47a6bfdae1f41389",
     "hostdesktop/login_service.go": "19de2fe8d9db1fb98e34155132e9edaf78e1f93f8d0f6af81ea1d9780105491e",
-    "hostdesktop/login_service_linux.go": "12f824ca58b04ec05cfd47331b5a3e187b3cc18e9c988267fd7edcf6988d653a",
+    "hostdesktop/login_service_linux.go": "9b6d1abafd25028c12d1c0422d288ab5f3a5ef5534955f807a9c32f08c8b505f",
     "hostdesktop/login_service_other.go": "a1276d65d3d3a9e3bad84fc7563b6d72cb623dbbda4609e085f819a40062650f",
     "hostdesktop/login_text_linux.go": "12b26b08d93480b2aa4a7f48d2d5c9c317c7d07a607f8220e429561195b15f7c",
-    "hostdesktop/protocol.go": "8018c64948378cda6ea7051a796eedbb1908b070b25363bb44116b8982f7eea1",
+    "hostdesktop/protocol.go": "e114d282e05bcb3e97eb0bafc2a97744c414552ff44f117066980653423b3990",
     "hostdesktop/service_status.go": "c1a762025e7895ad26cd8a2020dcddc5193b9a6b53aa131193ec2393cf4d550c",
     "hostdesktop/uinput_linux.go": "e91d014aa973f78d61283d6cd02c517e996d30ad29e3f2d3275917139ed088da",
     "internal/servicearchive/budget.go": "70e30756ec6aab98a9921dcee42921befd3143fca8999caa951c50e1d344260b",

@@ -98,7 +98,7 @@ class DesktopMedia:
             self.encoder_name, self.encoder_spec = select_encoder(Gst, codecs)
         self.codec = _codec_for_encoder(self.encoder_name)
         self.emit, self.failed = emit, failed
-        self.credit = FrameCredit()
+        self.credit = FrameCredit(self.picture.get('frame_window', 4))
         self.capture = self.encoding = self.audio = None
         self.x11_capture = None
         self.pipewire_capture = None
@@ -483,7 +483,7 @@ class DesktopMedia:
         if self.cursor_latest:
             self._cursor_changed(*self.cursor_latest)
         self.submitted.clear()
-        self.credit = FrameCredit()
+        self.credit = FrameCredit(self.picture.get('frame_window', 4))
         self.encoding_busy = self.refining = False
         self.encoded_sequence = self.refined_sequence = self.next_encoded = 0
         self._schedule_produce()

@@ -25,6 +25,19 @@ class PixelComparisonTests(unittest.TestCase):
 
 
 class SchedulerTests(unittest.TestCase):
+    def test_negotiated_window_survives_recovery_without_granting_credit_early(self):
+        for window in (4, 6):
+            loop = SimpleNamespace(timeout_add=lambda *_: 1, idle_add=lambda *_: 1)
+            media = DesktopMedia(None, loop, 1, {'frame_rate': 60, 'frame_window': window, 'codecs': ['vp9']}, ('vp9enc', ''), Mock(), Mock())
+            for frame in range(1, window + 1):
+                self.assertEqual(media.credit.reserve(), frame)
+            self.assertIsNone(media.credit.reserve())
+            media.recover(2)
+            self.assertEqual(media.credit.capacity, window)
+            self.assertEqual(media.credit.reserve(), 1)
+            self.assertEqual(media.credit.pending, 1)
+
+
     def test_failed_av1_probe_cannot_select_desktop_pixels(self):
         pipelines = [Mock(), Mock()]
         pipelines[0].get_bus.return_value.timed_pop_filtered.return_value.type = 1

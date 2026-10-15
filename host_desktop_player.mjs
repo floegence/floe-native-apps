@@ -94,7 +94,7 @@ export class HostDesktopPlayer {
     if (!this.context) throw new Error('CANVAS_UNAVAILABLE');
     this.acknowledge = acknowledge; this.recover = recover; this.painted = painted;
     this.statistics = statistics; this.audioState = audioState; this.workletURL = workletURL;
-    this.order = new DesktopPaintOrder();
+    this.order = new DesktopPaintOrder(); this.frameWindow = 4;
     this.frames = new Map(); this.incoming = []; this.refinements = new Set();
     this.epoch = 0;
     this.processing = false; this.closed = false; this.recovering = false;
@@ -116,7 +116,9 @@ export class HostDesktopPlayer {
     this.resizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(this.refreshCursor);
     this.resizeObserver?.observe(canvas);
   }
-  reset(generation) {
+  reset(generation, frameWindow = 4) {
+    if (frameWindow !== 4 && frameWindow !== 6) throw new Error('FRAME_WINDOW_INVALID');
+    this.frameWindow = frameWindow;
     this.epoch++;
     this.order.reset(generation); this.recovering = false; this.needsKey = true; this.flushing = false;
     this.lastDraw = 0; this.draws = this.bytes = 0; this.intervals = [];
@@ -155,7 +157,7 @@ export class HostDesktopPlayer {
     this.bytes += buffer.byteLength;
     if (packet.header.type === 'audio') { this.decodeAudio(packet); return; }
     if (!this.order.accept(packet.header)) return;
-    if (this.incoming.length >= 4) { this.fail('VIDEO_QUEUE_LIMIT'); return; }
+    if (this.incoming.length >= this.frameWindow) { this.fail('VIDEO_QUEUE_LIMIT'); return; }
     this.incoming.push(packet);
     void this.process();
   }
@@ -240,7 +242,7 @@ export class HostDesktopPlayer {
           if (this.decoder && header.codec !== this.decoderCodec) { this.fail('VIDEO_CODEC_CHANGED'); break; }
           if (!this.decoder) await this.configure(header);
           if (epoch !== this.epoch || header.generation !== this.order.generation || this.closed || this.recovering) continue;
-          if (!this.decoder || this.decoder.state !== 'configured' || this.frames.size >= 4 || this.decoder.decodeQueueSize >= 4) {
+          if (!this.decoder || this.decoder.state !== 'configured' || this.frames.size >= this.frameWindow || this.decoder.decodeQueueSize >= this.frameWindow) {
             this.fail('VIDEO_QUEUE_LIMIT'); break;
           }
           // Frame identity is a collision-free decoder timestamp. Native capture

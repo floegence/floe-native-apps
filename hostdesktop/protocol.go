@@ -15,6 +15,11 @@ import (
 // Consumers authorize a session; native adapters own its current OS target.
 const HostDesktopProtocolVersion = 1
 
+// An absent window preserves the original protocol's four-frame limit.
+// Extended delivery requires an explicit capability and matching picture offer.
+const HostDesktopDefaultFrameWindow = 4
+const HostDesktopMaxFrameWindow = 6
+
 const hostDesktopPayloadLimit = 64 << 20
 const hostDesktopHeaderLimit = 8 << 20 // Includes worst-case escaping of 1 MiB text.
 
@@ -32,6 +37,7 @@ type HostDesktopDisplay struct {
 }
 
 type HostDesktopCapabilities struct {
+	FrameWindow   int                  `json:"frame_window,omitempty"`
 	Authorization string               `json:"authorization,omitempty"`
 	Backend       string               `json:"backend"`
 	State         string               `json:"state"`
@@ -50,6 +56,7 @@ type HostDesktopCapabilities struct {
 }
 
 type HostDesktopPicture struct {
+	FrameWindow  int      `json:"frame_window,omitempty"`
 	Mode         string   `json:"mode"`
 	MaxDimension int      `json:"max_dimension"`
 	FrameRate    int      `json:"frame_rate"`
@@ -170,7 +177,18 @@ func hostDesktopDisplayID(id string) bool {
 
 func hostDesktopServiceName(name string) bool { return name == "login-screen" }
 
+// FrameCapacity resolves an omitted protocol-v1 offer to the legacy window.
+func (p HostDesktopPicture) FrameCapacity() int {
+	if p.FrameWindow == 0 {
+		return HostDesktopDefaultFrameWindow
+	}
+	return p.FrameWindow
+}
+
 func (p HostDesktopPicture) valid() bool {
+	if p.FrameWindow != 0 && p.FrameWindow != HostDesktopDefaultFrameWindow && p.FrameWindow != HostDesktopMaxFrameWindow {
+		return false
+	}
 	if p.Mode != "auto" && p.Mode != "clarity" && p.Mode != "smooth" && p.Mode != "data" {
 		return false
 	}
@@ -341,6 +359,9 @@ func hostDesktopServiceState(value string) bool {
 
 func (message HostDesktopMessage) valid() bool {
 	if !hostDesktopAuthorization(message.Authorization) || message.Capabilities != nil && !hostDesktopAuthorization(message.Capabilities.Authorization) {
+		return false
+	}
+	if cap := message.Capabilities; cap != nil && cap.FrameWindow != 0 && cap.FrameWindow != HostDesktopDefaultFrameWindow && cap.FrameWindow != HostDesktopMaxFrameWindow {
 		return false
 	}
 	if message.Version != HostDesktopProtocolVersion || message.Bytes < 0 || message.Bytes > hostDesktopPayloadLimit {

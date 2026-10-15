@@ -185,3 +185,42 @@ func TestLoginUnlockLimiterSurvivesReconnectAndRepeatFlag(t *testing.T) {
 		t.Fatal("pointer bypassed unlock interaction limit")
 	}
 }
+
+func TestLoginFrameWindowBoundsCreditWithoutGrantingInput(t *testing.T) {
+	for _, window := range []int{0, 4, 6} {
+		a := &loginAuthority{frameWindow: window}
+		seat := loginSeatState{session: "user", kind: "user", uid: 1000}
+		if err := a.transition(seat, "control"); err != nil {
+			t.Fatal(err)
+		}
+		limit := window
+		if limit == 0 {
+			limit = 4
+		}
+		for frame := 1; frame <= limit; frame++ {
+			if !a.acceptFrame(a.generation, uint64(frame)) {
+				t.Fatalf("window %d rejected %d", window, frame)
+			}
+		}
+		if a.acceptFrame(a.generation, uint64(limit+1)) {
+			t.Fatal("window overflow admitted")
+		}
+		key := HostDesktopCommand{Version: 1, ID: 1, Method: "input", Generation: a.generation, Input: &HostDesktopInput{Kind: "key", Code: "KeyA"}}
+		if a.input(key) == nil {
+			t.Fatal("unpainted input admitted")
+		}
+		if err := a.acknowledge(a.generation, uint64(limit)); err != nil {
+			t.Fatal(err)
+		}
+		if !a.acceptFrame(a.generation, uint64(limit+1)) {
+			t.Fatal("confirmed credit not released")
+		}
+		old := a.generation
+		if err := a.transition(seat, "control"); err != nil {
+			t.Fatal(err)
+		}
+		if a.acknowledge(old, uint64(limit+1)) == nil || a.input(key) == nil {
+			t.Fatal("retired generation authorized")
+		}
+	}
+}

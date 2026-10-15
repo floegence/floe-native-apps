@@ -443,7 +443,7 @@ def main():
         if method == 'probe':
             def probed(size, code):
                 cap = {'backend': 'linux-drm-kms', 'state': 'unavailable' if code else 'ready', 'screen': not code,
-                    'input': not code, 'unattended': True, 'unlock': not code, 'encoder': encoder[0], 'displays': []}
+                    'input': not code, 'unattended': True, 'unlock': not code, 'frame_window': 6, 'encoder': encoder[0], 'displays': []}
                 if code: cap['reason'] = code
                 else: cap['displays'] = [{'id': 'physical-0', 'name': 'Physical display', 'width': size[0], 'height': size[1], 'scale': 1, 'primary': True}]
                 emit({'type': 'capabilities', 'id': command['id'], 'capabilities': cap})

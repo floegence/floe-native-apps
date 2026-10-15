@@ -275,6 +275,11 @@ class PictureCodecTests(unittest.TestCase):
     def test_video_offer_is_optional_known_unique_and_bounded(self):
         picture = dict(mode='smooth', max_dimension=2560, frame_rate=60, audio=False)
         self.assertEqual(picture_value(picture), picture)
+        for window in (4, 6):
+            self.assertEqual(picture_value(dict(picture, frame_window=window))['frame_window'], window)
+        for window in (True, None, 0, 5, 7, '6'):
+            with self.assertRaises(DesktopError):
+                picture_value(dict(picture, frame_window=window))
         for codecs in (['h264'], ['vp9'], ['av1'], ['av1', 'vp9', 'h264']):
             self.assertEqual(picture_value(dict(picture, codecs=codecs))['codecs'], codecs)
         for codecs in ([], ['av2'], ['vp9', 'vp9'], ['av1', 'vp9', 'h264', 'av1'], None, 'vp9', [{}]):

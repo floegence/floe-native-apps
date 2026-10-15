@@ -301,6 +301,7 @@ func (s *loginServer) attachment(ctx context.Context, conn, media *net.UnixConn,
 	picture := HostDesktopPicture{Mode: "auto", MaxDimension: 1920, FrameRate: 30}
 	transition := func(seat loginSeatState, mode string) bool {
 		reset := seat != authority.seat
+		authority.frameWindow = picture.FrameCapacity()
 		if authority.transition(seat, mode) != nil {
 			return false
 		}

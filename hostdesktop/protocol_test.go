@@ -223,3 +223,40 @@ func TestHostDesktopCursorVisibilityAndPosition(t *testing.T) {
 		t.Fatal("hidden cursor carried pixels")
 	}
 }
+
+func TestDesktopFrameWindowIsOptionalAndBounded(t *testing.T) {
+	p := HostDesktopPicture{Mode: "smooth", MaxDimension: 2560, FrameRate: 60}
+	for _, window := range []int{0, 4, 6} {
+		p.FrameWindow = window
+		want := window
+		if want == 0 {
+			want = 4
+		}
+		if !p.valid() || p.FrameCapacity() != want {
+			t.Fatalf("window %d: %+v", window, p)
+		}
+	}
+	for _, window := range []int{-1, 1, 5, 7, 100} {
+		p.FrameWindow = window
+		if p.valid() {
+			t.Fatalf("accepted window %d", window)
+		}
+	}
+	p.FrameWindow = 0
+	raw, err := json.Marshal(p)
+	if err != nil || bytes.Contains(raw, []byte("frame_window")) {
+		t.Fatalf("legacy wire changed: %s %v", raw, err)
+	}
+}
+
+func TestDesktopCapabilityWindowRejectsUnboundedAdvertisements(t *testing.T) {
+	for _, window := range []int{0, 4, 6, 5, 7, -1} {
+		message := HostDesktopMessage{Version: 1, Type: "capabilities", Capabilities: &HostDesktopCapabilities{FrameWindow: window}}
+		var wire bytes.Buffer
+		err := WriteHostDesktopMessage(&wire, message)
+		valid := window == 0 || window == 4 || window == 6
+		if (err == nil) != valid {
+			t.Fatalf("advertised window %d: %v", window, err)
+		}
+	}
+}

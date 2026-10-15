@@ -37,6 +37,7 @@ type loginAuthority struct {
 	mode, state                string
 	seat                       loginSeatState
 	offered                    map[uint64]bool
+	frameWindow                int
 	release                    func() error
 	attempts                   *loginUnlockLimiter
 }
@@ -57,7 +58,11 @@ func (a *loginAuthority) transition(seat loginSeatState, mode string) error {
 	return nil
 }
 func (a *loginAuthority) offer() (uint64, bool) {
-	if a.state != "active" && a.state != "locked" || len(a.offered) >= 4 {
+	limit := a.frameWindow
+	if limit == 0 {
+		limit = HostDesktopDefaultFrameWindow
+	}
+	if a.state != "active" && a.state != "locked" || len(a.offered) >= limit {
 		return 0, false
 	}
 	a.frame++
