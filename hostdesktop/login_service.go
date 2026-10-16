@@ -9,7 +9,7 @@ import (
 )
 
 const LoginServiceSocket = "/run/redeven-desktop/desktop.sock"
-const loginAttachmentVersion = 3
+const loginAttachmentVersion = 4
 
 // LoginServiceConfig contains administrator-installed, root-owned policy only.
 // It is never populated from a viewer request. No credential belongs here.
@@ -19,6 +19,8 @@ type LoginServiceConfig struct {
 	MediaRoot              string
 	RuntimeUID, RuntimeGID uint32
 	RuntimeSHA256          string
+	PolicyDigest           string
+	DeploymentJournal      string
 	Seat                   string
 }
 
@@ -28,10 +30,12 @@ type loginServiceHello struct {
 	Token     string `json:"token,omitempty"`
 }
 type loginServiceReply struct {
-	Version int            `json:"version,omitempty"`
-	Code    string         `json:"code,omitempty"`
-	Token   string         `json:"token,omitempty"`
-	Status  *ServiceStatus `json:"status,omitempty"`
+	Maintenance  *loginMaintenanceStatus `json:"maintenance,omitempty"`
+	PolicyDigest string                  `json:"policy_digest,omitempty"`
+	Version      int                     `json:"version,omitempty"`
+	Code         string                  `json:"code,omitempty"`
+	Token        string                  `json:"token,omitempty"`
+	Status       *ServiceStatus          `json:"status,omitempty"`
 }
 
 func loginWritePacket(writer io.Writer, value any) error {

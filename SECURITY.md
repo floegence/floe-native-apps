@@ -84,6 +84,15 @@ its SSH UI. The SDK never requests sudo, installs on startup, receives a passwor
 or sends credentials to the daemon. The management command receives a bounded
 policy and a liveness stream; cancellation or loss of that stream rolls back the
 unit, policy and activation state. Its progress contains fixed stages/error codes.
+Management v2 binds each confirmation and actual Runtime authentication proof to
+one operation, challenge and complete policy digest. It revalidates PID, kernel
+start identity, UID/GID and executable bytes before applying and committing.
+Only kernel-authenticated root peers can acquire a maintenance lease; all view
+and control attachments share its admission boundary. Credentials never enter
+this protocol. The root-owned journal restores original files and enabled/running
+state after cancellation or process death; an unconfirmed result is never treated
+as successful rollback. Unknown ownership and future records are rejected.
+
 
 The root-owned systemd service listens only on a private Unix socket. It admits
 one administrator-pinned Runtime image and UID, checks peer PID/start-time/image,

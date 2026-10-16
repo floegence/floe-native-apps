@@ -23,6 +23,14 @@ func OpenLoginScreenSession(ctx context.Context, path string) (*LoginScreenConne
 type LoginServiceDeploymentRequest = hostdesktop.LoginServiceDeploymentRequest
 type LoginServiceDeploymentEvent = hostdesktop.LoginServiceDeploymentEvent
 
-func ManageLoginScreenService(ctx context.Context, request LoginServiceDeploymentRequest, report func(LoginServiceDeploymentEvent)) (ServiceStatus, error) {
-	return hostdesktop.ManageLoginScreenService(ctx, request, report)
+type LoginServiceDeploymentCommand = hostdesktop.LoginServiceDeploymentCommand
+type LoginServiceDeploymentControl = hostdesktop.LoginServiceDeploymentControl
+
+const LoginServiceManagementVersion = hostdesktop.LoginServiceManagementVersion
+
+func VerifyLoginServiceAdmission(ctx context.Context, path string) (string, error) {
+	return hostdesktop.VerifyLoginServiceAdmission(ctx, path)
+}
+func ManageLoginScreenServiceControlled(ctx context.Context, request LoginServiceDeploymentRequest, report func(LoginServiceDeploymentEvent), control LoginServiceDeploymentControl) (ServiceStatus, error) {
+	return hostdesktop.ManageLoginScreenServiceControlled(ctx, request, report, control)
 }

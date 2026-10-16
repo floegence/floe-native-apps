@@ -30,7 +30,7 @@ const (
 
 // LoginServiceManager observes installed state. It never simulates installation
 // in memory and never elevates Runtime. Administrator-authorized SSH deployment
-// uses ManageLoginScreenService in a separate management process.
+// uses ManageLoginScreenServiceControlled in a separate management process.
 type LoginServiceManager struct{}
 
 func NewLoginServiceManager() *LoginServiceManager { return &LoginServiceManager{} }

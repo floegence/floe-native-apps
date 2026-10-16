@@ -46,6 +46,8 @@ func main() {
 	flags.StringVar(&config.WorkerPath, "worker", "", "Administrator-owned DRM worker executable.")
 	flags.StringVar(&config.MediaRoot, "media-root", "", "Verified root-owned media installation.")
 	flags.StringVar(&config.RuntimeSHA256, "runtime-sha256", "", "Authorized Runtime executable digest.")
+	flags.StringVar(&config.PolicyDigest, "policy-digest", "", "Installed deployment policy digest")
+	flags.StringVar(&config.DeploymentJournal, "deployment-journal", "", "Root-owned pending deployment journal")
 	flags.StringVar(&config.Seat, "seat", "seat0", "Physical logind seat.")
 	uid := flags.Uint("runtime-uid", 0, "Authorized unprivileged Runtime UID.")
 	gid := flags.Uint("runtime-gid", 0, "Runtime primary GID for socket access.")

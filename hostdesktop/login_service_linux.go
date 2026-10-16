@@ -34,6 +34,8 @@ type loginServer struct {
 	mu            sync.Mutex
 	controller    *net.UnixConn
 	unlockLimiter loginUnlockLimiter
+	attachments   map[*net.UnixConn]struct{}
+	maintenance   *net.UnixConn
 }
 
 func RunLoginScreenService(ctx context.Context, config LoginServiceConfig) error {
@@ -122,8 +124,12 @@ func (s *loginServer) claim(conn *net.UnixConn, mode string) bool {
 
 func (s *loginServer) serve(ctx context.Context, conn *net.UnixConn) {
 	defer conn.Close()
-	defer s.claim(conn, "view")
+	defer s.releaseAttachment(conn)
 	_ = conn.SetDeadline(time.Now().Add(5 * time.Second))
+	if loginRootPeer(conn) {
+		s.serveMaintenance(ctx, conn)
+		return
+	}
 	peer, err := loginPeer(conn, s.config.RuntimeUID, s.digest)
 	if err != nil {
 		return
@@ -135,9 +141,16 @@ func (s *loginServer) serve(ctx context.Context, conn *net.UnixConn) {
 	}
 	switch hello.Operation {
 	case "status":
-		_ = loginWritePacket(conn, loginServiceReply{Version: loginAttachmentVersion, Status: &ServiceStatus{State: ServiceActive, Backend: "linux-drm-kms"}})
+		_ = loginWritePacket(conn, loginServiceReply{Version: loginAttachmentVersion, Status: &ServiceStatus{State: ServiceActive, Backend: "linux-drm-kms"}, PolicyDigest: loginConfigDigest(s.config)})
 		return
 	case "ticket":
+		s.mu.Lock()
+		maintaining := s.maintenance != nil || s.pendingDeployment()
+		s.mu.Unlock()
+		if maintaining {
+			_ = loginWritePacket(conn, loginServiceReply{Version: loginAttachmentVersion, Code: "SERVICE_MAINTENANCE"})
+			return
+		}
 		token, err := s.tickets.issue(peer)
 		if err == nil {
 			_ = loginWritePacket(conn, loginServiceReply{Version: loginAttachmentVersion, Token: token})
@@ -152,6 +165,10 @@ func (s *loginServer) serve(ctx context.Context, conn *net.UnixConn) {
 			return
 		}
 	default:
+		return
+	}
+	if !s.admitAttachment(conn) {
+		_ = loginWritePacket(conn, loginServiceReply{Version: loginAttachmentVersion, Code: "SERVICE_MAINTENANCE"})
 		return
 	}
 	media, child, err := loginMediaSocketPair()

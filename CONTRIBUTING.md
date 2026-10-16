@@ -1559,16 +1559,32 @@ The consumer's Env App SSH adapter confirms root service scope, verifies bytes i
 a private root directory before execution, and runs `manage`. Its JSON policy
 contains no credentials. Wait for root authority before sending that policy;
 otherwise an unused sudo password could become service input. Keep management
-stdin open through completion, close it on cancellation, and wait for reported
-rollback before terminating SSH. Failed or unknown rollback is a visible failure.
-An update may select a retained immutable version after comparing its complete
-file tree and permissions with the freshly verified preparation, including
-empty files. Altered or incomplete versions remain rejected. A failed restore
-keeps both retained versions and rolls back the active policy and service.
+stdin open through completion and send management v2 heartbeats every five seconds.
+Cancellation is an explicit command; a fifteen-second liveness loss also cancels.
+The sole preparation verb is ensure; stop and uninstall remain distinct intents.
+The manager owns the transaction and a root-only maintenance lease. It counts all
+attachments and blocks new admission before asking separately for interruption
+consent. Old daemons have unknown impact and require the same explicit consent.
+Confirmation and Runtime-proof replies bind operation, challenge and full policy
+digest. The actual unprivileged Runtime must authenticate before commit. Readiness,
+authentication and physical capture are separate outcomes. Unchanged healthy
+policies do not restart the daemon.
+
+Installed record versions 1 and 2 retain their exact historical digest shape and
+upgrade atomically to version 3, which separates policy from operation inputs.
+Unknown/future records and unowned paths fail read-only. Verified current-owned
+versions can be repaired; altered unrelated retained versions remain rejected.
+A private root-owned sibling journal saves original files, activation, enablement
+and driver state before mutation. Recovery precedes record loading. Cancellation,
+failed proof and apply errors restore that snapshot with a twenty-second bound;
+failed recovery retains the journal. A durable commit marker distinguishes cleanup
+from rollback after an abnormal exit. Application is bounded to two minutes,
+confirmation to two minutes, and Runtime proof to ten seconds. The consumer must
+keep transport alive through rollback and present failed or unknown outcomes.
 
 Native qualifiers refuse an existing service installation. With explicit root
-authorization, `FLOE_LOGIN_DEPLOYMENT_KIT` runs real systemd install/cancel/start/
-stop/update/uninstall and unprivileged attachment tests. `FLOE_LOGIN_SERVICE_WORKER`
+authorization, `FLOE_LOGIN_DEPLOYMENT_KIT` runs real systemd ensure/cancel/
+stop/uninstall and unprivileged attachment tests. `FLOE_LOGIN_SERVICE_WORKER`
 qualifies capture/input teardown independently. A disconnected display qualifier
 uses `FLOE_LOGIN_EXPECT_DISCONNECTED=1` and must report missing scanout rather than
 claim success for capture or unlock. These checks do not replace real wrong-

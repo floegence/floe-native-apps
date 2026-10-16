@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -47,21 +48,21 @@ func TestLoginDeploymentRealSystemd(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	request := LoginServiceDeploymentRequest{Operation: "install", SourceDirectory: source, RuntimeUID: 1000, RuntimeGID: 1000, RuntimeSHA256: digest(binary), ServiceSHA256: digest(filepath.Join(source, "floe-host-desktop-service")), WorkerSHA256: digest(filepath.Join(source, "desktop-drm")), MediaSHA256: digest(filepath.Join(source, "media.tar.gz"))}
+	request := LoginServiceDeploymentRequest{Operation: "ensure", SourceDirectory: source, RuntimeUID: 1000, RuntimeGID: 1000, RuntimeSHA256: digest(binary), ServiceSHA256: digest(filepath.Join(source, "floe-host-desktop-service")), WorkerSHA256: digest(filepath.Join(source, "desktop-drm")), MediaSHA256: digest(filepath.Join(source, "media.tar.gz"))}
 	report := func(event LoginServiceDeploymentEvent) {
 		t.Logf("deployment stage=%s code=%s rollback=%s", event.Stage, event.Code, event.Rollback)
 	}
 	defer func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		_, err := ManageLoginScreenService(ctx, LoginServiceDeploymentRequest{Operation: "uninstall"}, report)
+		_, err := qualifyManageLoginService(ctx, LoginServiceDeploymentRequest{Operation: "uninstall"}, report)
 		if err != nil {
 			t.Error("qualification cleanup failed")
 		}
 	}()
 	var canceledRollback string
 	ctx, cancel := context.WithCancel(context.Background())
-	_, err = ManageLoginScreenService(ctx, request, func(event LoginServiceDeploymentEvent) {
+	_, err = qualifyManageLoginService(ctx, request, func(event LoginServiceDeploymentEvent) {
 		report(event)
 		if event.Stage == "rolled_back" {
 			canceledRollback = event.Rollback
@@ -82,7 +83,7 @@ func TestLoginDeploymentRealSystemd(t *testing.T) {
 			t.Fatal("cancel retained a partial installation")
 		}
 	}
-	status, err := ManageLoginScreenService(context.Background(), request, report)
+	status, err := qualifyManageLoginService(context.Background(), request, report)
 	if err != nil || status.State != ServiceActive {
 		t.Fatalf("install failed: %+v %v", status, err)
 	}
@@ -189,7 +190,7 @@ func TestLoginDeploymentRealSystemd(t *testing.T) {
 				time.Sleep(50 * time.Millisecond)
 			}
 		} else if boundary == "service_stop" {
-			_, err = ManageLoginScreenService(context.Background(), LoginServiceDeploymentRequest{Operation: "stop"}, report)
+			_, err = qualifyManageLoginService(context.Background(), LoginServiceDeploymentRequest{Operation: "stop"}, report)
 			if err != nil {
 				_ = command.Process.Kill()
 				_ = command.Wait()
@@ -219,7 +220,7 @@ func TestLoginDeploymentRealSystemd(t *testing.T) {
 		}
 		t.Logf("%s released held input and destroyed the virtual devices", boundary)
 		if boundary == "service_stop" {
-			if _, err = ManageLoginScreenService(context.Background(), LoginServiceDeploymentRequest{Operation: "start"}, report); err != nil {
+			if _, err = qualifyManageLoginService(context.Background(), request, report); err != nil {
 				t.Fatal("restart after held input failed")
 			}
 		}
@@ -241,22 +242,90 @@ func TestLoginDeploymentRealSystemd(t *testing.T) {
 			}
 		}
 	}
-	for _, operation := range []string{"stop", "start"} {
-		if _, err := ManageLoginScreenService(context.Background(), LoginServiceDeploymentRequest{Operation: operation}, report); err != nil {
+	for _, operation := range []string{"stop", "ensure"} {
+		if _, err := qualifyManageLoginService(context.Background(), func() LoginServiceDeploymentRequest { r := request; r.Operation = operation; return r }(), report); err != nil {
 			t.Fatalf("%s failed", operation)
 		}
 	}
 	client()
-	request.Operation = "update"
-	if _, err := ManageLoginScreenService(context.Background(), request, report); err != nil {
+	request.Operation = "ensure"
+	if _, err := qualifyManageLoginService(context.Background(), request, report); err != nil {
 		t.Fatal("idempotent update failed")
 	}
-	if _, err := ManageLoginScreenService(context.Background(), LoginServiceDeploymentRequest{Operation: "uninstall"}, report); err != nil {
+	if _, err := qualifyManageLoginService(context.Background(), LoginServiceDeploymentRequest{Operation: "uninstall"}, report); err != nil {
 		t.Fatal("uninstall failed")
 	}
 	for _, name := range []string{"/etc/systemd/system/redeven-desktop.service", "/usr/lib/redeven-desktop", "/run/redeven-desktop", "/etc/modules-load.d/redeven-desktop.conf"} {
 		if _, err := os.Lstat(name); !errors.Is(err, os.ErrNotExist) {
 			t.Fatal("uninstall retained files or socket")
 		}
+	}
+}
+
+// The opt-in qualifier owns a real unprivileged Runtime process throughout
+// management. Its proof is a read-only socket authentication, never capture.
+func qualifyManageLoginService(ctx context.Context, request LoginServiceDeploymentRequest, report func(LoginServiceDeploymentEvent)) (ServiceStatus, error) {
+	binary, err := os.Executable()
+	if err != nil {
+		return ServiceStatus{}, err
+	}
+	client := exec.Command(binary, "-test.run", "^TestLoginDeploymentRuntimeProof$")
+	client.Env = append(os.Environ(), "FLOE_LOGIN_RUNTIME_PROOF=1")
+	client.SysProcAttr = &syscall.SysProcAttr{Credential: &syscall.Credential{Uid: 1000, Gid: 1000}}
+	input, err := client.StdinPipe()
+	if err != nil {
+		return ServiceStatus{}, err
+	}
+	output, err := client.StdoutPipe()
+	if err != nil {
+		return ServiceStatus{}, err
+	}
+	if err = client.Start(); err != nil {
+		return ServiceStatus{}, err
+	}
+	defer func() { _ = input.Close(); _ = client.Process.Kill(); _ = client.Wait() }()
+	request.Version, request.OperationID, request.RuntimePID = LoginServiceManagementVersion, loginChallenge(), uint32(client.Process.Pid)
+	request.RuntimeStart, err = loginProcessStart(request.RuntimePID)
+	if err != nil {
+		return ServiceStatus{}, err
+	}
+	request.RuntimeUID, request.RuntimeGID = 1000, 1000
+	file, err := os.ReadFile(binary)
+	if err != nil {
+		return ServiceStatus{}, err
+	}
+	sum := sha256.Sum256(file)
+	request.RuntimeSHA256 = hex.EncodeToString(sum[:])
+	reader := bufio.NewReader(output)
+	control := func(wait context.Context, event LoginServiceDeploymentEvent) error {
+		if event.Stage == "confirmation_required" {
+			return nil
+		}
+		if _, err := fmt.Fprintln(input, event.PolicyDigest); err != nil {
+			return err
+		}
+		stop := context.AfterFunc(wait, func() { _ = output.Close() })
+		defer stop()
+		line, err := reader.ReadString('\n')
+		if err != nil || strings.TrimSpace(line) != event.PolicyDigest {
+			return ErrHostDesktopProtocol
+		}
+		return nil
+	}
+	return ManageLoginScreenServiceControlled(ctx, request, report, control)
+}
+func TestLoginDeploymentRuntimeProof(t *testing.T) {
+	if os.Getenv("FLOE_LOGIN_RUNTIME_PROOF") != "1" {
+		t.Skip("qualification Runtime not requested")
+	}
+	scanner := bufio.NewScanner(os.Stdin)
+	for scanner.Scan() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		digest, err := VerifyLoginServiceAdmission(ctx, "")
+		cancel()
+		if err != nil {
+			t.Fatal("Runtime authentication failed")
+		}
+		fmt.Println(digest)
 	}
 }

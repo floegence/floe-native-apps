@@ -4,6 +4,6 @@ package hostdesktop
 
 import "context"
 
-func ManageLoginScreenService(context.Context, LoginServiceDeploymentRequest, func(LoginServiceDeploymentEvent)) (ServiceStatus, error) {
-	return ServiceStatus{State: ServiceUnsupported, Reason: "platform_unsupported"}, ErrServiceUnsupported
+func ManageLoginScreenServiceControlled(context.Context, LoginServiceDeploymentRequest, func(LoginServiceDeploymentEvent), LoginServiceDeploymentControl) (ServiceStatus, error) {
+	return ServiceStatus{State: ServiceUnsupported}, ErrServiceUnsupported
 }

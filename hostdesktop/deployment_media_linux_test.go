@@ -100,7 +100,10 @@ func TestLoginMediaUpgradeRestoresExactVersionOneRecord(t *testing.T) {
 	}
 	currentDigest := record.Digest
 	record.Version, record.Request.MediaSHA256 = 1, ""
-	policy, _ := json.Marshal(record.Request)
+	policy, _ := json.Marshal(struct {
+		Operation string `json:"operation"`
+		LoginServicePolicy
+	}{LoginServicePolicy: record.Request})
 	hash := sha256.Sum256(policy)
 	record.Digest = hex.EncodeToString(hash[:])
 	oldDirectory := filepath.Join(d.root, "versions", record.Digest)
@@ -110,7 +113,12 @@ func TestLoginMediaUpgradeRestoresExactVersionOneRecord(t *testing.T) {
 	if err := os.WriteFile(d.unit, d.unitContents(oldDirectory, record.Request), 0644); err != nil {
 		t.Fatal(err)
 	}
-	data, _ := json.MarshalIndent(record, "", "  ")
+	data, _ := json.MarshalIndent(struct {
+		Kind    string          `json:"kind"`
+		Version int             `json:"version"`
+		Policy  json.RawMessage `json:"policy"`
+		Digest  string          `json:"digest"`
+	}{record.Kind, record.Version, policy, record.Digest}, "", "  ")
 	data = append(data, '\n')
 	if err := os.WriteFile(filepath.Join(d.root, "installed.json"), data, 0600); err != nil {
 		t.Fatal(err)
@@ -119,7 +127,7 @@ func TestLoginMediaUpgradeRestoresExactVersionOneRecord(t *testing.T) {
 	if err != nil || old.Version != 1 {
 		t.Fatal("old policy lineage rejected", err)
 	}
-	request.Operation = "update"
+	request.Operation = "ensure"
 	systemd.fail = "start"
 	if d.manage(context.Background(), request) == nil {
 		t.Fatal("failed media update accepted")
@@ -132,7 +140,7 @@ func TestLoginMediaUpgradeRestoresExactVersionOneRecord(t *testing.T) {
 		t.Fatal(err)
 	}
 	updated, err := d.readRecord()
-	if err != nil || updated.Version != 2 || updated.Request.MediaSHA256 == "" {
+	if err != nil || updated.Version != 3 || updated.Request.MediaSHA256 == "" {
 		t.Fatal("media upgrade did not preserve explicit lineage", err)
 	}
 }

@@ -11,6 +11,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -73,7 +74,7 @@ func fixtureLoginDeployment(t *testing.T) (*loginDeployer, LoginServiceDeploymen
 		hash := sha256.Sum256(data)
 		return hex.EncodeToString(hash[:])
 	}
-	request := LoginServiceDeploymentRequest{Operation: "install", SourceDirectory: source, RuntimeUID: 1000, RuntimeGID: 1000, RuntimeSHA256: strings.Repeat("a", 64), ServiceSHA256: digest("floe-host-desktop-service"), WorkerSHA256: digest("desktop-drm")}
+	request := LoginServiceDeploymentRequest{Operation: "ensure", SourceDirectory: source, RuntimeUID: 1000, RuntimeGID: 1000, RuntimeSHA256: strings.Repeat("a", 64), ServiceSHA256: digest("floe-host-desktop-service"), WorkerSHA256: digest("desktop-drm")}
 	var media bytes.Buffer
 	compressed := gzip.NewWriter(&media)
 	archive := tar.NewWriter(compressed)
@@ -122,7 +123,7 @@ func TestLoginDeploymentInstallAndIdempotentUpdate(t *testing.T) {
 	if err != nil || record == nil {
 		t.Fatal("installation policy not committed")
 	}
-	if record.Request.SourceDirectory != "" || record.Request.Operation != "" {
+	if bytes.Contains(record.raw, []byte("source_directory")) || bytes.Contains(record.raw, []byte("operation")) {
 		t.Fatal("transfer paths persisted in policy")
 	}
 	if !systemd.active || !systemd.enabled {
@@ -140,7 +141,7 @@ func TestLoginDeploymentInstallAndIdempotentUpdate(t *testing.T) {
 	if bytes.Contains(unit, []byte("CAP_SYS_MODULE")) {
 		t.Fatal("steady-state service can load kernel modules")
 	}
-	request.Operation = "update"
+	request.Operation = "ensure"
 	if err = d.manage(context.Background(), request); err != nil {
 		t.Fatal(err)
 	}
@@ -150,7 +151,7 @@ func TestLoginDeploymentInstallAndIdempotentUpdate(t *testing.T) {
 	if systemd.active {
 		t.Fatal("stop retained service")
 	}
-	if err = d.manage(context.Background(), LoginServiceDeploymentRequest{Operation: "start"}); err != nil {
+	if err = d.manage(context.Background(), func() LoginServiceDeploymentRequest { r := request; r.Operation = "ensure"; return r }()); err != nil {
 		t.Fatal(err)
 	}
 	if err = d.manage(context.Background(), LoginServiceDeploymentRequest{Operation: "uninstall"}); err != nil {
@@ -169,11 +170,11 @@ func TestLoginDeploymentRestoreRetainedVersion(t *testing.T) {
 	}
 	first, _ := d.readRecord()
 	next := original
-	next.Operation, next.RuntimeSHA256 = "update", strings.Repeat("b", 64)
+	next.Operation, next.RuntimeSHA256 = "ensure", strings.Repeat("b", 64)
 	if err := d.manage(context.Background(), next); err != nil {
 		t.Fatal(err)
 	}
-	original.Operation = "update"
+	original.Operation = "ensure"
 	if err := d.manage(context.Background(), original); err != nil {
 		t.Fatalf("restore retained version: %v", err)
 	}
@@ -195,7 +196,7 @@ func TestLoginDeploymentRejectsAlteredRetainedVersion(t *testing.T) {
 			}
 			first, _ := d.readRecord()
 			next := original
-			next.Operation, next.RuntimeSHA256 = "update", strings.Repeat("b", 64)
+			next.Operation, next.RuntimeSHA256 = "ensure", strings.Repeat("b", 64)
 			if err := d.manage(context.Background(), next); err != nil {
 				t.Fatal(err)
 			}
@@ -221,7 +222,7 @@ func TestLoginDeploymentRejectsAlteredRetainedVersion(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			original.Operation = "update"
+			original.Operation = "ensure"
 			if err = d.manage(context.Background(), original); err == nil {
 				t.Fatal("altered retained version was activated")
 			}
@@ -240,13 +241,13 @@ func TestLoginDeploymentFailedRestorePreservesBothVersions(t *testing.T) {
 	}
 	first, _ := d.readRecord()
 	next := original
-	next.Operation, next.RuntimeSHA256 = "update", strings.Repeat("b", 64)
+	next.Operation, next.RuntimeSHA256 = "ensure", strings.Repeat("b", 64)
 	if err := d.manage(context.Background(), next); err != nil {
 		t.Fatal(err)
 	}
 	second, _ := d.readRecord()
 	systemd.fail = "start"
-	original.Operation = "update"
+	original.Operation = "ensure"
 	if err := d.manage(context.Background(), original); err == nil {
 		t.Fatal("failed restore reported success")
 	}
@@ -283,7 +284,7 @@ func TestLoginDeploymentPrivateSSHUmaskPreservesConverterTraversal(t *testing.T)
 			t.Fatal("fixture permission change failed")
 		}
 	}
-	request.Operation, request.RuntimeSHA256 = "update", strings.Repeat("b", 64)
+	request.Operation, request.RuntimeSHA256 = "ensure", strings.Repeat("b", 64)
 	systemd.fail = "start"
 	if d.manage(context.Background(), request) == nil {
 		t.Fatal("failed update was accepted")
@@ -342,7 +343,7 @@ func TestLoginDeploymentUpdateFailurePreservesExactOldPolicy(t *testing.T) {
 	oldUnit, _ := os.ReadFile(d.unit)
 	oldPolicy, _ := os.ReadFile(filepath.Join(d.root, "installed.json"))
 	oldRecord, _ := d.readRecord()
-	request.Operation = "update"
+	request.Operation = "ensure"
 	request.RuntimeSHA256 = strings.Repeat("b", 64)
 	systemd.fail = "start"
 	if d.manage(context.Background(), request) == nil {
@@ -409,5 +410,171 @@ func TestLoginDeploymentUninstallFailureRestoresService(t *testing.T) {
 	}
 	if record, err := d.readRecord(); err != nil || record == nil {
 		t.Fatal("uninstall failure lost installation")
+	}
+}
+
+func TestLoginDeploymentEnsureRebindsStoppedRuntime(t *testing.T) {
+	d, request, systemd, _ := fixtureLoginDeployment(t)
+	if err := d.manage(context.Background(), request); err != nil {
+		t.Fatal(err)
+	}
+	systemd.active = false
+	request.Operation = "ensure"
+	request.RuntimeSHA256 = strings.Repeat("b", 64)
+	if err := d.manage(context.Background(), request); err != nil {
+		t.Fatalf("ensure stopped runtime: %v", err)
+	}
+	record, err := d.readRecord()
+	if err != nil || record.Request.RuntimeSHA256 != request.RuntimeSHA256 || !systemd.active {
+		t.Fatal("ensure retained the old runtime identity")
+	}
+}
+func TestLoginDeploymentEnsureActiveIsIdempotent(t *testing.T) {
+	d, request, systemd, _ := fixtureLoginDeployment(t)
+	if err := d.manage(context.Background(), request); err != nil {
+		t.Fatal(err)
+	}
+	systemd.calls = nil
+	request.Operation = "ensure"
+	if err := d.manage(context.Background(), request); err != nil {
+		t.Fatal(err)
+	}
+	for _, call := range systemd.calls {
+		if strings.HasPrefix(call, "stop ") {
+			t.Fatal("unchanged ensure interrupted a connection")
+		}
+	}
+}
+
+func TestLoginDeploymentRepairsOwnedCurrentTree(t *testing.T) {
+	d, request, _, _ := fixtureLoginDeployment(t)
+	if err := d.manage(t.Context(), request); err != nil {
+		t.Fatal(err)
+	}
+	record, _ := d.readRecord()
+	worker := filepath.Join(d.root, "versions", record.Digest, "desktop-drm")
+	if err := os.Remove(worker); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.manage(t.Context(), request); err != nil {
+		t.Fatal(err)
+	}
+	if !loginInstalledDigestMatches(worker, request.WorkerSHA256) {
+		t.Fatal("current owned tree not repaired")
+	}
+}
+func TestLoginDeploymentRecoversBeforeReadingRemovedRoot(t *testing.T) {
+	d, request, systemd, _ := fixtureLoginDeployment(t)
+	if err := d.manage(t.Context(), request); err != nil {
+		t.Fatal(err)
+	}
+	original, _ := os.ReadFile(filepath.Join(d.root, "installed.json"))
+	snapshot, err := d.snapshot(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot.Removing = true
+	if err := d.saveSnapshot(snapshot); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.uninstall(t.Context(), &loginDeploymentRecord{}); err != nil {
+		t.Fatal(err)
+	}
+	// Simulate a manager crash after rename. The next operation restores first.
+	if err := d.manage(t.Context(), request); err != nil {
+		t.Fatal(err)
+	}
+	after, _ := os.ReadFile(filepath.Join(d.root, "installed.json"))
+	if !bytes.Equal(original, after) || !systemd.active || !systemd.enabled {
+		t.Fatal("crash recovery lost original policy or activation")
+	}
+	if _, err := os.Stat(d.journal()); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("recovery retained transaction")
+	}
+}
+func TestLoginDeploymentFutureAndUnknownRecordsAreReadOnly(t *testing.T) {
+	for _, alteration := range []string{"future", "unknown", "duplicate", "extra"} {
+		t.Run(alteration, func(t *testing.T) {
+			d, request, systemd, _ := fixtureLoginDeployment(t)
+			if err := d.manage(t.Context(), request); err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(d.root, "installed.json")
+			data, _ := os.ReadFile(path)
+			switch alteration {
+			case "future":
+				data = bytes.Replace(data, []byte("\"version\":3"), []byte("\"version\":4"), 1)
+			case "unknown":
+				data = bytes.Replace(data, []byte(loginDeploymentKind), []byte("unknown_kind"), 1)
+			case "duplicate":
+				data = append([]byte("{\"version\":3,"), data[1:]...)
+			case "extra":
+				data = append([]byte("{\"extra\":true,"), data[1:]...)
+			}
+			if err := os.WriteFile(path, data, 0600); err != nil {
+				t.Fatal(err)
+			}
+			systemd.calls = nil
+			if err := d.manage(t.Context(), request); err == nil {
+				t.Fatal("invalid record accepted")
+			}
+			after, _ := os.ReadFile(path)
+			if !bytes.Equal(data, after) || len(systemd.calls) != 0 {
+				t.Fatal("invalid record was modified")
+			}
+		})
+	}
+}
+func TestLoginDeploymentRejectsRetiredVerbs(t *testing.T) {
+	for _, op := range []string{"install", "update", "start"} {
+		d, request, systemd, _ := fixtureLoginDeployment(t)
+		request.Operation = op
+		if err := d.manage(t.Context(), request); err == nil || len(systemd.calls) != 0 {
+			t.Fatal("retired verb accepted", op)
+		}
+	}
+}
+
+func TestLoginDeploymentControlledProofFailureRestoresOriginal(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("controlled Runtime fixture requires isolated root")
+	}
+	d, request, systemd, _ := fixtureLoginDeployment(t)
+	if err := d.manage(t.Context(), request); err != nil {
+		t.Fatal(err)
+	}
+	original, _ := os.ReadFile(filepath.Join(d.root, "installed.json"))
+	runtime := exec.Command("/bin/sleep", "30")
+	runtime.SysProcAttr = &syscall.SysProcAttr{Credential: &syscall.Credential{Uid: 1000, Gid: 1000}}
+	if err := runtime.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = runtime.Process.Kill(); _ = runtime.Wait() }()
+	request.RuntimePID = uint32(runtime.Process.Pid)
+	request.RuntimeStart, _ = loginProcessStart(request.RuntimePID)
+	data, _ := os.ReadFile("/bin/sleep")
+	hash := sha256.Sum256(data)
+	request.RuntimeSHA256 = hex.EncodeToString(hash[:])
+	request.OperationID = loginChallenge()
+	request.Version = LoginServiceManagementVersion
+	verified := false
+	d.control = func(_ context.Context, event LoginServiceDeploymentEvent) error {
+		if event.Stage == "confirmation_required" {
+			return nil
+		}
+		verified = true
+		if event.PolicyDigest != loginPolicyDigest(request.policy()) || event.OperationID != request.OperationID {
+			t.Fatal("unbound proof challenge")
+		}
+		return errors.New("fixture rejected actual Runtime authentication")
+	}
+	if err := d.manage(t.Context(), request); err == nil {
+		t.Fatal("failed proof committed")
+	} else {
+		t.Log("controlled result", err)
+	}
+	after, _ := os.ReadFile(filepath.Join(d.root, "installed.json"))
+	if !verified || !bytes.Equal(original, after) || !systemd.active {
+		t.Fatal("authentication failure did not restore original")
 	}
 }

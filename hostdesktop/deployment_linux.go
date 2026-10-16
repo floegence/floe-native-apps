@@ -23,10 +23,10 @@ import (
 )
 
 type loginDeploymentRecord struct {
-	Kind    string                        `json:"kind"`
-	Version int                           `json:"version"`
-	Request LoginServiceDeploymentRequest `json:"policy"`
-	Digest  string                        `json:"digest"`
+	Kind    string             `json:"kind"`
+	Version int                `json:"version"`
+	Request LoginServicePolicy `json:"policy"`
+	Digest  string             `json:"digest"`
 	raw     []byte
 }
 
@@ -46,11 +46,13 @@ type loginDeployer struct {
 	systemctl     func(context.Context, ...string) error
 	health        func(context.Context) error
 	report        func(LoginServiceDeploymentEvent)
+	control       LoginServiceDeploymentControl
+	request       LoginServiceDeploymentRequest
 }
 
 func (d *loginDeployer) emit(stage string) {
 	if d.report != nil {
-		d.report(LoginServiceDeploymentEvent{Stage: stage})
+		d.report(LoginServiceDeploymentEvent{Stage: stage, OperationID: d.request.OperationID})
 	}
 }
 func loginSystemctl(ctx context.Context, args ...string) error {
@@ -58,7 +60,10 @@ func loginSystemctl(ctx context.Context, args ...string) error {
 	command.Env = []string{"PATH=/usr/bin:/bin", "LANG=C"}
 	return command.Run()
 }
-func ManageLoginScreenService(ctx context.Context, request LoginServiceDeploymentRequest, report func(LoginServiceDeploymentEvent)) (ServiceStatus, error) {
+func ManageLoginScreenServiceControlled(ctx context.Context, request LoginServiceDeploymentRequest, report func(LoginServiceDeploymentEvent), control LoginServiceDeploymentControl) (ServiceStatus, error) {
+	if control == nil {
+		return ServiceStatus{State: ServiceFailed, Reason: "management_protocol_invalid"}, deploymentError("management_protocol_invalid")
+	}
 	if os.Geteuid() != 0 {
 		return ServiceStatus{State: ServiceAuthorization, Backend: "linux-drm-kms"}, ErrServiceAuthorization
 	}
@@ -81,7 +86,7 @@ func ManageLoginScreenService(ctx context.Context, request LoginServiceDeploymen
 			return ServiceStatus{State: ServiceFailed, Reason: "deployment_path_untrusted"}, errLoginDeployment
 		}
 	}
-	for _, path := range []string{d.root, d.unit, filepath.Join(d.root, "installed.json"), d.driverFile} {
+	for _, path := range []string{d.root, d.unit, filepath.Join(d.root, "installed.json"), filepath.Join(d.root, "versions"), d.driverFile, d.root + ".removing"} {
 		if info, err := os.Lstat(path); err == nil {
 			var st unix.Stat_t
 			if unix.Lstat(path, &st) != nil || st.Uid != 0 || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0022 != 0 {
@@ -91,11 +96,13 @@ func ManageLoginScreenService(ctx context.Context, request LoginServiceDeploymen
 			return ServiceStatus{State: ServiceFailed, Reason: "deployment_path_unavailable"}, errLoginDeployment
 		}
 	}
+	d.control = control
+	d.request = request
 	if err = d.manage(ctx, request); err != nil {
 		if report != nil {
 			report(LoginServiceDeploymentEvent{Stage: "failed", Code: "DEPLOYMENT_FAILED"})
 		}
-		return ServiceStatus{State: ServiceFailed, Reason: "deployment_failed", Backend: "linux-drm-kms"}, errLoginDeployment
+		return ServiceStatus{State: ServiceFailed, Reason: loginDeploymentCode(err), Backend: "linux-drm-kms"}, err
 	}
 	state := ServiceActive
 	if request.Operation == "stop" {
@@ -118,14 +125,46 @@ func (d *loginDeployer) readRecord() (*loginDeploymentRecord, error) {
 	if err != nil || len(data) > 8192 {
 		return nil, errLoginDeployment
 	}
-	var record loginDeploymentRecord
-	if json.Unmarshal(data, &record) != nil || record.Kind != loginDeploymentKind || (record.Version != 1 && record.Version != 2) ||
-		(record.Version == 1 && record.Request.MediaSHA256 != "") || (record.Version == 2 && !validLoginDigest(record.Request.MediaSHA256)) ||
-		!validLoginDigest(record.Digest) || record.Request.Operation != "" || record.Request.SourceDirectory != "" || record.Request.RuntimeUID == 0 || !validLoginDigest(record.Request.RuntimeSHA256) || !validLoginDigest(record.Request.ServiceSHA256) || !validLoginDigest(record.Request.WorkerSHA256) {
+	var envelope struct {
+		Kind    string          `json:"kind"`
+		Version int             `json:"version"`
+		Policy  json.RawMessage `json:"policy"`
+		Digest  string          `json:"digest"`
+	}
+	if loginManagementDecode(data, &envelope) != nil || envelope.Kind != loginDeploymentKind || envelope.Version < 1 || envelope.Version > 3 {
 		return nil, errLoginDeployment
 	}
-	policy, _ := json.Marshal(record.Request)
-	digest := sha256.Sum256(policy)
+	var policy LoginServicePolicy
+	var canonical []byte
+	if envelope.Version < 3 {
+		// Versions 1 and 2 hashed the original request shape, including operation:"".
+		// Keep that exact historical shape until the atomic version-3 migration.
+		var legacy struct {
+			Operation       string `json:"operation"`
+			SourceDirectory string `json:"source_directory,omitempty"`
+			RuntimeUID      uint32 `json:"runtime_uid,omitempty"`
+			RuntimeGID      uint32 `json:"runtime_gid,omitempty"`
+			RuntimeSHA256   string `json:"runtime_sha256,omitempty"`
+			ServiceSHA256   string `json:"service_sha256,omitempty"`
+			WorkerSHA256    string `json:"worker_sha256,omitempty"`
+			MediaSHA256     string `json:"media_sha256,omitempty"`
+		}
+		if loginManagementDecode(envelope.Policy, &legacy) != nil || legacy.Operation != "" || legacy.SourceDirectory != "" {
+			return nil, errLoginDeployment
+		}
+		canonical, _ = json.Marshal(legacy)
+		policy = LoginServicePolicy{legacy.RuntimeUID, legacy.RuntimeGID, legacy.RuntimeSHA256, legacy.ServiceSHA256, legacy.WorkerSHA256, legacy.MediaSHA256}
+	} else {
+		if loginManagementDecode(envelope.Policy, &policy) != nil {
+			return nil, errLoginDeployment
+		}
+		canonical, _ = json.Marshal(policy)
+	}
+	record := loginDeploymentRecord{Kind: envelope.Kind, Version: envelope.Version, Request: policy, Digest: envelope.Digest}
+	if (record.Version == 1 && policy.MediaSHA256 != "") || (record.Version >= 2 && !validLoginDigest(policy.MediaSHA256)) || !validLoginDigest(record.Digest) || policy.RuntimeUID == 0 || !validLoginDigest(policy.RuntimeSHA256) || !validLoginDigest(policy.ServiceSHA256) || !validLoginDigest(policy.WorkerSHA256) {
+		return nil, errLoginDeployment
+	}
+	digest := sha256.Sum256(canonical)
 	if hex.EncodeToString(digest[:]) != record.Digest {
 		return nil, errLoginDeployment
 	}
@@ -136,71 +175,69 @@ func (d *loginDeployer) manage(ctx context.Context, request LoginServiceDeployme
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
+	d.request = request
+	var err error
+	if request.Operation != "ensure" && request.Operation != "stop" && request.Operation != "uninstall" {
+		return deploymentError("operation_invalid")
+	}
+	if d.control != nil {
+		if request.Version != LoginServiceManagementVersion || request.OperationID == "" {
+			return deploymentError("management_protocol_invalid")
+		}
+		if err = d.checkRuntime(request); err != nil {
+			return err
+		}
+	}
+	if err = d.recover(ctx); err != nil {
+		return err
+	}
+	if _, err := os.Lstat(d.root + ".removing"); !errors.Is(err, os.ErrNotExist) {
+		return deploymentError("installation_ownership_conflict")
+	}
 	record, err := d.readRecord()
+	if err != nil {
+		return deploymentError("installation_record_invalid")
+	}
+	if request.Operation == "ensure" {
+		return d.install(ctx, request, record)
+	}
+	if record == nil {
+		if request.Operation == "stop" {
+			return ErrServiceNotInstalled
+		}
+		return d.uninstall(ctx, record)
+	}
+	release, err := d.maintain(ctx, true)
 	if err != nil {
 		return err
 	}
-
-	if request.Operation == "install" || request.Operation == "update" || request.Operation == "uninstall" {
-		undo, driverErr := d.prepareDriver(ctx, request.Operation)
-		defer func() {
-			if result == nil {
-				return
-			}
-			rollback, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-			defer cancel()
-			if undo != nil {
-				if err := undo(rollback); err != nil {
-					if d.report != nil {
-						d.report(LoginServiceDeploymentEvent{Stage: "rolled_back", Rollback: "failed"})
-					}
-					result = errors.Join(result, errLoginDeployment)
-				}
-			}
-		}()
-		if driverErr != nil {
-			return driverErr
-		}
-	}
-	switch request.Operation {
-	case "start", "stop":
-		if record == nil {
-			return ErrServiceNotInstalled
-		}
-		d.emit(request.Operation)
-		wasActive := d.systemctl(ctx, "is-active", "--quiet", loginServiceUnit) == nil
-		err := d.systemctl(ctx, request.Operation, loginServiceUnit)
-		if err == nil && ctx.Err() == nil && request.Operation == "start" && d.health != nil {
-			err = d.health(ctx)
-		}
-		if err == nil {
-			err = ctx.Err()
-		}
-		if err != nil {
-			rollback, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-			defer cancel()
-			operation := "stop"
-			if wasActive {
-				operation = "start"
-			}
-			d.emit("rolling_back")
-			rollbackErr := d.systemctl(rollback, operation, loginServiceUnit)
-			outcome := "complete"
-			if rollbackErr != nil {
-				outcome = "failed"
-			}
-			if d.report != nil {
-				d.report(LoginServiceDeploymentEvent{Stage: "rolled_back", Rollback: outcome})
-			}
-		}
+	defer release()
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+	undo, err := d.snapshot(ctx)
+	if err != nil {
 		return err
-	case "install", "update":
-		return d.install(ctx, request, record)
-	case "uninstall":
-		return d.uninstall(ctx, record)
-	default:
-		return errLoginDeployment
 	}
+	defer func() {
+		if result != nil {
+			result = d.rollback(undo, result)
+		} else {
+			result = d.commitJournal(undo)
+		}
+	}()
+	if request.Operation == "stop" {
+		d.emit("stopping_service")
+		return d.systemctl(ctx, "stop", loginServiceUnit)
+	}
+	_, err = d.prepareDriver(ctx, "uninstall")
+	if err != nil {
+		return err
+	}
+	undo.Removing = true
+	if err := d.saveSnapshot(undo); err != nil {
+		return err
+	}
+	return d.uninstall(ctx, record)
 }
 func loginWriteAtomic(path string, data []byte, mode os.FileMode) error {
 	file, err := os.CreateTemp(filepath.Dir(path), ".redeven-desktop-")
@@ -222,7 +259,10 @@ func loginWriteAtomic(path string, data []byte, mode os.FileMode) error {
 	if closeErr != nil {
 		return closeErr
 	}
-	return os.Rename(name, path)
+	if err = os.Rename(name, path); err != nil {
+		return err
+	}
+	return loginSyncDirectory(filepath.Dir(path))
 }
 func loginCopyVerified(source, destination, expected string) error {
 	if !validLoginDigest(expected) {
@@ -251,7 +291,7 @@ func loginCopyVerified(source, destination, expected string) error {
 	}
 	return os.Chmod(destination, 0755)
 }
-func (d *loginDeployer) unitContents(directory string, policy LoginServiceDeploymentRequest) []byte {
+func (d *loginDeployer) unitContents(directory string, policy LoginServicePolicy) []byte {
 	quote := strconv.Quote
 	return []byte(fmt.Sprintf(`[Unit]
 Description=Redeven physical remote desktop service
@@ -261,7 +301,7 @@ After=systemd-logind.service
 Type=simple
 User=root
 Group=%d
-ExecStart=%s --worker %s --media-root %s --runtime-uid %d --runtime-gid %d --runtime-sha256 %s
+ExecStart=%s --worker %s --media-root %s --runtime-uid %d --runtime-gid %d --runtime-sha256 %s --policy-digest %s --deployment-journal %s
 Restart=on-failure
 RestartSec=2
 RuntimeDirectory=redeven-desktop
@@ -284,231 +324,143 @@ TimeoutStopSec=5
 
 [Install]
 WantedBy=multi-user.target
-`, policy.RuntimeGID, quote(filepath.Join(directory, "floe-host-desktop-service")), quote(filepath.Join(directory, "desktop-drm")), quote(filepath.Join(directory, "media")), policy.RuntimeUID, policy.RuntimeGID, policy.RuntimeSHA256))
+`, policy.RuntimeGID, quote(filepath.Join(directory, "floe-host-desktop-service")), quote(filepath.Join(directory, "desktop-drm")), quote(filepath.Join(directory, "media")), policy.RuntimeUID, policy.RuntimeGID, policy.RuntimeSHA256, loginPolicyDigest(policy), quote(d.journal())))
 }
 func (d *loginDeployer) install(ctx context.Context, request LoginServiceDeploymentRequest, old *loginDeploymentRecord) (result error) {
-	if request.RuntimeUID == 0 || !validLoginDigest(request.RuntimeSHA256) || !validLoginDigest(request.ServiceSHA256) || !validLoginDigest(request.WorkerSHA256) || !validLoginDigest(request.MediaSHA256) || !filepath.IsAbs(request.SourceDirectory) {
-		return errLoginDeployment
+	policy := request.policy()
+	if policy.RuntimeUID == 0 || !validLoginDigest(policy.RuntimeSHA256) || !validLoginDigest(policy.ServiceSHA256) || !validLoginDigest(policy.WorkerSHA256) || !validLoginDigest(policy.MediaSHA256) || !filepath.IsAbs(request.SourceDirectory) {
+		return deploymentError("deployment_request_invalid")
 	}
 	oldUnit, unitErr := os.ReadFile(d.unit)
 	if unitErr != nil && !errors.Is(unitErr, os.ErrNotExist) {
-		return errLoginDeployment
+		return deploymentError("deployment_path_unavailable")
 	}
 	if old == nil && unitErr == nil {
-		return errLoginDeployment
-	} // Never adopt an unrelated unit.
-	rootExisted := false
-	var rootMode, versionsMode os.FileMode
-	versions := filepath.Join(d.root, "versions")
-	versionsExisted := false
-	if info, err := os.Lstat(d.root); err == nil {
-		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-			return errLoginDeployment
-		}
-		rootExisted = true
-		rootMode = info.Mode().Perm()
-		if old == nil {
-			return errLoginDeployment
-		}
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return errLoginDeployment
+		return deploymentError("installation_ownership_conflict")
 	}
-	if info, err := os.Lstat(versions); err == nil {
-		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-			return errLoginDeployment
-		}
-		versionsExisted, versionsMode = true, info.Mode().Perm()
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return err
+	if _, err := os.Lstat(d.root); err == nil && old == nil {
+		return deploymentError("installation_ownership_conflict")
 	}
-	oldActive := old != nil && d.systemctl(ctx, "is-active", "--quiet", loginServiceUnit) == nil
-	oldEnabled := old != nil && d.systemctl(ctx, "is-enabled", "--quiet", loginServiceUnit) == nil
-	if err := os.MkdirAll(d.root, 0755); err != nil {
-		return err
-	}
-	stage, err := os.MkdirTemp(d.root, ".transaction-")
+	// Prepare on the installed filesystem before any service mutation.
+	stage, err := os.MkdirTemp(filepath.Dir(d.root), ".desktop-preparation-")
 	if err != nil {
-		if !rootExisted {
-			_ = os.Remove(d.root)
-		}
 		return err
 	}
 	defer os.RemoveAll(stage)
-	staged := false
-	unitChanged := false
-	serviceChanged := false
-	recordChanged := false
-	var published string
-	defer func() {
-		if result == nil {
-			return
-		}
-		// Cancellation must not cancel rollback. A bounded independent context
-		// restores the exact previous unit, policy and activation state.
-		rollback, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-		defer cancel()
-		d.emit("rolling_back")
-		var rollbackErr error
-		if serviceChanged {
-			rollbackErr = errors.Join(rollbackErr, d.systemctl(rollback, "stop", loginServiceUnit))
-		}
-		if old == nil && serviceChanged {
-			rollbackErr = errors.Join(rollbackErr, d.systemctl(rollback, "disable", loginServiceUnit))
-		}
-		if unitChanged {
-			if unitErr == nil {
-				rollbackErr = errors.Join(rollbackErr, loginWriteAtomic(d.unit, oldUnit, 0644))
-			} else {
-				if err := os.Remove(d.unit); err != nil && !errors.Is(err, os.ErrNotExist) {
-					rollbackErr = errors.Join(rollbackErr, err)
-				}
-			}
-			rollbackErr = errors.Join(rollbackErr, d.systemctl(rollback, "daemon-reload"))
-		}
-		if recordChanged {
-			if old != nil {
-				rollbackErr = errors.Join(rollbackErr, loginWriteAtomic(filepath.Join(d.root, "installed.json"), old.raw, 0600))
-			} else {
-				_ = os.Remove(filepath.Join(d.root, "installed.json"))
-			}
-		}
-		if old != nil {
-			operation := "disable"
-			if oldEnabled {
-				operation = "enable"
-			}
-			rollbackErr = errors.Join(rollbackErr, d.systemctl(rollback, operation, loginServiceUnit))
-			if oldActive {
-				rollbackErr = errors.Join(rollbackErr, d.systemctl(rollback, "start", loginServiceUnit))
-			}
-		}
-		if staged && published != "" {
-			rollbackErr = errors.Join(rollbackErr, os.RemoveAll(published))
-		}
-		if !rootExisted {
-			_ = os.RemoveAll(d.root)
-		} else {
-			if versionsExisted {
-				rollbackErr = errors.Join(rollbackErr, os.Chmod(versions, versionsMode))
-			} else if err := os.Remove(versions); err != nil && !errors.Is(err, os.ErrNotExist) {
-				rollbackErr = errors.Join(rollbackErr, err)
-			}
-			rollbackErr = errors.Join(rollbackErr, os.Chmod(d.root, rootMode))
-		}
-		outcome := "complete"
-		if rollbackErr != nil {
-			outcome = "failed"
-			result = errors.Join(result, errLoginDeployment)
-		}
-		if d.report != nil {
-			d.report(LoginServiceDeploymentEvent{Stage: "rolled_back", Rollback: outcome})
-		}
-	}()
-	// SSH management uses umask 0077. The unprivileged converter needs explicit
-	// traversal of its immutable executable paths; installed policy stays 0600.
-	// A failed update restores the previous directory permissions.
-	if err = os.Chmod(d.root, 0755); err != nil {
-		return err
-	}
 	d.emit("verifying_files")
-	for _, file := range []struct{ name, digest string }{{"floe-host-desktop-service", request.ServiceSHA256}, {"desktop-drm", request.WorkerSHA256}, {"libdrmtap.LICENSE", loginDRMLicenseSHA256}} {
+	for _, f := range []struct{ name, digest string }{{"floe-host-desktop-service", policy.ServiceSHA256}, {"desktop-drm", policy.WorkerSHA256}, {"libdrmtap.LICENSE", loginDRMLicenseSHA256}, {"media.tar.gz", policy.MediaSHA256}} {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		if err = loginCopyVerified(filepath.Join(request.SourceDirectory, file.name), filepath.Join(stage, file.name), file.digest); err != nil {
-			return err
+		if err = loginCopyVerified(filepath.Join(request.SourceDirectory, f.name), filepath.Join(stage, f.name), f.digest); err != nil {
+			return deploymentError("artifact_verification_failed")
 		}
 	}
 	if err = os.Chmod(filepath.Join(stage, "libdrmtap.LICENSE"), 0644); err != nil {
 		return err
 	}
-	archive := filepath.Join(stage, "media.tar.gz")
-	if err = loginCopyVerified(filepath.Join(request.SourceDirectory, "media.tar.gz"), archive, request.MediaSHA256); err != nil {
+	if err = os.Chmod(filepath.Join(stage, "media.tar.gz"), 0644); err != nil {
 		return err
 	}
-	if err = loginExtractMedia(ctx, archive, filepath.Join(stage, "media")); err != nil {
+	if err = loginExtractMedia(ctx, filepath.Join(stage, "media.tar.gz"), filepath.Join(stage, "media")); err != nil {
 		return err
 	}
-	if err = os.Chmod(archive, 0644); err != nil {
-		return err
-	}
-	if ctx.Err() != nil {
-		return ctx.Err()
-	}
-	// Source paths are transfer locations, not installed policy or provenance.
-	request.SourceDirectory = ""
-	request.Operation = ""
-	data, _ := json.Marshal(request)
-	hash := sha256.Sum256(data)
-	digest := hex.EncodeToString(hash[:])
-	if err = os.MkdirAll(versions, 0755); err != nil {
-		return err
-	}
-	if err = os.Chmod(versions, 0755); err != nil {
-		return err
-	}
-	published = filepath.Join(versions, digest)
+	digest := loginPolicyDigest(policy)
+	published := filepath.Join(d.root, "versions", digest)
 	retained := false
+	replace := false
 	if _, err = os.Lstat(published); err == nil {
-		// A previously selected version is reusable only when its entire tree
-		// matches the freshly verified and extracted preparation.
-		if !loginPreparedVersionMatches(ctx, stage, published) {
-			return errLoginDeployment
+		retained = loginPreparedVersionMatches(ctx, stage, published)
+		if !retained {
+			if old == nil || old.Digest != digest {
+				return deploymentError("retained_version_untrusted")
+			}
+			replace = true
 		}
-		retained = true
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	if old != nil && old.Digest == digest {
-		if !retained || string(oldUnit) != string(d.unitContents(published, request)) {
-			return errLoginDeployment
-		}
-		d.emit("starting_service")
-		serviceChanged = true
-		if err = d.systemctl(ctx, "start", loginServiceUnit); err != nil {
-			return err
-		}
-		if err = d.systemctl(ctx, "is-active", "--quiet", loginServiceUnit); err != nil {
-			return err
-		}
+	active := old != nil && d.systemctl(ctx, "is-active", "--quiet", loginServiceUnit) == nil
+	unchanged := old != nil && old.Version == 3 && old.Digest == digest && retained && string(oldUnit) == string(d.unitContents(published, policy))
+	if unchanged && active {
 		if d.health != nil {
 			if err = d.health(ctx); err != nil {
 				return err
 			}
 		}
-		if ctx.Err() != nil {
-			return ctx.Err()
+		if err = d.verify(ctx, policy); err != nil {
+			return err
 		}
 		d.emit("complete")
 		return nil
 	}
+	release, err := d.maintain(ctx, active)
+	if err != nil {
+		return err
+	}
+	defer release()
+	if d.control != nil {
+		if err = d.checkRuntime(request); err != nil {
+			return err
+		}
+	}
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+	snapshot, err := d.snapshot(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if result != nil {
+			result = d.rollback(snapshot, result)
+		} else if err := d.commitJournal(snapshot); err != nil {
+			result = deploymentError("transaction_commit_unknown")
+		} else {
+			d.emit("complete")
+		}
+	}()
+	_, err = d.prepareDriver(ctx, "ensure")
+	if err != nil {
+		return err
+	}
+	if err = os.MkdirAll(filepath.Join(d.root, "versions"), 0755); err != nil {
+		return err
+	}
+	for _, path := range []string{d.root, filepath.Join(d.root, "versions")} {
+		if err = os.Chmod(path, 0755); err != nil {
+			return err
+		}
+	}
+	if active {
+		if err = d.systemctl(ctx, "stop", loginServiceUnit); err != nil {
+			return err
+		}
+	}
 	if !retained {
+		snapshot.Published = digest
+		snapshot.Replace = replace
+		if err = d.saveSnapshot(snapshot); err != nil {
+			return err
+		}
+		if replace {
+			if err = os.Rename(published, filepath.Join(d.journal(), "previous-version")); err != nil {
+				return err
+			}
+		}
 		if err = os.Chmod(stage, 0755); err != nil {
 			return err
 		}
 		if err = os.Rename(stage, published); err != nil {
 			return err
 		}
-		staged = true
 	}
 	d.emit("installing_service")
-	if old != nil {
-		serviceChanged = true
-		if err = d.systemctl(ctx, "stop", loginServiceUnit); err != nil {
-			return err
-		}
-	}
-	if ctx.Err() != nil {
-		return ctx.Err()
-	}
-	if err = loginWriteAtomic(d.unit, d.unitContents(published, request), 0644); err != nil {
+	if err = loginWriteAtomic(d.unit, d.unitContents(published, policy), 0644); err != nil {
 		return err
 	}
-	unitChanged = true
 	if err = d.systemctl(ctx, "daemon-reload"); err != nil {
 		return err
 	}
-	serviceChanged = true
 	if err = d.systemctl(ctx, "enable", loginServiceUnit); err != nil {
 		return err
 	}
@@ -519,24 +471,22 @@ func (d *loginDeployer) install(ctx context.Context, request LoginServiceDeploym
 	if err = d.systemctl(ctx, "is-active", "--quiet", loginServiceUnit); err != nil {
 		return err
 	}
-	if ctx.Err() != nil {
-		return ctx.Err()
-	}
 	if d.health != nil {
 		if err = d.health(ctx); err != nil {
 			return err
 		}
 	}
-	record := loginDeploymentRecord{Kind: loginDeploymentKind, Version: 2, Request: request, Digest: digest}
-	data, _ = json.Marshal(record)
+	if err = d.verify(ctx, policy); err != nil {
+		return err
+	}
+	record := loginDeploymentRecord{Kind: loginDeploymentKind, Version: 3, Request: policy, Digest: digest}
+	data, _ := json.Marshal(record)
 	if err = loginWriteAtomic(filepath.Join(d.root, "installed.json"), data, 0600); err != nil {
 		return err
 	}
-	recordChanged = true
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
-	d.emit("complete")
 	return nil
 }
 
@@ -613,79 +563,34 @@ func loginPreparedVersionMatches(ctx context.Context, prepared, installed string
 func (d *loginDeployer) uninstall(ctx context.Context, record *loginDeploymentRecord) error {
 	if record == nil {
 		if _, err := os.Lstat(d.unit); err == nil {
-			return errLoginDeployment
+			return deploymentError("installation_ownership_conflict")
 		}
 		return nil
 	}
-	// Preserve the installation until service stop and disable both succeed.
-	// The directory is renamed atomically and restored if unit removal fails.
-	oldUnit, err := os.ReadFile(d.unit)
-	if err != nil {
-		return err
-	}
-	active := d.systemctl(ctx, "is-active", "--quiet", loginServiceUnit) == nil
-	enabled := d.systemctl(ctx, "is-enabled", "--quiet", loginServiceUnit) == nil
 	d.emit("stopping_service")
-	if err = d.systemctl(ctx, "stop", loginServiceUnit); err != nil {
+	if err := d.systemctl(ctx, "stop", loginServiceUnit); err != nil {
 		return err
 	}
-	restore := func() {
-		d.emit("rolling_back")
-		rollback, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-		defer cancel()
-		rollbackErr := loginWriteAtomic(d.unit, oldUnit, 0644)
-		rollbackErr = errors.Join(rollbackErr, d.systemctl(rollback, "daemon-reload"))
-		if enabled {
-			rollbackErr = errors.Join(rollbackErr, d.systemctl(rollback, "enable", loginServiceUnit))
-		}
-		if active {
-			rollbackErr = errors.Join(rollbackErr, d.systemctl(rollback, "start", loginServiceUnit))
-		}
-		outcome := "complete"
-		if rollbackErr != nil {
-			outcome = "failed"
-		}
-		if d.report != nil {
-			d.report(LoginServiceDeploymentEvent{Stage: "rolled_back", Rollback: outcome})
-		}
-	}
-	if err = d.systemctl(ctx, "disable", loginServiceUnit); err != nil {
-		restore()
+	if err := d.systemctl(ctx, "disable", loginServiceUnit); err != nil {
 		return err
 	}
 	if ctx.Err() != nil {
-		restore()
 		return ctx.Err()
 	}
 	removed := d.root + ".removing"
-	if _, err = os.Lstat(removed); !errors.Is(err, os.ErrNotExist) {
-		restore()
-		return errLoginDeployment
+	if _, err := os.Lstat(removed); !errors.Is(err, os.ErrNotExist) {
+		return deploymentError("transaction_recovery_required")
 	}
-	if err = os.Rename(d.root, removed); err != nil {
-		restore()
+	if err := os.Rename(d.root, removed); err != nil {
 		return err
 	}
-	if err = os.Remove(d.unit); err != nil {
-		_ = os.Rename(removed, d.root)
-		restore()
+	if err := os.Remove(d.unit); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	if err = d.systemctl(ctx, "daemon-reload"); err != nil {
-		_ = os.Rename(removed, d.root)
-		restore()
+	if err := d.systemctl(ctx, "daemon-reload"); err != nil {
 		return err
 	}
-	if ctx.Err() != nil {
-		_ = os.Rename(removed, d.root)
-		restore()
-		return ctx.Err()
-	}
-	if err = os.RemoveAll(removed); err != nil {
-		return err
-	}
-	d.emit("complete")
-	return nil
+	return ctx.Err()
 }
 
 func loginInstalledDigestMatches(path, expected string) bool {
