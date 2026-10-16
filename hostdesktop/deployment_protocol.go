@@ -28,8 +28,10 @@ func RunLoginServiceManagement(parent context.Context, input io.Reader, output i
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	var mu sync.Mutex
+	operationID := ""
 	encoder := json.NewEncoder(output)
 	report := func(event LoginServiceDeploymentEvent) {
+		event.OperationID = operationID
 		mu.Lock()
 		defer mu.Unlock()
 		if encoder.Encode(event) != nil {
@@ -64,6 +66,7 @@ func RunLoginServiceManagement(parent context.Context, input io.Reader, output i
 	case <-ctx.Done():
 		return 1
 	}
+	operationID = request.OperationID
 	commands := make(chan LoginServiceDeploymentCommand, 1)
 	go func() {
 		timer := time.NewTimer(15 * time.Second)

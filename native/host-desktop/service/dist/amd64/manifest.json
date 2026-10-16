@@ -1,10 +1,10 @@
 {
   "architecture": "amd64",
-  "build_info": "/tmp/floe-ssh-desktop-service-final-amd64/floe-host-desktop-service: go1.27.2\n\tpath\tgithub.com/floegence/floe-native-apps/cmd/floe-host-desktop-service\n\tmod\tgithub.com/floegence/floe-native-apps\t(devel)\t\n\tdep\tgithub.com/godbus/dbus/v5\tv5.2.2\th1:TUR3TgtSVDmjiXOgAAyaZbYmIeP3DPkld3jgKGV8mXQ=\n\tdep\tgolang.org/x/sys\tv0.49.0\th1:XbzkgYJHdqh/8m2Uu0W/dQv8nktxx4BFHp1M0gROTXA=\n\tbuild\t-buildmode=exe\n\tbuild\t-compiler=gc\n\tbuild\t-trimpath=true\n\tbuild\tCGO_ENABLED=0\n\tbuild\tGOARCH=amd64\n\tbuild\tGOOS=linux\n\tbuild\tGOAMD64=v1\n",
+  "build_info": "/tmp/floe-ssh-desktop-service-event-amd64/floe-host-desktop-service: go1.27.2\n\tpath\tgithub.com/floegence/floe-native-apps/cmd/floe-host-desktop-service\n\tmod\tgithub.com/floegence/floe-native-apps\t(devel)\t\n\tdep\tgithub.com/godbus/dbus/v5\tv5.2.2\th1:TUR3TgtSVDmjiXOgAAyaZbYmIeP3DPkld3jgKGV8mXQ=\n\tdep\tgolang.org/x/sys\tv0.49.0\th1:XbzkgYJHdqh/8m2Uu0W/dQv8nktxx4BFHp1M0gROTXA=\n\tbuild\t-buildmode=exe\n\tbuild\t-compiler=gc\n\tbuild\t-trimpath=true\n\tbuild\tCGO_ENABLED=0\n\tbuild\tGOARCH=amd64\n\tbuild\tGOOS=linux\n\tbuild\tGOAMD64=v1\n",
   "files": {
     "floe-host-desktop-service": {
       "executable": true,
-      "sha256": "6a691452c6b38f0d52194957404be5959944a6c6aa52d84fc1f4ca13296bb43f",
+      "sha256": "6e0b036d8969943342a07edf76a9f389839e111b9e73c6c917eb24a33d8720db",
       "size_bytes": 4563068
     }
   },
@@ -19,7 +19,7 @@
     "hostdesktop/deployment_linux.go": "012314ac56c02b61eb5b51f5d45bd103d9116b62d227924bac755e296de62530",
     "hostdesktop/deployment_media_linux.go": "4d8f21012ee96d652b92c66c97a0a6daf66740d1fb1e6656c77c1a8f910c9cd9",
     "hostdesktop/deployment_other.go": "3eff55b58fa498eecaf1de8b0d47fbce2521ce53d4b1a23063f75636f8381790",
-    "hostdesktop/deployment_protocol.go": "180c37ca6c7cbbed66ada00d0e71467a712ed0e0012cfe7131242804247bd67f",
+    "hostdesktop/deployment_protocol.go": "189421947f07e8a010590fa226bda43fa2fa3bfe55757c55570748aa6d506ead",
     "hostdesktop/deployment_transaction_linux.go": "24a3c6c4fac6ad7dcdadfb807cbc77c18e80a365fa0d6d62abdfa471c6614464",
     "hostdesktop/login_authority_linux.go": "5c99a6a434bcb3e18d22c1ccc0a037aaf7af02083d4ac407d4059c11cd9f68b2",
     "hostdesktop/login_capture_linux.go": "64390d261e46335157a5c47836a7a735e4cd51b8db335ed6bb4c52c437264a54",
