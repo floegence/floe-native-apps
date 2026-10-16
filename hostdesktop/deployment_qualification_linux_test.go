@@ -301,7 +301,7 @@ func qualifyManageLoginService(ctx context.Context, request LoginServiceDeployme
 		if event.Stage == "confirmation_required" {
 			return nil
 		}
-		if _, err := fmt.Fprintln(input, event.PolicyDigest); err != nil {
+		if _, err := fmt.Fprintln(input, event.OperationID+" "+event.ChallengeID+" "+event.PolicyDigest); err != nil {
 			return err
 		}
 		stop := context.AfterFunc(wait, func() { _ = output.Close() })
@@ -321,7 +321,7 @@ func TestLoginDeploymentRuntimeProof(t *testing.T) {
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		digest, err := VerifyLoginServiceAdmission(ctx, "")
+		digest, err := VerifyLoginServiceAdmission(ctx, "", LoginServiceAdmissionProof{OperationID: strings.Fields(scanner.Text())[0], ChallengeID: strings.Fields(scanner.Text())[1], PolicyDigest: strings.Fields(scanner.Text())[2]})
 		cancel()
 		if err != nil {
 			t.Fatal("Runtime authentication failed")

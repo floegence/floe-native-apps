@@ -161,7 +161,7 @@ func (d *loginDeployer) readRecord() (*loginDeploymentRecord, error) {
 		canonical, _ = json.Marshal(policy)
 	}
 	record := loginDeploymentRecord{Kind: envelope.Kind, Version: envelope.Version, Request: policy, Digest: envelope.Digest}
-	if (record.Version == 1 && policy.MediaSHA256 != "") || (record.Version >= 2 && !validLoginDigest(policy.MediaSHA256)) || !validLoginDigest(record.Digest) || policy.RuntimeUID == 0 || !validLoginDigest(policy.RuntimeSHA256) || !validLoginDigest(policy.ServiceSHA256) || !validLoginDigest(policy.WorkerSHA256) {
+	if (record.Version == 1 && policy.MediaSHA256 != "") || (record.Version >= 2 && !validLoginDigest(policy.MediaSHA256)) || !validLoginDigest(record.Digest) || !validLoginDigest(policy.RuntimeSHA256) || !validLoginDigest(policy.ServiceSHA256) || !validLoginDigest(policy.WorkerSHA256) {
 		return nil, errLoginDeployment
 	}
 	digest := sha256.Sum256(canonical)
@@ -212,6 +212,11 @@ func (d *loginDeployer) manage(ctx context.Context, request LoginServiceDeployme
 		return err
 	}
 	defer release()
+	if d.control != nil {
+		if err = d.checkRuntime(request); err != nil {
+			return err
+		}
+	}
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 	undo, err := d.snapshot(ctx)
@@ -222,6 +227,12 @@ func (d *loginDeployer) manage(ctx context.Context, request LoginServiceDeployme
 		if result != nil {
 			result = d.rollback(undo, result)
 		} else {
+			if d.control != nil {
+				if err := d.checkRuntime(request); err != nil {
+					result = d.rollback(undo, err)
+					return
+				}
+			}
 			result = d.commitJournal(undo)
 		}
 	}()
@@ -328,7 +339,7 @@ WantedBy=multi-user.target
 }
 func (d *loginDeployer) install(ctx context.Context, request LoginServiceDeploymentRequest, old *loginDeploymentRecord) (result error) {
 	policy := request.policy()
-	if policy.RuntimeUID == 0 || !validLoginDigest(policy.RuntimeSHA256) || !validLoginDigest(policy.ServiceSHA256) || !validLoginDigest(policy.WorkerSHA256) || !validLoginDigest(policy.MediaSHA256) || !filepath.IsAbs(request.SourceDirectory) {
+	if !validLoginDigest(policy.RuntimeSHA256) || !validLoginDigest(policy.ServiceSHA256) || !validLoginDigest(policy.WorkerSHA256) || !validLoginDigest(policy.MediaSHA256) || !filepath.IsAbs(request.SourceDirectory) {
 		return deploymentError("deployment_request_invalid")
 	}
 	oldUnit, unitErr := os.ReadFile(d.unit)
@@ -363,6 +374,9 @@ func (d *loginDeployer) install(ctx context.Context, request LoginServiceDeploym
 		return err
 	}
 	if err = loginExtractMedia(ctx, filepath.Join(stage, "media.tar.gz"), filepath.Join(stage, "media")); err != nil {
+		return err
+	}
+	if err = loginSyncTree(stage); err != nil {
 		return err
 	}
 	digest := loginPolicyDigest(policy)
@@ -431,6 +445,12 @@ func (d *loginDeployer) install(ctx context.Context, request LoginServiceDeploym
 			return err
 		}
 	}
+	if err = loginSyncDirectory(d.root); err != nil {
+		return err
+	}
+	if err = loginSyncDirectory(filepath.Dir(d.root)); err != nil {
+		return err
+	}
 	if active {
 		if err = d.systemctl(ctx, "stop", loginServiceUnit); err != nil {
 			return err
@@ -443,14 +463,14 @@ func (d *loginDeployer) install(ctx context.Context, request LoginServiceDeploym
 			return err
 		}
 		if replace {
-			if err = os.Rename(published, filepath.Join(d.journal(), "previous-version")); err != nil {
+			if err = loginRenameDurable(published, filepath.Join(d.journal(), "previous-version")); err != nil {
 				return err
 			}
 		}
 		if err = os.Chmod(stage, 0755); err != nil {
 			return err
 		}
-		if err = os.Rename(stage, published); err != nil {
+		if err = loginRenameDurable(stage, published); err != nil {
 			return err
 		}
 	}
@@ -581,10 +601,10 @@ func (d *loginDeployer) uninstall(ctx context.Context, record *loginDeploymentRe
 	if _, err := os.Lstat(removed); !errors.Is(err, os.ErrNotExist) {
 		return deploymentError("transaction_recovery_required")
 	}
-	if err := os.Rename(d.root, removed); err != nil {
+	if err := loginRenameDurable(d.root, removed); err != nil {
 		return err
 	}
-	if err := os.Remove(d.unit); err != nil && !errors.Is(err, os.ErrNotExist) {
+	if err := loginRemoveDurable(d.unit); err != nil {
 		return err
 	}
 	if err := d.systemctl(ctx, "daemon-reload"); err != nil {

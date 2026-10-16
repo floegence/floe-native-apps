@@ -105,13 +105,13 @@ service log contains input content. Disk encryption is outside this boundary.
 
 DRM export and GPU conversion have separate processes and inherited private
 sockets. Only the exporter retains device/DRM authority. EGL/GLES conversion runs
-as the Runtime user after clearing Linux capabilities; no GPU vendor driver is
+as the Runtime user (or Linux overflow UID/GID 65534 for a root Runtime) after clearing Linux capabilities; no GPU vendor driver is
 loaded into the root exporter. The service does not change device ACLs, host driver
 libraries, compositor permissions, or user security policies. Current qualification
 covers GNOME/GDM; other lockers must not be inferred from a PAM session label.
 No scanout means no capture capability, even when the service itself is active.
 
-Native encoding also runs as the Runtime user; workers reject root before
+Native encoding uses the same unprivileged media identity; workers reject root before
 loading CUDA/NVENC or Rockchip MPP libraries. A private sealed-size shared pixel
 slot grants no capture or input authority. The worker verifies regular storage,
 its Runtime-user owner, exact bounded capacity and required seals before mapping.
@@ -150,3 +150,9 @@ bound read-only for the qualified compositor's session bus. A fixed child drops
 UID and every Linux capability before using Mutter's display-power property.
 It never unlocks the session or sends pre-frame input, changes desktop consent,
 or overrides unsupported display power. Input still requires successor paint.
+
+Runtime admission proof uses the explicit attachment protocol version and binds the
+operation ID, challenge ID and complete target policy digest in the authenticated
+service reply. Both management transports exchange five-second liveness messages.
+Publication, replacement and rollback synchronize the affected directory entries;
+an uncommitted journal remains the recovery authority after a process exit.

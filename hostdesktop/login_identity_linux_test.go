@@ -3,11 +3,14 @@
 package hostdesktop
 
 import (
+	"bufio"
+	"context"
 	"crypto/sha256"
 	"io"
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -114,5 +117,70 @@ func TestLoginExecutableRejectsWritableAncestorsAndSymlinks(t *testing.T) {
 	}
 	if loginRootOwnedExecutable("relative/worker") == nil {
 		t.Fatal("relative worker admitted")
+	}
+}
+
+func TestLoginRootRuntimeReadOnlyAdmission(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("requires isolated Linux root fixture")
+	}
+	file, err := os.Open("/proc/self/exe")
+	if err != nil {
+		t.Fatal(err)
+	}
+	hash := sha256.New()
+	_, err = io.Copy(hash, file)
+	file.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := &loginServer{config: LoginServiceConfig{RuntimeUID: 0, PolicyDigest: strings.Repeat("c", 64)}}
+	copy(server.digest[:], hash.Sum(nil))
+	path := filepath.Join(t.TempDir(), "root-runtime.sock")
+	listener, err := net.ListenUnix("unix", &net.UnixAddr{Name: path, Net: "unix"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	go func() {
+		conn, err := listener.AcceptUnix()
+		if err == nil {
+			server.serve(context.Background(), conn)
+		}
+	}()
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+	digest, err := VerifyLoginServiceAdmission(ctx, path, LoginServiceAdmissionProof{OperationID: "root-operation", ChallengeID: "root-challenge", PolicyDigest: server.config.PolicyDigest})
+	if err != nil || digest != server.config.PolicyDigest {
+		t.Fatalf("root Runtime proof: %s %v", digest, err)
+	}
+}
+
+func TestLoginServiceRejectsUnversionedAdmission(t *testing.T) {
+	server := &loginServer{}
+	path := filepath.Join(t.TempDir(), "version.sock")
+	listener, err := net.ListenUnix("unix", &net.UnixAddr{Name: path, Net: "unix"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	go func() {
+		conn, e := listener.AcceptUnix()
+		if e == nil {
+			server.serve(t.Context(), conn)
+		}
+	}()
+	conn, err := net.DialUnix("unix", nil, &net.UnixAddr{Name: path, Net: "unix"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	_ = conn.SetDeadline(time.Now().Add(time.Second))
+	if err = loginWritePacket(conn, loginServiceHello{Operation: "status"}); err != nil {
+		t.Fatal(err)
+	}
+	var reply loginServiceReply
+	if err = loginReadPacket(bufio.NewReader(conn), &reply); err != nil || reply.Code != "SERVICE_UPDATE_REQUIRED" {
+		t.Fatal("missing explicit version rejection", err, reply)
 	}
 }

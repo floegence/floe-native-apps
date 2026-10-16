@@ -49,9 +49,9 @@ func main() {
 	flags.StringVar(&config.PolicyDigest, "policy-digest", "", "Installed deployment policy digest")
 	flags.StringVar(&config.DeploymentJournal, "deployment-journal", "", "Root-owned pending deployment journal")
 	flags.StringVar(&config.Seat, "seat", "seat0", "Physical logind seat.")
-	uid := flags.Uint("runtime-uid", 0, "Authorized unprivileged Runtime UID.")
+	uid := flags.Uint("runtime-uid", 0, "Authorized Runtime UID.")
 	gid := flags.Uint("runtime-gid", 0, "Runtime primary GID for socket access.")
-	if flags.Parse(os.Args[1:]) != nil || flags.NArg() != 0 || *uid == 0 || *uid > 1<<32-1 || *gid > 1<<32-1 {
+	if flags.Parse(os.Args[1:]) != nil || flags.NArg() != 0 || *uid > 1<<32-1 || *gid > 1<<32-1 {
 		os.Exit(64)
 	}
 	config.RuntimeUID, config.RuntimeGID = uint32(*uid), uint32(*gid)

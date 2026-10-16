@@ -578,3 +578,20 @@ func TestLoginDeploymentControlledProofFailureRestoresOriginal(t *testing.T) {
 		t.Fatal("authentication failure did not restore original")
 	}
 }
+
+func TestLoginDeploymentRecoversPartiallyCollectedCommit(t *testing.T) {
+	d, _, _, _ := fixtureLoginDeployment(t)
+	retired := d.root + ".committed"
+	if err := os.Mkdir(retired, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(retired, "partial"), []byte("retired"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.recover(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(retired); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("retired committed data retained")
+	}
+}

@@ -67,6 +67,20 @@ func RunLoginServiceManagement(parent context.Context, input io.Reader, output i
 		return 1
 	}
 	operationID = request.OperationID
+	heartbeatDone := make(chan struct{})
+	defer close(heartbeatDone)
+	go func() {
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				report(LoginServiceDeploymentEvent{Stage: "heartbeat"})
+			case <-heartbeatDone:
+				return
+			}
+		}
+	}()
 	commands := make(chan LoginServiceDeploymentCommand, 1)
 	go func() {
 		timer := time.NewTimer(15 * time.Second)
@@ -118,7 +132,7 @@ func RunLoginServiceManagement(parent context.Context, input io.Reader, output i
 			if event.Stage == "verification_required" {
 				action = "commit"
 			}
-			if command.Action != action || command.ChallengeID != event.ChallengeID || command.PolicyDigest != event.PolicyDigest {
+			if !loginManagementMatches(command, event, action) {
 				return ErrHostDesktopProtocol
 			}
 			return nil
@@ -148,4 +162,8 @@ func RunLoginServiceManagement(parent context.Context, input io.Reader, output i
 		return 1
 	}
 	return 0
+}
+
+func loginManagementMatches(command LoginServiceDeploymentCommand, event LoginServiceDeploymentEvent, action string) bool {
+	return command.Version == LoginServiceManagementVersion && command.OperationID == event.OperationID && command.Action == action && command.ChallengeID != "" && command.ChallengeID == event.ChallengeID && command.PolicyDigest == event.PolicyDigest
 }

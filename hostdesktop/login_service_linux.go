@@ -39,8 +39,8 @@ type loginServer struct {
 }
 
 func RunLoginScreenService(ctx context.Context, config LoginServiceConfig) error {
-	if os.Geteuid() != 0 || config.RuntimeUID == 0 {
-		return errors.New("login-screen service requires root and unprivileged Runtime")
+	if os.Geteuid() != 0 {
+		return errors.New("login-screen service requires root")
 	}
 	if config.SocketPath == "" {
 		config.SocketPath = LoginServiceSocket
@@ -126,20 +126,30 @@ func (s *loginServer) serve(ctx context.Context, conn *net.UnixConn) {
 	defer conn.Close()
 	defer s.releaseAttachment(conn)
 	_ = conn.SetDeadline(time.Now().Add(5 * time.Second))
-	if loginRootPeer(conn) {
-		s.serveMaintenance(ctx, conn)
+	reader := bufio.NewReader(conn)
+	var hello loginServiceHello
+	if loginReadPacket(reader, &hello) != nil {
+		return
+	}
+	if hello.Operation == "maintenance" && loginRootPeer(conn) {
+		s.serveMaintenanceHello(ctx, conn, hello)
+		return
+	}
+	if hello.Version != loginAttachmentVersion {
+		_ = loginWritePacket(conn, loginServiceReply{Version: loginAttachmentVersion, Code: "SERVICE_UPDATE_REQUIRED"})
 		return
 	}
 	peer, err := loginPeer(conn, s.config.RuntimeUID, s.digest)
 	if err != nil {
 		return
 	}
-	reader := bufio.NewReader(conn)
-	var hello loginServiceHello
-	if loginReadPacket(reader, &hello) != nil {
-		return
-	}
 	switch hello.Operation {
+	case "verify":
+		if hello.Proof == nil || hello.Proof.OperationID == "" || len(hello.Proof.OperationID) > 80 || hello.Proof.ChallengeID == "" || len(hello.Proof.ChallengeID) > 80 || hello.Proof.PolicyDigest != loginConfigDigest(s.config) {
+			return
+		}
+		_ = loginWritePacket(conn, loginServiceReply{Version: loginAttachmentVersion, Status: &ServiceStatus{State: ServiceActive, Backend: "linux-drm-kms"}, PolicyDigest: loginConfigDigest(s.config), Proof: hello.Proof})
+		return
 	case "status":
 		_ = loginWritePacket(conn, loginServiceReply{Version: loginAttachmentVersion, Status: &ServiceStatus{State: ServiceActive, Backend: "linux-drm-kms"}, PolicyDigest: loginConfigDigest(s.config)})
 		return

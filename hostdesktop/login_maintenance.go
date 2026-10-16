@@ -26,7 +26,7 @@ func loginConfigDigest(config LoginServiceConfig) string {
 
 // VerifyLoginServiceAdmission authenticates from the calling Runtime process.
 // It does not open an attachment, inspect a display or request Portal consent.
-func VerifyLoginServiceAdmission(ctx context.Context, path string) (string, error) {
+func VerifyLoginServiceAdmission(ctx context.Context, path string, proof LoginServiceAdmissionProof) (string, error) {
 	conn, reader, err := loginDial(ctx, path)
 	if err != nil {
 		return "", err
@@ -34,7 +34,7 @@ func VerifyLoginServiceAdmission(ctx context.Context, path string) (string, erro
 	defer conn.Close()
 	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
 	defer stop()
-	if err = loginWritePacket(conn, loginServiceHello{Operation: "status"}); err != nil {
+	if err = loginWritePacket(conn, loginServiceHello{Version: loginAttachmentVersion, Operation: "verify", Proof: &proof}); err != nil {
 		return "", err
 	}
 	var reply loginServiceReply
@@ -44,7 +44,8 @@ func VerifyLoginServiceAdmission(ctx context.Context, path string) (string, erro
 	if reply.Version != loginAttachmentVersion {
 		return "", ErrServiceUpdateRequired
 	}
-	if reply.Status == nil || reply.Status.State != ServiceActive || len(reply.PolicyDigest) != 64 {
+	decoded, digestErr := hex.DecodeString(reply.PolicyDigest)
+	if reply.Status == nil || reply.Status.State != ServiceActive || digestErr != nil || len(decoded) != 32 || reply.PolicyDigest != proof.PolicyDigest || reply.Proof == nil || *reply.Proof != proof {
 		return "", errLoginServiceUnavailable
 	}
 	return reply.PolicyDigest, nil

@@ -24,18 +24,26 @@ type LoginServiceConfig struct {
 	Seat                   string
 }
 
+type LoginServiceAdmissionProof struct {
+	OperationID  string `json:"operation_id"`
+	ChallengeID  string `json:"challenge_id"`
+	PolicyDigest string `json:"policy_digest"`
+}
+
 type loginServiceHello struct {
-	Version   int    `json:"version,omitempty"`
-	Operation string `json:"operation"`
-	Token     string `json:"token,omitempty"`
+	Proof     *LoginServiceAdmissionProof `json:"proof,omitempty"`
+	Version   int                         `json:"version,omitempty"`
+	Operation string                      `json:"operation"`
+	Token     string                      `json:"token,omitempty"`
 }
 type loginServiceReply struct {
-	Maintenance  *loginMaintenanceStatus `json:"maintenance,omitempty"`
-	PolicyDigest string                  `json:"policy_digest,omitempty"`
-	Version      int                     `json:"version,omitempty"`
-	Code         string                  `json:"code,omitempty"`
-	Token        string                  `json:"token,omitempty"`
-	Status       *ServiceStatus          `json:"status,omitempty"`
+	Proof        *LoginServiceAdmissionProof `json:"proof,omitempty"`
+	Maintenance  *loginMaintenanceStatus     `json:"maintenance,omitempty"`
+	PolicyDigest string                      `json:"policy_digest,omitempty"`
+	Version      int                         `json:"version,omitempty"`
+	Code         string                      `json:"code,omitempty"`
+	Token        string                      `json:"token,omitempty"`
+	Status       *ServiceStatus              `json:"status,omitempty"`
 }
 
 func loginWritePacket(writer io.Writer, value any) error {

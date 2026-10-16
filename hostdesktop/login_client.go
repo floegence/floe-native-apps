@@ -63,15 +63,18 @@ func InstalledLoginServiceStatus(ctx context.Context, path string) (ServiceStatu
 	defer conn.Close()
 	stopCancellation := context.AfterFunc(ctx, func() { _ = conn.Close() })
 	defer stopCancellation()
-	if err = loginWritePacket(conn, loginServiceHello{Operation: "status"}); err != nil {
+	if err = loginWritePacket(conn, loginServiceHello{Version: loginAttachmentVersion, Operation: "status"}); err != nil {
 		return ServiceStatus{}, err
 	}
 	var reply loginServiceReply
-	if err = loginReadPacket(reader, &reply); err != nil || reply.Status == nil {
+	if err = loginReadPacket(reader, &reply); err != nil {
 		return ServiceStatus{State: ServiceFailed, Reason: "service_identity_rejected", Backend: "linux-drm-kms"}, errLoginServiceUnavailable
 	}
 	if reply.Version != loginAttachmentVersion {
 		return ServiceStatus{State: ServiceFailed, Reason: "SERVICE_UPDATE_REQUIRED", Backend: "linux-drm-kms"}, ErrServiceUpdateRequired
+	}
+	if reply.Status == nil {
+		return ServiceStatus{State: ServiceFailed, Reason: reply.Code, Backend: "linux-drm-kms"}, errLoginServiceUnavailable
 	}
 	return *reply.Status, nil
 }
@@ -98,18 +101,21 @@ func OpenLoginScreenSession(ctx context.Context, path string) (*LoginScreenConne
 	}
 	stopTicketCancellation := context.AfterFunc(ctx, func() { _ = ticketConn.Close() })
 	defer stopTicketCancellation()
-	if err = loginWritePacket(ticketConn, loginServiceHello{Operation: "ticket"}); err != nil {
+	if err = loginWritePacket(ticketConn, loginServiceHello{Version: loginAttachmentVersion, Operation: "ticket"}); err != nil {
 		_ = ticketConn.Close()
 		return nil, err
 	}
 	var ticket loginServiceReply
 	err = loginReadPacket(reader, &ticket)
 	_ = ticketConn.Close()
-	if err != nil || len(ticket.Token) != 64 {
+	if err != nil {
 		return nil, errLoginServiceUnavailable
 	}
 	if ticket.Version != loginAttachmentVersion {
 		return nil, ErrServiceUpdateRequired
+	}
+	if len(ticket.Token) != 64 {
+		return nil, errLoginServiceUnavailable
 	}
 	socket, reader, err := loginDial(ctx, path)
 	if err != nil {

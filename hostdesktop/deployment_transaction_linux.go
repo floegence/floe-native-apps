@@ -36,7 +36,7 @@ func loginDeploymentCode(err error) string {
 }
 func loginChallenge() string { var b [16]byte; _, _ = rand.Read(b[:]); return hex.EncodeToString(b[:]) }
 func (d *loginDeployer) checkRuntime(r LoginServiceDeploymentRequest) error {
-	if r.RuntimePID == 0 || r.RuntimeStart == "" || r.RuntimeUID == 0 {
+	if r.RuntimePID == 0 || r.RuntimeStart == "" {
 		return deploymentError("runtime_identity_changed")
 	}
 	start, err := loginProcessStart(r.RuntimePID)
@@ -185,7 +185,7 @@ func (d *loginDeployer) snapshot(ctx context.Context) (*loginDeploymentSnapshot,
 	if err != nil {
 		return nil, err
 	}
-	defer os.RemoveAll(stage)
+	defer loginRemoveDurable(stage)
 	data, err := json.Marshal(s)
 	if err != nil {
 		return nil, err
@@ -196,7 +196,7 @@ func (d *loginDeployer) snapshot(ctx context.Context) (*loginDeploymentSnapshot,
 	if _, err = os.Lstat(d.journal()); !errors.Is(err, os.ErrNotExist) {
 		return nil, deploymentError("transaction_recovery_required")
 	}
-	if err = os.Rename(stage, d.journal()); err != nil {
+	if err = loginRenameDurable(stage, d.journal()); err != nil {
 		return nil, err
 	}
 	if err = loginSyncDirectory(filepath.Dir(d.root)); err != nil {
@@ -218,11 +218,7 @@ func loginRestoreFile(path string, data []byte, existed bool, mode os.FileMode) 
 	if existed {
 		return loginWriteAtomic(path, data, mode)
 	}
-	err := os.Remove(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
-	return err
+	return loginRemoveDurable(path)
 }
 func (d *loginDeployer) restore(ctx context.Context, s *loginDeploymentSnapshot) error {
 	var result error
@@ -232,7 +228,7 @@ func (d *loginDeployer) restore(ctx context.Context, s *loginDeploymentSnapshot)
 	removed := d.root + ".removing"
 	if _, err := os.Lstat(removed); err == nil && s.Removing {
 		if _, e := os.Lstat(d.root); errors.Is(e, os.ErrNotExist) {
-			result = errors.Join(result, os.Rename(removed, d.root))
+			result = errors.Join(result, loginRenameDurable(removed, d.root))
 		} else {
 			return deploymentError("transaction_recovery_failed")
 		}
@@ -242,10 +238,10 @@ func (d *loginDeployer) restore(ctx context.Context, s *loginDeploymentSnapshot)
 		backup := filepath.Join(d.journal(), "previous-version")
 		if s.Replace {
 			if _, err := os.Lstat(backup); err == nil {
-				result = errors.Join(result, os.RemoveAll(target), os.Rename(backup, target))
+				result = errors.Join(result, loginRemoveDurable(target), loginRenameDurable(backup, target))
 			}
 		} else {
-			result = errors.Join(result, os.RemoveAll(target))
+			result = errors.Join(result, loginRemoveDurable(target))
 		}
 	}
 	if s.RootExisted {
@@ -275,7 +271,7 @@ func (d *loginDeployer) restore(ctx context.Context, s *loginDeploymentSnapshot)
 		result = errors.Join(result, d.loadDriver(ctx, true))
 	}
 	if !s.RootExisted {
-		result = errors.Join(result, os.RemoveAll(d.root))
+		result = errors.Join(result, loginRemoveDurable(d.root))
 	} else {
 		versions := filepath.Join(d.root, "versions")
 		if s.VersionsExisted {
@@ -299,7 +295,7 @@ func (d *loginDeployer) rollback(s *loginDeploymentSnapshot, cause error) error 
 	if err != nil {
 		outcome = "failed"
 	} else {
-		err = os.RemoveAll(d.journal())
+		err = d.commitJournal(s)
 		if err != nil {
 			outcome = "failed"
 		}
@@ -319,13 +315,31 @@ func (d *loginDeployer) commitJournal(s *loginDeploymentSnapshot) error {
 		return err
 	}
 	if s.Removing {
-		if err := os.RemoveAll(d.root + ".removing"); err != nil {
+		if err := loginRemoveDurable(d.root + ".removing"); err != nil {
 			return err
 		}
 	}
-	return os.RemoveAll(d.journal())
+	// Atomic retirement preserves recovery authority until the commit is durable.
+	if err := loginRenameDurable(d.journal(), d.root+".committed"); err != nil {
+		return err
+	}
+	return d.cleanCommitted()
+}
+func (d *loginDeployer) cleanCommitted() error {
+	path := d.root + ".committed"
+	st, err := os.Lstat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil || !st.IsDir() || st.Mode().Perm() != 0700 || st.Sys().(*syscall.Stat_t).Uid != uint32(os.Geteuid()) {
+		return deploymentError("transaction_recovery_failed")
+	}
+	return loginRemoveDurable(path)
 }
 func (d *loginDeployer) recover(ctx context.Context) error {
+	if err := d.cleanCommitted(); err != nil {
+		return err
+	}
 	dir := d.journal()
 	st, err := os.Lstat(dir)
 	if errors.Is(err, os.ErrNotExist) {
@@ -393,4 +407,38 @@ func loginRuntimeDigestMatches(pid uint32, expected string) bool {
 	hash := sha256.New()
 	size, err := io.Copy(hash, io.LimitReader(file, (512<<20)+1))
 	return err == nil && size > 0 && size <= 512<<20 && hex.EncodeToString(hash.Sum(nil)) == expected
+}
+
+// Rename and removal durability includes every parent whose directory entry changes.
+func loginRenameDurable(source, destination string) error {
+	if err := os.Rename(source, destination); err != nil {
+		return err
+	}
+	err := loginSyncDirectory(filepath.Dir(destination))
+	if filepath.Dir(source) != filepath.Dir(destination) {
+		err = errors.Join(err, loginSyncDirectory(filepath.Dir(source)))
+	}
+	return err
+}
+func loginRemoveDurable(path string) error {
+	if err := os.RemoveAll(path); err != nil {
+		return err
+	}
+	return loginSyncDirectory(filepath.Dir(path))
+}
+
+func loginSyncTree(root string) error {
+	return filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			return loginSyncDirectory(path)
+		}
+		file, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		return errors.Join(file.Sync(), file.Close())
+	})
 }

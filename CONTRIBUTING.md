@@ -1648,3 +1648,13 @@ after pixels settle. Independent hardware-cursor updates carry position, explici
 visibility and hotspot validity. Clipboard and audio are not advertised by this
 service. Existing current-user desktop transports retain their independent media
 capabilities.
+
+Root SSH sessions retain their actual Runtime identity for admission. When that
+identity is root, media conversion and encoding use Linux overflow UID/GID 65534;
+root authority is never propagated into vendor GPU libraries.
+
+Runtime admission proof uses the explicit attachment protocol version and binds the
+operation ID, challenge ID and complete target policy digest in the authenticated
+service reply. Both management transports exchange five-second liveness messages.
+Publication, replacement and rollback synchronize the affected directory entries;
+an uncommitted journal remains the recovery authority after a process exit.

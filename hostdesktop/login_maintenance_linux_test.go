@@ -65,3 +65,14 @@ func TestLoginMaintenanceCountsAllAttachmentsAndBlocksAdmission(t *testing.T) {
 		t.Fatal("lease release did not restore admission")
 	}
 }
+
+func TestLoginRootRuntimeMediaIdentityDropsRoot(t *testing.T) {
+	uid, gid := loginMediaIdentity(0, 0)
+	if uid == 0 || gid == 0 {
+		t.Fatal("root Runtime retained root media authority")
+	}
+	uid, gid = loginMediaIdentity(1000, 1001)
+	if uid != 1000 || gid != 1001 {
+		t.Fatal("ordinary Runtime media identity changed")
+	}
+}

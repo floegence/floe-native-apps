@@ -32,7 +32,7 @@ func latencyConnection(ctx context.Context, socket string, legacy bool) (*LoginS
 	if err != nil {
 		return nil, err
 	}
-	if err = loginWritePacket(ticketConn, loginServiceHello{Operation: "ticket"}); err != nil {
+	if err = loginWritePacket(ticketConn, loginServiceHello{Version: loginAttachmentVersion, Operation: "ticket"}); err != nil {
 		ticketConn.Close()
 		return nil, err
 	}
@@ -46,7 +46,7 @@ func latencyConnection(ctx context.Context, socket string, legacy bool) (*LoginS
 	if err != nil {
 		return nil, err
 	}
-	if err = loginWritePacket(conn, loginServiceHello{Operation: "attach", Token: ticket.Token}); err != nil {
+	if err = loginWritePacket(conn, loginServiceHello{Version: loginAttachmentVersion, Operation: "attach", Token: ticket.Token}); err != nil {
 		conn.Close()
 		return nil, err
 	}

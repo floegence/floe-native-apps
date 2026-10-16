@@ -49,7 +49,7 @@ func loginMediaTrusted(root string) error {
 }
 
 func openLoginMedia(ctx context.Context, config LoginServiceConfig) (*loginMediaWorker, error) {
-	if config.RuntimeUID == 0 || loginRootOwnedExecutable(config.WorkerPath) != nil || loginMediaTrusted(config.MediaRoot) != nil {
+	if loginRootOwnedExecutable(config.WorkerPath) != nil || loginMediaTrusted(config.MediaRoot) != nil {
 		return nil, errLoginPeerRejected
 	}
 	owned, cancel := context.WithCancel(ctx)
@@ -98,7 +98,8 @@ func openLoginMedia(ctx context.Context, config LoginServiceConfig) (*loginMedia
 	command.Env = []string{"PATH=/usr/bin:/bin", "LANG=C", "HOME=/nonexistent"}
 	command.ExtraFiles = []*os.File{shared, controlChild}
 	command.Stdout = outputChild
-	command.SysProcAttr = &syscall.SysProcAttr{Credential: &syscall.Credential{Uid: config.RuntimeUID, Gid: config.RuntimeGID, Groups: loginMediaGroups(config.RuntimeUID, config.RuntimeGID)}}
+	uid, gid := loginMediaIdentity(config.RuntimeUID, config.RuntimeGID)
+	command.SysProcAttr = &syscall.SysProcAttr{Credential: &syscall.Credential{Uid: uid, Gid: gid, Groups: loginMediaGroups(uid, gid)}}
 	if err = command.Start(); err != nil {
 		return nil, errors.Join(errLoginConverterStart, err)
 	}
@@ -228,4 +229,13 @@ func writeLoginMedia(ctx context.Context, conn *net.UnixConn, packets <-chan Hos
 			}
 		}
 	}
+}
+
+// A root Runtime still authenticates as its actual process. Vendor media code
+// always runs without root authority, using the Linux overflow identity in this case.
+func loginMediaIdentity(uid, gid uint32) (uint32, uint32) {
+	if uid == 0 {
+		return 65534, 65534
+	}
+	return uid, gid
 }

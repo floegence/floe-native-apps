@@ -28,8 +28,10 @@ type LoginServiceDeploymentControl = hostdesktop.LoginServiceDeploymentControl
 
 const LoginServiceManagementVersion = hostdesktop.LoginServiceManagementVersion
 
-func VerifyLoginServiceAdmission(ctx context.Context, path string) (string, error) {
-	return hostdesktop.VerifyLoginServiceAdmission(ctx, path)
+type LoginServiceAdmissionProof = hostdesktop.LoginServiceAdmissionProof
+
+func VerifyLoginServiceAdmission(ctx context.Context, path string, proof LoginServiceAdmissionProof) (string, error) {
+	return hostdesktop.VerifyLoginServiceAdmission(ctx, path, proof)
 }
 func ManageLoginScreenServiceControlled(ctx context.Context, request LoginServiceDeploymentRequest, report func(LoginServiceDeploymentEvent), control LoginServiceDeploymentControl) (ServiceStatus, error) {
 	return hostdesktop.ManageLoginScreenServiceControlled(ctx, request, report, control)

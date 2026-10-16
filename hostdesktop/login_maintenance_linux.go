@@ -47,6 +47,12 @@ func (s *loginServer) serveMaintenance(ctx context.Context, conn *net.UnixConn) 
 	if loginReadPacket(bufio.NewReader(conn), &hello) != nil || hello.Operation != "maintenance" || hello.Version != loginAttachmentVersion {
 		return
 	}
+	s.serveMaintenanceHello(ctx, conn, hello)
+}
+func (s *loginServer) serveMaintenanceHello(ctx context.Context, conn *net.UnixConn, hello loginServiceHello) {
+	if hello.Operation != "maintenance" || hello.Version != loginAttachmentVersion {
+		return
+	}
 	s.mu.Lock()
 	if s.maintenance != nil {
 		s.mu.Unlock()
