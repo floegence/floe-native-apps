@@ -42,5 +42,27 @@
     "format": "apk",
     "license": "Zlib",
     "source": "https://gitlab.alpinelinux.org/alpine/aports/-/tree/3.23-stable/main/zlib"
+  },
+  {
+    "architecture": "amd64",
+    "fixture": "tiff-4.7.1-r0-amd64.apk",
+    "name": "tiff-4.7.1-r0.apk",
+    "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/tiff-4.7.1-r0.apk",
+    "sha256": "f98ea19adaa6402a619b07bddeab5d974caf2d1a3f4ecdca1baa02a24837f053",
+    "size_bytes": 166475,
+    "format": "apk",
+    "license": "libtiff",
+    "source": "https://gitlab.alpinelinux.org/alpine/aports/-/tree/3.23-stable/main/tiff"
+  },
+  {
+    "architecture": "arm64",
+    "fixture": "tiff-4.7.1-r0-arm64.apk",
+    "name": "tiff-4.7.1-r0.apk",
+    "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/aarch64/tiff-4.7.1-r0.apk",
+    "sha256": "c6258afa957ae8c1e33fee44dd6e6e2656bf542b1b15f8d3176eaea2b60bbb0b",
+    "size_bytes": 163320,
+    "format": "apk",
+    "license": "libtiff",
+    "source": "https://gitlab.alpinelinux.org/alpine/aports/-/tree/3.23-stable/main/tiff"
   }
 ]

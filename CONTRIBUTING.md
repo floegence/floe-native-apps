@@ -192,6 +192,12 @@ Both architecture closures require publisher signatures and full acquisition
 and installed-stack qualification. Previous installed recipes retain their
 identities and files; this update does not alter native workers or codecs.
 
+The TIFF refresh selects publisher-signed 4.7.2-r0 after mirrors retired
+4.7.1-r0. Xpra advances to r8, private desktop to r9, and the physical media
+closure receives a new digest. Both architectures retain every previous recipe
+identity and unchanged installed files. Qualification retains the old signed TIFF
+archives only as legacy-update fixtures; production always acquires new pins.
+
 The graphical check covers Unix sockets and three WebSocket attachments. Each
 attachment must paint, deliver fresh input, and preserve the fixture's process
 identity; each browser-style detach must leave its window available for the next

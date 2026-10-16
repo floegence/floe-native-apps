@@ -59,3 +59,45 @@ func TestRetiredImageAndCompressionArchivesRefreshPreservesInstalledRecipes(t *t
 		}
 	}
 }
+
+func TestRetiredTIFFArchiveRefreshPreservesPublishedRecipes(t *testing.T) {
+	for _, recipe := range []struct {
+		name     string
+		resolve  func(string, string) (Package, error)
+		previous map[string]string
+	}{
+		{"xpra", ForPlatform, map[string]string{"amd64": "9eefff9066f553bea3d29bc9b663e0a9f74bedaaa4f79c6494808354b3c85aa2", "arm64": "865686072d782cf22e83af5a997fc97c5cbb1d6b49814751749a2aac16a9c3b6"}},
+		{"desktop", DesktopForPlatform, map[string]string{"amd64": "a118dce9ae9e997817962315f736ae8221652db08bc50cb21c987a578e973f7c", "arm64": "142cec4c4595835ab86779b75af47b21233af3642d9fc1f2ba18a860315e94cc"}},
+		{"host-desktop", HostDesktopForPlatform, map[string]string{"amd64": "1139e68d94343c80a337bfddfcb20a541f332aa10206329516ab99c1f66040d2", "arm64": "0086d2de3dfbfc5d168d18cf6d2894397b78e902cd24573ccb9b76877188308f"}},
+	} {
+		for architecture, previous := range recipe.previous {
+			t.Run(recipe.name+"/"+architecture, func(t *testing.T) {
+				pkg, err := recipe.resolve("linux", architecture)
+				if err != nil {
+					t.Fatal(err)
+				}
+				found := false
+				for _, artifact := range pkg.Artifacts {
+					if strings.HasPrefix(artifact.Name, "tiff-") {
+						found = true
+						if artifact.Name != "tiff-4.7.2-r0.apk" {
+							t.Fatal("retired TIFF archive remains selected", artifact.Name)
+						}
+					}
+				}
+				if !found || pkg.Digest() == previous {
+					t.Fatal("TIFF refresh did not change the recipe")
+				}
+				retained := false
+				for _, installed := range compatibleInstallations(pkg) {
+					if installed.Digest == previous {
+						retained = true
+					}
+				}
+				if !retained {
+					t.Fatal("published recipe identity was discarded", previous)
+				}
+			})
+		}
+	}
+}

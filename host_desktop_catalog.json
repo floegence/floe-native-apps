@@ -2,8 +2,8 @@
   {
     "id": "alpine-3.23-host-desktop-1-amd64",
     "architecture": "amd64",
-    "size_bytes": 179132544,
-    "installed_bytes": 497451868,
+    "size_bytes": 179136714,
+    "installed_bytes": 497460056,
     "artifacts": [
       {
         "name": "a52dec-0.8.0-r11.apk",
@@ -2784,17 +2784,17 @@
         ]
       },
       {
-        "name": "tiff-4.7.1-r0.apk",
-        "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/tiff-4.7.1-r0.apk",
-        "sha256": "f98ea19adaa6402a619b07bddeab5d974caf2d1a3f4ecdca1baa02a24837f053",
-        "size_bytes": 166475,
+        "name": "tiff-4.7.2-r0.apk",
+        "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/tiff-4.7.2-r0.apk",
+        "sha256": "21c72f925da3d73fc3035136cf8d99518d3e0629a2221017f081bb4781dd5934",
+        "size_bytes": 170645,
         "format": "apk",
         "license": "libtiff",
         "source": "https://gitlab.alpinelinux.org/alpine/aports/-/tree/3.23-stable/main/tiff",
         "mirrors": [
-          "https://mirrors.aliyun.com/alpine/v3.23/main/x86_64/tiff-4.7.1-r0.apk",
-          "https://mirrors.tuna.tsinghua.edu.cn/alpine/v3.23/main/x86_64/tiff-4.7.1-r0.apk",
-          "https://mirrors.ustc.edu.cn/alpine/v3.23/main/x86_64/tiff-4.7.1-r0.apk"
+          "https://mirrors.aliyun.com/alpine/v3.23/main/x86_64/tiff-4.7.2-r0.apk",
+          "https://mirrors.tuna.tsinghua.edu.cn/alpine/v3.23/main/x86_64/tiff-4.7.2-r0.apk",
+          "https://mirrors.ustc.edu.cn/alpine/v3.23/main/x86_64/tiff-4.7.2-r0.apk"
         ]
       },
       {
@@ -3053,8 +3053,8 @@
   {
     "id": "alpine-3.23-host-desktop-1-arm64",
     "architecture": "arm64",
-    "size_bytes": 160836193,
-    "installed_bytes": 455780306,
+    "size_bytes": 160840149,
+    "installed_bytes": 455780302,
     "artifacts": [
       {
         "name": "a52dec-0.8.0-r11.apk",
@@ -5829,17 +5829,17 @@
         ]
       },
       {
-        "name": "tiff-4.7.1-r0.apk",
-        "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/aarch64/tiff-4.7.1-r0.apk",
-        "sha256": "c6258afa957ae8c1e33fee44dd6e6e2656bf542b1b15f8d3176eaea2b60bbb0b",
-        "size_bytes": 163320,
+        "name": "tiff-4.7.2-r0.apk",
+        "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/aarch64/tiff-4.7.2-r0.apk",
+        "sha256": "e034c81b17144ebbc4f8ec50e2b73ac60eb8ffbf16ee25d07f7ea8cd2180d20e",
+        "size_bytes": 167276,
         "format": "apk",
         "license": "libtiff",
         "source": "https://gitlab.alpinelinux.org/alpine/aports/-/tree/3.23-stable/main/tiff",
         "mirrors": [
-          "https://mirrors.aliyun.com/alpine/v3.23/main/aarch64/tiff-4.7.1-r0.apk",
-          "https://mirrors.tuna.tsinghua.edu.cn/alpine/v3.23/main/aarch64/tiff-4.7.1-r0.apk",
-          "https://mirrors.ustc.edu.cn/alpine/v3.23/main/aarch64/tiff-4.7.1-r0.apk"
+          "https://mirrors.aliyun.com/alpine/v3.23/main/aarch64/tiff-4.7.2-r0.apk",
+          "https://mirrors.tuna.tsinghua.edu.cn/alpine/v3.23/main/aarch64/tiff-4.7.2-r0.apk",
+          "https://mirrors.ustc.edu.cn/alpine/v3.23/main/aarch64/tiff-4.7.2-r0.apk"
         ]
       },
       {
