@@ -342,21 +342,14 @@ jobs:
           # Previous fault fixtures are finished. Reestablish the disposable
           # runner's host manager after package setup and service-fault tests.
           test "$(loginctl show-user "$(id -u)" --property=Linger --value)" = yes
+          sudo systemctl daemon-reload
           sudo systemctl restart "user@$(id -u).service"
-          python3 - <<'PY'
-          import os
-          from gi.repository import Gio, GLib
-          bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
-          owner = bus.call_sync('org.freedesktop.DBus', '/org/freedesktop/DBus',
-              'org.freedesktop.DBus', 'GetNameOwner',
-              GLib.Variant('(s)', ('org.freedesktop.systemd1',)),
-              GLib.VariantType.new('(s)'), Gio.DBusCallFlags.NONE, 3000, None).unpack()[0]
-          credentials = bus.call_sync('org.freedesktop.DBus', '/org/freedesktop/DBus',
-              'org.freedesktop.DBus', 'GetConnectionCredentials', GLib.Variant('(s)', (owner,)),
-              GLib.VariantType.new('(a{sv})'), Gio.DBusCallFlags.NONE, 3000, None).unpack()[0]
-          assert credentials['UnixUserID'] == os.getuid()
-          print('Host user-systemd owner and kernel credentials verified')
-          PY
+          if ! python3 qualification/host_manager.py; then
+            sudo systemctl status "user@$(id -u).service" --no-pager || true
+            systemctl --user status dbus.socket dbus.service --no-pager || true
+            sudo journalctl -u "user@$(id -u).service" --no-pager -n 100
+            exit 1
+          fi
           python3 scripts/qualify_desktop_applications.py \
             --state "$RUNNER_TEMP/desktop-state" --preparer "$RUNNER_TEMP/desktop-prepare" \
             --evidence "$RUNNER_TEMP/desktop-evidence/sandbox" --suite sandbox

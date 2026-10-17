@@ -894,8 +894,10 @@ Native layout qualification requires browser geometry and the independently
 observed X11 workarea to converge within the same bounded stability window.
 Stable browser counters alone cannot prove the server's display update completed.
 Disposable sandbox runners enable user linger, reestablish their host user manager
-after service-fault cases, and verify its actual bus owner and kernel UID before
-Snap/Flatpak checks. Flatpak GNOME receives one ordinary focus click before the
+after service-fault cases, and await its actual bus owner for at most ten seconds,
+checking the kernel UID before Snap/Flatpak checks. A missing owner remains a
+failure with user-manager journal diagnostics; no replacement authority is used.
+Flatpak GNOME receives one ordinary focus click before the
 fixture waits for focused IBus readiness. No text is retried; production host
 policy is unchanged. Sandbox failure artifacts retain the isolated application log.
 
