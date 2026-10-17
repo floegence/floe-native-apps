@@ -335,7 +335,11 @@ class PipeWireCapture:
                     if not width or not height:
                         break
                     if x < 0 or y < 0 or x + width > self.width or y + height > self.height:
-                        raise DesktopError('CAPTURE_LAYOUT_UNSUPPORTED')
+                        # Damage is an optimization hint, not pixel storage.
+                        # Mutter may retain edge rectangles outside the stream;
+                        # discard the hint and compare the complete bounded frame.
+                        damage = None
+                        break
                     damage.append((x, y, width, height))
             if meta.type == 2:
                 if not meta.data or meta.size < 16:

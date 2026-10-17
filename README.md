@@ -495,6 +495,9 @@ An unavailable metadata capability retains embedded capture. macOS display
 capture also declares embedded presentation. These paths display one cursor;
 embedded capture does not promise immediate local movement. Metadata layout or
 capture failure stops the affected stream instead of silently losing its cursor.
+Damage rectangles only optimize pixel comparison. An out-of-surface rectangle
+discards that frame's damage hints and compares the complete bounded pixel plane;
+malformed metadata storage and invalid pixel layouts still stop capture.
 
 GStreamer encodes H.264 and system-output Opus from the selected backend.
 Acquisition may sample twice per negotiated frame interval to observe compositor

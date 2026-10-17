@@ -165,9 +165,20 @@ class PipeWireBufferTests(unittest.TestCase):
             capture._buffer(_Buffer(1, 1, metas, datas))
         self.assertEqual(frames, [])
 
-    def test_invalid_damage_is_rejected_before_reading_pixels(self):
-        for damage in (bytes(15), struct.pack('<iiII', -1, 0, 1, 1),
-                       struct.pack('<iiII', 1, 1, 2, 2), bytes(16 * 17)):
+    def test_out_of_surface_damage_requires_full_comparison(self):
+        # Mutter can retain a trailing rectangle beyond the bottom edge after
+        # a full-surface update. Damage is advisory; pixel storage stays bounded.
+        for damage in (struct.pack('<iiII', 0, 0, 2, 2) + struct.pack('<iiII', 0, 2, 1, 2),
+                       struct.pack('<iiII', -1, 0, 1, 1),
+                       struct.pack('<iiII', 1, 1, 2, 2),
+                       struct.pack('<iiII', 0, 0, 0xffffffff, 0xffffffff)):
+            capture, frames, _ = self.fixture()
+            self.deliver(capture, bytes(16), bytes(28), sequence=1)
+            self.deliver(capture, bytes([50]) * 16, bytes(28), damage=damage, sequence=2)
+            self.assertEqual(frames[-1], bytes([50]) * 16)
+
+    def test_malformed_damage_storage_is_rejected_before_reading_pixels(self):
+        for damage in (bytes(15), bytes(16 * 17)):
             capture, frames, _ = self.fixture()
             with self.assertRaisesRegex(DesktopError, 'CAPTURE_LAYOUT_UNSUPPORTED'):
                 self.deliver(capture, bytes(16), bytes(28), damage=damage, sequence=1)
