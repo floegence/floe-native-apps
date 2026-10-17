@@ -90,15 +90,21 @@ try {
   await type('Retained 中文🙂 ');
   async function stable(policy) {
    await page.evaluate(policy=>floeXpraClient.set_display_density(policy),policy);
-   let previous='',unchanged=0,record;
+   let previous='',unchanged=0,record,native;
    for(let i=0;i<90;i++){
     await page.waitForTimeout(100);
     record=await page.evaluate(()=>({geometry:[primary.x,primary.y,primary.w,primary.h],events:layoutEvents.length,remote:remoteSizes.length,scale:floeXpraClient.scale,display:[floeXpraClient.desktop_width,floeXpraClient.desktop_height]}));
-    const key=JSON.stringify(record);unchanged=key===previous?unchanged+1:0;previous=key;
+    native=await readNative();
+    applicationPID??=native.pid;assert.equal(native.pid,applicationPID,'viewer reattach changed application PID');
+    const workarea=/_NET_WORKAREA[^=]*=\s*0,\s*0,\s*(\d+),\s*(\d+)/.exec(native.root);
+    // The native observer and server process display changes asynchronously.
+    // Browser geometry alone cannot establish native workarea completion.
+    const matched=workarea&&workarea.slice(1).map(Number).every((value,index)=>value===record.display[index]);
+    const key=JSON.stringify({record,native});
+    unchanged=matched&&key===previous?unchanged+1:0;previous=key;
     if(unchanged>=8)break;
    }
-   assert(unchanged>=8,`persistent geometry feedback: ${JSON.stringify(record)}`);
-   const native=await readNative();applicationPID??=native.pid;assert.equal(native.pid,applicationPID,'viewer reattach changed application PID');
+   assert(unchanged>=8,`native layout did not converge: ${JSON.stringify({record,native})}`);
    const workarea=/_NET_WORKAREA[^=]*=\s*0,\s*0,\s*(\d+),\s*(\d+)/.exec(native.root);
    assert(workarea,`missing native workarea: ${native.root}`);
    assert.deepEqual(workarea.slice(1).map(Number),record.display,'native workarea retained stale logical dimensions');

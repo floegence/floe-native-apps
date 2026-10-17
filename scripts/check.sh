@@ -16,7 +16,7 @@ if [ -n "$unformatted" ]; then
 fi
 go mod tidy -diff
 go mod verify
-node --test desktop_frames.test.mjs host_desktop_player.test.mjs
+node --test desktop_frames.test.mjs host_desktop_player.test.mjs qualification/layout_native.test.mjs
 go vet ./...
 go test -race -count=1 ./...
 go tool actionlint -shellcheck= -pyflakes=

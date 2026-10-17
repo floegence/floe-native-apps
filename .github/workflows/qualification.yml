@@ -273,6 +273,7 @@ jobs:
           sudo sysctl -w "kernel.core_pattern=$RUNNER_TEMP/desktop-cores/core.%p"
           # Prepare the disposable runner's real user service manager. Snap
           # scope and document-portal tests require it without a desktop login.
+          sudo loginctl enable-linger "$(id -un)"
           sudo systemctl start "user@$(id -u).service"
           export XDG_RUNTIME_DIR="/run/user/$(id -u)"
           export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
@@ -338,6 +339,9 @@ jobs:
       - name: Verify strict Snap and Flatpak input, remote save and normal exit
         run: |
           ulimit -c unlimited
+          # Linger retains the real host scope owner after transient runner logins.
+          test "$(loginctl show-user "$(id -u)" --property=Linger --value)" = yes
+          busctl --user status org.freedesktop.systemd1
           python3 scripts/qualify_desktop_applications.py \
             --state "$RUNNER_TEMP/desktop-state" --preparer "$RUNNER_TEMP/desktop-prepare" \
             --evidence "$RUNNER_TEMP/desktop-evidence/sandbox" --suite sandbox

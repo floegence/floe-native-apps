@@ -890,6 +890,11 @@ etag completion, during which another Save shortcut is disabled. The fixture
 waits for the observed save cycle to finish before continuing; it never retries
 the shortcut. Failures retain this readiness receipt, the current picture and
 window/focus diagnostics.
+Native layout qualification requires browser geometry and the independently
+observed X11 workarea to converge within the same bounded stability window.
+Stable browser counters alone cannot prove the server's display update completed.
+Disposable sandbox runners enable user linger and verify the actual user-systemd
+bus owner before Snap/Flatpak checks; production host policy is unchanged.
 
 The authenticated input scheduler wraps the handlers actually registered by
 each supported Xpra version, including 6.5's canonical pointer, keyboard and
