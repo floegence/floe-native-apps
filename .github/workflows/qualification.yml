@@ -339,9 +339,24 @@ jobs:
       - name: Verify strict Snap and Flatpak input, remote save and normal exit
         run: |
           ulimit -c unlimited
-          # Linger retains the real host scope owner after transient runner logins.
+          # Previous fault fixtures are finished. Reestablish the disposable
+          # runner's host manager after package setup and service-fault tests.
           test "$(loginctl show-user "$(id -u)" --property=Linger --value)" = yes
-          busctl --user status org.freedesktop.systemd1
+          sudo systemctl restart "user@$(id -u).service"
+          python3 - <<'PY'
+          import os
+          from gi.repository import Gio, GLib
+          bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+          owner = bus.call_sync('org.freedesktop.DBus', '/org/freedesktop/DBus',
+              'org.freedesktop.DBus', 'GetNameOwner',
+              GLib.Variant('(s)', ('org.freedesktop.systemd1',)),
+              GLib.VariantType.new('(s)'), Gio.DBusCallFlags.NONE, 3000, None).unpack()[0]
+          credentials = bus.call_sync('org.freedesktop.DBus', '/org/freedesktop/DBus',
+              'org.freedesktop.DBus', 'GetConnectionCredentials', GLib.Variant('(s)', (owner,)),
+              GLib.VariantType.new('(a{sv})'), Gio.DBusCallFlags.NONE, 3000, None).unpack()[0]
+          assert credentials['UnixUserID'] == os.getuid()
+          print('Host user-systemd owner and kernel credentials verified')
+          PY
           python3 scripts/qualify_desktop_applications.py \
             --state "$RUNNER_TEMP/desktop-state" --preparer "$RUNNER_TEMP/desktop-prepare" \
             --evidence "$RUNNER_TEMP/desktop-evidence/sandbox" --suite sandbox

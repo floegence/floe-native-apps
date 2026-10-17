@@ -126,9 +126,12 @@ def main():
         client = ControlClient(evidence / 'viewer', runtime / 'control.sock', runtime.name, session_token(evidence, token))
         client.reconnect()
         target = paint('loaded')
+        # Establish real editor focus before observing its focused IBus context.
+        # Waiting first can deadlock on a context created by this ordinary click.
+        click(330, 300)
         if app_id == 'org.gnome.TextEditor':
             # A painted GTK window can precede asynchronous IBus registration.
-            # Observe this fixture's real context before the click/text burst;
+            # Observe this fixture's real context after focus, before text;
             # do not retry text or claim that first-frame readiness proves an
             # editable context. Only the saved application bytes prove input.
             daemon = next(x for x in records() if x.get('service') == 'ibus')
@@ -166,7 +169,6 @@ def main():
             finally:
                 bus.close_sync(None)
                 result['initial_context'] = {'observations': observations, 'elapsed_seconds': time.monotonic() - observed}
-        click(330, 300)
         pending, expected = [], ''
         for value in ['中文日本語한글🙂👩🏽‍💻e\u0301𠮷'] * 64 + ['界🙂' * 2000]:
             pending += [send({'kind': 'text', 'text': value}), send({'kind': 'key', 'code': 28, 'pressed': True}),

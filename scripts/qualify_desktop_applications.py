@@ -94,7 +94,7 @@ def main():
             retained = args.evidence / name
             retained.mkdir(mode=0o700)
             paths = list(observed.glob('*.png')) + [observed / item for item in
-                ('result.json', 'helper.log', 'document.json', 'document.txt', 'portal-copy.txt',
+                ('result.json', 'helper.log', 'application.log', 'document.json', 'document.txt', 'portal-copy.txt',
                  'control-receipts.json', 'browser-receipts.jsonl', 'saved-text.txt',
                  'session/desktop-status.json', 'session/application.json')]
             for path in paths:

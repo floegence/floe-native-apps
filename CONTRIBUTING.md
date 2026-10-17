@@ -893,8 +893,11 @@ window/focus diagnostics.
 Native layout qualification requires browser geometry and the independently
 observed X11 workarea to converge within the same bounded stability window.
 Stable browser counters alone cannot prove the server's display update completed.
-Disposable sandbox runners enable user linger and verify the actual user-systemd
-bus owner before Snap/Flatpak checks; production host policy is unchanged.
+Disposable sandbox runners enable user linger, reestablish their host user manager
+after service-fault cases, and verify its actual bus owner and kernel UID before
+Snap/Flatpak checks. Flatpak GNOME receives one ordinary focus click before the
+fixture waits for focused IBus readiness. No text is retried; production host
+policy is unchanged. Sandbox failure artifacts retain the isolated application log.
 
 The authenticated input scheduler wraps the handlers actually registered by
 each supported Xpra version, including 6.5's canonical pointer, keyboard and
