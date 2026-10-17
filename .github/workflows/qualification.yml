@@ -311,8 +311,12 @@ jobs:
           cp /etc/ssl/certs/ca-certificates.crt "$context/"
           cp scripts/input_builder.sh scripts/input_gtk_builder.sh scripts/input_toolkits.json "$context/scripts/"
           cp -R input_modules/sources "$context/input_modules/"
+          # Qualification uses the original publisher with the exact same pinned
+          # manifests. Preserve the historical binary builder source/provenance.
+          sed 's|FROM public.ecr.aws/docker/library/debian@sha256:|FROM docker.io/library/debian@sha256:|' \
+            qualification/desktop_compatibility/Dockerfile.gtk-native > "$context/Dockerfile"
           docker build --build-arg TARGET_ARCH="${{ matrix.arch }}" \
-            -f qualification/desktop_compatibility/Dockerfile.gtk-native \
+            -f "$context/Dockerfile" \
             -t floe-desktop-gtk-baseline "$context"
           image=$(docker image inspect --format '{{.Id}}' floe-desktop-gtk-baseline)
           docker run --rm --user "$(id -u):$(id -g)" \

@@ -1148,10 +1148,10 @@ remove build loader paths, and rejects ELF architecture or RPATH mismatches.
 The resulting manifest covers original sources, reviewed patches, build scripts,
 compiler, signed dependencies, licenses and final binary bytes. Qt modules retain
 their separate glibc ABI baseline builds because they load into applications.
-The GTK baseline builder acquires its pinned Debian manifests directly from
-docker.io/library/debian, avoiding the shared ECR mirror's quota without changing
-either architecture's digest. Existing native distribution source snapshots and
-provenance retain the exact inputs of their historical builds.
+Release qualification projects the GTK baseline Dockerfile into its disposable
+context using docker.io/library/debian, avoiding the shared ECR mirror's quota
+without changing either architecture's pinned digest. The original builder, native
+distribution source snapshots and provenance retain the historical build inputs.
 
 `fetch_candidate.sh` acquires the original runtime APK closure in that disposable
 builder, including private Python Xlib and XIM dependencies. Its candidate catalog
