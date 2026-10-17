@@ -9,8 +9,10 @@ const password=(await readFile(receipt.replace(/\.json$/,'.password'),'utf8')).t
 const sources=await Promise.all(['remote-input','remote-pointer'].map(name=>readFile(fileURLToPath(import.meta.resolve('@floegence/floe-webapp-core/'+name)),'utf8')));
 const css=(await Promise.all(['remote-input','remote-pointer'].map(name=>readFile(fileURLToPath(import.meta.resolve('@floegence/floe-webapp-core/'+name+'.css')),'utf8')))).join('\n');
 const browser=await chromium.launch({headless:true,chromiumSandbox:true});
+let page;
 try {
- const page=await browser.newPage({viewport:{width:1000,height:760}}),errors=[];
+ page=await browser.newPage({viewport:{width:1000,height:760}});
+ const errors=[];
  page.on('pageerror',error=>errors.push(error.message));
  await page.goto(address+'/?password='+encodeURIComponent(password)+'&floating_menu=false&encoding=png&clipboard=false');
  await page.waitForFunction(()=>window.floeXpraClient?.connected&&Object.values(floeXpraClient.id_to_window).some(win=>
@@ -23,6 +25,16 @@ try {
   const documentWindow=Object.values(client.id_to_window).find(win=>String(win.metadata?.title??'').includes('received.txt'));
   if(!documentWindow)throw new Error('GNOME document window was not ready');
   documentWindow.canvas.dataset.gnomeQualificationTarget='true';
+  window.gnomePainted=false;
+  const damage=client.do_send_damage_sequence;
+  client.do_send_damage_sequence=function(sequence,wid,width,height,decodeTime,message){
+   if(wid===documentWindow.wid&&width>400&&height>300&&decodeTime>=0&&!message)window.gnomePainted=true;
+   return damage.apply(this,arguments);
+  };
+  // GNOME can map its minimum-size window before restoring its layout.
+  // Use the ordinary viewer layout command and require decoded document pixels.
+  client.set_window_layout(documentWindow.wid,'viewport');
+  client.send(['buffer-refresh',documentWindow.wid,0,100,{},{}]);
   window.inputErrors=[];keys.onError=code=>inputErrors.push(code);
   window.inputDiagnostics=()=>({focusedWid:client.focused_wid,targetWid:keys.target?.wid??null,
    targetValid:keys.valid(keys.target),activeElement:document.activeElement?.className??'',
@@ -37,6 +49,15 @@ try {
   String(win.metadata?.title??'').includes('received.txt')&&floeXpraClient.floePointer.targetForWindow(win))?.wid);
  assert(targetWindow,'GNOME document window was not ready');
  const documentCanvas=page.locator('canvas[data-gnome-qualification-target="true"]');
+ await page.waitForFunction(()=>{
+  const canvas=Object.values(floeXpraClient.id_to_window).find(win=>
+   String(win.metadata?.title??'').includes('received.txt'))?.canvas;
+  const box=canvas?.getBoundingClientRect();
+  if(!window.gnomePainted||!canvas?.isConnected||!(box.width>400&&box.height>300))return false;
+  document.querySelectorAll('canvas[data-gnome-qualification-target]').forEach(previous=>previous.removeAttribute('data-gnome-qualification-target'));
+  canvas.dataset.gnomeQualificationTarget='true';
+  return true;
+ },null,{timeout:10000});
  const box=await documentCanvas.boundingBox();
  assert(box&&box.width>100&&box.height>100,'GNOME document canvas has no usable content area');
  await page.mouse.click(box.x+box.width/2,box.y+box.height/2);
@@ -70,4 +91,10 @@ try {
  await page.screenshot({path:receipt+'.png'});
  await writeFile(receipt,JSON.stringify({browser:browser.version(),expected,composition:'simulated',checks:['click then ASCII','save then repeated Unicode','selection replacement','multiline then Enter','saved bytes']},null,2));
  console.log('PASS gnome click, save, repeated Unicode, multiline and exact saved bytes');
+} catch(error) {
+ if(page){
+  await page.screenshot({path:receipt+'.png'});
+  console.error(JSON.stringify(await page.evaluate(()=>window.inputDiagnostics?.()??{})));
+ }
+ throw error;
 } finally {await browser.close();}

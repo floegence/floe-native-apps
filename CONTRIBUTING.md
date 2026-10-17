@@ -880,7 +880,11 @@ bounds, shadow cursor geometry and disconnect disposal. Native release qualifica
 runs `TestNativeClientInput` at density 1 and `TestNativeDisplayInput` at density 2
 with managed and system Xpra on both architectures. GTK receipts also assert its
 actual backing scale and unchanged logical text DPI. Both runs retain the complete
-Unicode, focus and clipboard assertions below.
+Unicode, focus and clipboard assertions below. The GNOME editor fixture uses
+the ordinary viewport layout and waits for a successfully decoded document frame
+before its first click. A registered title or provisional minimum-size canvas is
+not input readiness. Exact saved UTF-8 bytes remain the completion receipt, and
+failures retain the current picture and window/focus diagnostics.
 
 The authenticated input scheduler wraps the handlers actually registered by
 each supported Xpra version, including 6.5's canonical pointer, keyboard and
