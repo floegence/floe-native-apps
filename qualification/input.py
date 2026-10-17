@@ -62,10 +62,15 @@ def qualify(kind):
         elif kind == 'gnome':
             document = receipt.with_suffix('.txt')
             document.write_bytes(b'')
+            observer = directory / 'gnome-save-observer.so'
+            subprocess.run(['cc', '-shared', '-fPIC', '-Wall', '-Wextra', '-Werror',
+                            str(source / 'gnome_save_observer.c'), '-ldl', '-o', str(observer)], check=True)
             application += ['env', 'XDG_DATA_HOME=' + str(directory / 'data'),
                             'XDG_CONFIG_HOME=' + str(directory / 'config'),
                             'XDG_CACHE_HOME=' + str(directory / 'cache'),
                             'XDG_STATE_HOME=' + str(directory / 'history'), 'GSETTINGS_BACKEND=memory',
+                            'LD_PRELOAD=' + str(observer),
+                            'FLOE_GNOME_SAVE_RECEIPT=' + str(receipt.with_suffix('.save.json')),
                             '/usr/bin/gnome-text-editor', '--standalone', str(document)]
         elif kind == 'terminal':
             application += ['xterm', '-u8', '-geometry', '80x20', '-xrm', 'XTerm*inputMethod:floe-client',
@@ -210,7 +215,7 @@ for(const editor of editors)editor.addEventListener('input',()=>{const body=JSON
                     shutil.copy2(image, target / image.name)
                 elif (target / image.name).exists():
                     (target / image.name).unlink()
-            for name in ('process.json', 'application.json', 'input-trace.jsonl', 'received.json', 'received.txt', 'received.unicode.json', 'received.density.json', 'received.json.png', 'received.json.full.png', 'received.json.diagnostics.json', 'received.diagnostics.json', 'received.focus.json', 'received.ready', 'received.hover', 'received.clicked', 'received.pointer.json', 'received.layout.json', 'received.layout-native.json', 'received.windows.json', 'server.log'):
+            for name in ('process.json', 'application.json', 'input-trace.jsonl', 'received.json', 'received.txt', 'received.save.json', 'received.unicode.json', 'received.density.json', 'received.json.png', 'received.json.full.png', 'received.json.diagnostics.json', 'received.diagnostics.json', 'received.focus.json', 'received.ready', 'received.hover', 'received.clicked', 'received.pointer.json', 'received.layout.json', 'received.layout-native.json', 'received.windows.json', 'server.log'):
                 if (directory / name).exists():
                     shutil.copy2(directory / name, target / name)
                 elif (target / name).exists():

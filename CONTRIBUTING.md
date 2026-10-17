@@ -883,8 +883,13 @@ actual backing scale and unchanged logical text DPI. Both runs retain the comple
 Unicode, focus and clipboard assertions below. The GNOME editor fixture uses
 the ordinary viewport layout and waits for a successfully decoded document frame
 before its first click. A registered title or provisional minimum-size canvas is
-not input readiness. Exact saved UTF-8 bytes remain the completion receipt, and
-failures retain the current picture and window/focus diagnostics.
+not input readiness. Exact saved UTF-8 bytes remain the completion receipt. A
+qualification-only interposer observes the public GTK save-action enablement
+without changing it: file publication precedes GNOME's asynchronous metadata and
+etag completion, during which another Save shortcut is disabled. The fixture
+waits for the observed save cycle to finish before continuing; it never retries
+the shortcut. Failures retain this readiness receipt, the current picture and
+window/focus diagnostics.
 
 The authenticated input scheduler wraps the handlers actually registered by
 each supported Xpra version, including 6.5's canonical pointer, keyboard and
@@ -1143,6 +1148,10 @@ remove build loader paths, and rejects ELF architecture or RPATH mismatches.
 The resulting manifest covers original sources, reviewed patches, build scripts,
 compiler, signed dependencies, licenses and final binary bytes. Qt modules retain
 their separate glibc ABI baseline builds because they load into applications.
+The GTK baseline builder acquires its pinned Debian manifests directly from
+docker.io/library/debian, avoiding the shared ECR mirror's quota without changing
+either architecture's digest. Existing native distribution source snapshots and
+provenance retain the exact inputs of their historical builds.
 
 `fetch_candidate.sh` acquires the original runtime APK closure in that disposable
 builder, including private Python Xlib and XIM dependencies. Its candidate catalog

@@ -5,6 +5,19 @@ import {fileURLToPath} from 'node:url';
 import {chromium} from 'playwright';
 const [receipt,address]=process.argv.slice(2);
 const document=receipt.replace(/\.json$/,'.txt');
+const saveState=async()=>{
+ try{return JSON.parse(await readFile(receipt.replace(/\.json$/,'.save.json'),'utf8'))}
+ catch(error){if(error.code==='ENOENT')return {enabled:false,disabled:0};throw error}
+};
+async function waitSaveReady(after=-1){
+ const deadline=Date.now()+8000;
+ while(true){
+  const state=await saveState();
+  if(state.enabled&&state.disabled>after)return state;
+  assert(Date.now()<deadline,'GNOME save action did not become ready: '+JSON.stringify(state));
+  await new Promise(resolve=>setTimeout(resolve,30));
+ }
+}
 const password=(await readFile(receipt.replace(/\.json$/,'.password'),'utf8')).trim();
 const sources=await Promise.all(['remote-input','remote-pointer'].map(name=>readFile(fileURLToPath(import.meta.resolve('@floegence/floe-webapp-core/'+name)),'utf8')));
 const css=(await Promise.all(['remote-input','remote-pointer'].map(name=>readFile(fileURLToPath(import.meta.resolve('@floegence/floe-webapp-core/'+name+'.css')),'utf8')))).join('\n');
@@ -66,6 +79,7 @@ try {
   'GNOME document did not activate for input: '+JSON.stringify(activation));
  const modifier=await page.evaluate(()=>/Mac/.test(navigator.platform)?'Meta':'Control');
  const save=async expected=>{
+  const before=await waitSaveReady();
   await page.keyboard.press(modifier+'+s');
   const deadline=Date.now()+8000;
   while(await readFile(document,'utf8')!==expected){
@@ -73,7 +87,11 @@ try {
     JSON.stringify(await page.evaluate(()=>window.inputDiagnostics())));
    await new Promise(resolve=>setTimeout(resolve,30));
   }
+  // File publication precedes GNOME's metadata/etag completion. Do not send
+  // another edit/save while the application still disables its save action.
+  await waitSaveReady(before.disabled);
  };
+ await waitSaveReady();
  await page.keyboard.type('abc');await save('abc\n');
  const text='中文日本語한글🙂👩🏽‍💻e\u0301𠮷';
  const compose=value=>page.locator('.floe-remote-input').evaluate((element,value)=>{
