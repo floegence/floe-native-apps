@@ -519,3 +519,12 @@ requires a new painted frame before input.
 These are scheduling and resource guarantees, not a universal frame-rate claim.
 Real-host performance, permissions, physical displays and audio still require
 qualification in the consuming product's authenticated transport.
+
+### macOS input delivery receipts
+
+The Swift FloeNativeDesktop product exposes NativeInputDelivery. Each posted
+input has an independent marker and one monotonic receipt deadline. Session or
+process-tail observation reports posted and observed counts; it does not prove
+an application's business action succeeded. A timeout never retries input.
+Consumers retain target, permission, takeover and cancellation policy, and use
+markAuxiliary for cleanup releases so cleanup cannot acknowledge later input.
