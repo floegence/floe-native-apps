@@ -161,3 +161,25 @@ func TestHostDesktopEncoderArtifactsMatchReviewedBuild(t *testing.T) {
 		}
 	}
 }
+
+func TestToolchainRefreshRetainsPublishedServiceIdentity(t *testing.T) {
+	releases, err := hostDesktopReleases()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for arch, digest := range map[string]string{"amd64": "e39d6343428f947136b0c9ce1a7b30e50186ee57876cb7d3bfb1803e01d30cef", "arm64": "66c54e7f449c0fea1e70158d1020dec291045121a9a3ab89cb7c344b02f1440b"} {
+		found := false
+		for _, release := range releases {
+			if release.Digest != digest {
+				continue
+			}
+			found = true
+			if release.Architecture != arch || release.Version != "v0.24.0" || release.Files["floe-host-desktop-service"].Size == 0 || release.Files["service-build.json"].Size == 0 {
+				t.Fatal("incomplete published service identity", release)
+			}
+		}
+		if !found {
+			t.Fatal("lost installed v0.24.0 service", arch)
+		}
+	}
+}
