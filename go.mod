@@ -8,9 +8,9 @@ tool (
 )
 
 require (
-	github.com/godbus/dbus/v5 v5.2.2
-	golang.org/x/image v0.46.0
-	golang.org/x/mod v0.41.0
+	github.com/godbus/dbus/v5 v5.2.4
+	golang.org/x/image v0.47.0
+	golang.org/x/mod v0.42.0
 	golang.org/x/sys v0.49.0
 )
 
@@ -26,7 +26,7 @@ require (
 	github.com/robfig/cron/v3 v3.0.1 // indirect
 	go.yaml.in/yaml/v4 v4.0.0-rc.3 // indirect
 	golang.org/x/sync v0.23.0 // indirect
-	golang.org/x/telemetry v0.0.0-20260908163034-4bcc4b2ee518 // indirect
-	golang.org/x/tools v0.50.0 // indirect
+	golang.org/x/telemetry v0.0.0-20260924152758-ed294f943157 // indirect
+	golang.org/x/tools v0.51.0 // indirect
 	golang.org/x/vuln v1.8.0 // indirect
 )
