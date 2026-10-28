@@ -32,14 +32,32 @@ public enum NativeDesktopInput {
     }
 
 
+    /// Construction only. Use dragSequence and its deliver method for timing.
+    @available(*, deprecated, message: "Use dragSequence(from:to:durationMilliseconds:) and deliver(check:post:) to honor duration.")
     public static func drag(from: CGPoint, to: CGPoint, durationMilliseconds: Int) throws -> [CGEvent] {
+        try dragSequence(from: from, to: to, durationMilliseconds: durationMilliseconds).events
+    }
+
+    /// A bounded linear path held for at least durationMilliseconds after
+    /// acknowledged mouse-down. OS delivery may extend the requested duration.
+    public static func dragSequence(from: CGPoint, to: CGPoint, durationMilliseconds: Int) throws -> NativeInputSequence {
         guard durationMilliseconds >= 0 && durationMilliseconds <= 5_000 else { throw invalid("Drag duration is out of range.") }
         guard let move = CGEvent(mouseEventSource:nil, mouseType:.mouseMoved, mouseCursorPosition:from, mouseButton:.left),
               let down = CGEvent(mouseEventSource:nil, mouseType:.leftMouseDown, mouseCursorPosition:from, mouseButton:.left) else { throw unavailable() }
         var events:[CGEvent] = [move,down]
+        var offsets: [TimeInterval] = [0, 0]
+        let duration = Double(durationMilliseconds) / 1000
         let steps=max(1, min(120, durationMilliseconds/16))
-        for index in 1...steps { let t=CGFloat(index)/CGFloat(steps); let point=CGPoint(x:from.x+(to.x-from.x)*t,y:from.y+(to.y-from.y)*t); guard let event=CGEvent(mouseEventSource:nil,mouseType:.leftMouseDragged,mouseCursorPosition:point,mouseButton:.left) else {throw unavailable()}; events.append(event) }
-        guard let up=CGEvent(mouseEventSource:nil,mouseType:.leftMouseUp,mouseCursorPosition:to,mouseButton:.left) else {throw unavailable()}; events.append(up); return events
+        for index in 1...steps {
+            let t = CGFloat(index) / CGFloat(steps)
+            let point = CGPoint(x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t)
+            guard let event = CGEvent(mouseEventSource: nil, mouseType: .leftMouseDragged, mouseCursorPosition: point, mouseButton: .left) else { throw unavailable() }
+            events.append(event)
+            offsets.append(duration * Double(index) / Double(steps))
+        }
+        guard let up = CGEvent(mouseEventSource: nil, mouseType: .leftMouseUp, mouseCursorPosition: to, mouseButton: .left) else { throw unavailable() }
+        events.append(up); offsets.append(duration)
+        return NativeInputSequence(events: events, offsets: offsets, anchorIndex: 1)
     }
 
     public static func scroll(at point: CGPoint, x: Double, y: Double, naturalScrolling: Bool) throws -> [CGEvent] {

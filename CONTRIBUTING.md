@@ -1333,6 +1333,16 @@ required before input or clipboard access. A consumer must additionally enforce
 its authenticated session owner and the single remote console controller. A
 client's paint acknowledgement is flow control and cannot replace those checks.
 
+Timed macOS input uses the public NativeInputSequence schedule, with
+NativeDesktopInput.dragSequence supplying bounded drag events and monotonic
+relative offsets. Consumers supply checked NativeInputDelivery posting and own
+permission, target validation, cancellation and release cleanup. An event array
+alone cannot implement drag duration; the construction-only drag API remains
+available but is deprecated. Run swift test and the explicitly authorized
+swift run NativeDragQualification foreground fixture before publishing timing
+claims. The fixture receives events in a separate process, preserves raw timing
+receipts, and checks zero/short/long paths and interruption without replay.
+
 macOS consumers build the exact published Swift package `FloeNativeDesktop` into
 their existing native helper. `NativeCaptureStream` supports application windows
 and physical displays in the same process. The default one-frame application

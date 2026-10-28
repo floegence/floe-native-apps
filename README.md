@@ -528,3 +528,19 @@ process-tail observation reports posted and observed counts; it does not prove
 an application's business action succeeded. A timeout never retries input.
 Consumers retain target, permission, takeover and cancellation policy, and use
 markAuxiliary for cleanup releases so cleanup cannot acknowledge later input.
+
+Timed native input uses NativeDesktopInput.dragSequence and
+NativeInputSequence.deliver(check:post:). Drag duration is an integer 0..5000 ms;
+zero adds no intentional delay. One monotonic schedule starts after acknowledged
+mouse-down and includes at most 120 path samples. Delivery overhead may extend
+the requested duration. The host supplies NativeInputDelivery.post, cancellation
+and target checks, and cleanup for inputs actually posted. Waiting services the
+main run loop and checks interruption between wait slices capped at 10 ms; errors
+stop the sequence without retries. The older drag event constructor remains
+available but is deprecated because an event array cannot enforce elapsed time.
+
+Run swift test for deterministic scheduling, bounds, cancellation, slow delivery
+and no-replay coverage. With explicit foreground authorization, run
+swift run NativeDragQualification to record actual AppKit pointer events at
+0/1/500/5000 ms and interrupted 5000 ms; the fixture owns its window and releases
+held input. The --legacy option reproduces immediate dispatch for comparison.

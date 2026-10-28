@@ -9,6 +9,8 @@ let package = Package(
         .target(name: "FloeNativeDesktop"),
         .executableTarget(name: "NativeDesktopQualification", dependencies: ["FloeNativeDesktop"],
                           path: "qualification/macos-desktop"),
+        .executableTarget(name: "NativeDragQualification", dependencies: ["FloeNativeDesktop"],
+                          path: "qualification/macos-drag"),
         .testTarget(name: "FloeNativeDesktopTests", dependencies: ["FloeNativeDesktop"]),
     ]
 )

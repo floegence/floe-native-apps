@@ -1,17 +1,17 @@
 {
   "architecture": "amd64",
-  "build_info": "/tmp/floe-service-proof4-amd64/floe-host-desktop-service: go1.27.2\n\tpath\tgithub.com/floegence/floe-native-apps/cmd/floe-host-desktop-service\n\tmod\tgithub.com/floegence/floe-native-apps\t(devel)\t\n\tdep\tgithub.com/godbus/dbus/v5\tv5.2.2\th1:TUR3TgtSVDmjiXOgAAyaZbYmIeP3DPkld3jgKGV8mXQ=\n\tdep\tgolang.org/x/sys\tv0.49.0\th1:XbzkgYJHdqh/8m2Uu0W/dQv8nktxx4BFHp1M0gROTXA=\n\tbuild\t-buildmode=exe\n\tbuild\t-compiler=gc\n\tbuild\t-trimpath=true\n\tbuild\tCGO_ENABLED=0\n\tbuild\tGOARCH=amd64\n\tbuild\tGOOS=linux\n\tbuild\tGOAMD64=v1\n",
+  "build_info": "/Volumes/JianDisk/code/floegence/task-artifacts/native-drag-timing-20261028/service-amd64/floe-host-desktop-service: go1.27.3\n\tpath\tgithub.com/floegence/floe-native-apps/cmd/floe-host-desktop-service\n\tmod\tgithub.com/floegence/floe-native-apps\t(devel)\t\n\tdep\tgithub.com/godbus/dbus/v5\tv5.2.2\th1:TUR3TgtSVDmjiXOgAAyaZbYmIeP3DPkld3jgKGV8mXQ=\n\tdep\tgolang.org/x/sys\tv0.49.0\th1:XbzkgYJHdqh/8m2Uu0W/dQv8nktxx4BFHp1M0gROTXA=\n\tbuild\t-buildmode=exe\n\tbuild\t-compiler=gc\n\tbuild\t-trimpath=true\n\tbuild\tCGO_ENABLED=0\n\tbuild\tGOARCH=amd64\n\tbuild\tGOOS=linux\n\tbuild\tGOAMD64=v1\n",
   "files": {
     "floe-host-desktop-service": {
       "executable": true,
-      "sha256": "347ebfdfdcdeb14e9f2029c8eba514efd56925b6e2ad733fc167dbf20140ef68",
+      "sha256": "6265ae0e37b343570b7a0d47857b863205de5c07de2196c10f384706b34d9239",
       "size_bytes": 4571260
     }
   },
   "sources": {
     "cmd/floe-host-desktop-service/main.go": "7379fe0b7a1ebfa97dde6a147bed0d42393e73bcd0efaa1827f7cd2d0c4dd51b",
     "cmd/floe-host-desktop-service/manage.go": "33bd40646b18626b45920b8c7621e7849d1c98fdd395ecab67072105d99cc946",
-    "go.mod": "d00b19b755fba3352017df05ec69c0229ddeee35560cf1f606c2cc884d3566fa",
+    "go.mod": "0f874db47a527068f88ee1d1bd642d16566dc4d1d8e00c8f6983608c7f922502",
     "go.sum": "3a9365edef4328a2208509e12eb1fa1c60c1645f4b094977ddfc922f4dc9152c",
     "hostdesktop/deployment.go": "34788f70cf84cbf5414654a45e4910225f7e58cc8295f0fa6110afe6433470bb",
     "hostdesktop/deployment_driver_linux.go": "fcf47b9467b6eb1c29918f1c50192d766ac261ac257d5e74faeb1a84f885a3e8",
@@ -44,6 +44,6 @@
     "scripts/build_host_desktop_service.sh": "e7f927bcd58f6c26c64876e92e92eef0f6affe243fa832446c7dc7608e95cb82"
   },
   "status": "Static service; administrator authorization is owned by the consuming SSH adapter",
-  "toolchain": "go version go1.27.2 darwin/arm64",
+  "toolchain": "go version go1.27.3 darwin/arm64",
   "version": 1
 }
