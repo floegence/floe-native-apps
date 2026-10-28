@@ -18,7 +18,7 @@ final class DragPad: NSView {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     func record(_ event: NSEvent) {
         received.append(["type": event.type == .leftMouseDown ? "down" : event.type == .leftMouseUp ? "up" : "drag",
-                         "time_ms": ProcessInfo.processInfo.systemUptime * 1000,
+                         "time_ms": ProcessInfo.processInfo.systemUptime * 1000, "event_time_ms": event.timestamp * 1000,
                          "x": Double(event.locationInWindow.x), "y": Double(event.locationInWindow.y)])
         save?()
     }
@@ -111,10 +111,11 @@ if CommandLine.arguments.contains("--fixture") {
         let down = events.filter { $0["type"] as? String == "down" }
         let up = events.filter { $0["type"] as? String == "up" }
         let held = down.count == 1 && up.count == 1 ? (up[0]["time_ms"] as! Double) - (down[0]["time_ms"] as! Double) : -1
+        let eventHeld = down.count == 1 && up.count == 1 ? (up[0]["event_time_ms"] as! Double) - (down[0]["event_time_ms"] as! Double) : -1
         let timing = cancel ? held >= 75 && held < 1000 && cancelled : held >= Double(milliseconds) - 20 && held < Double(milliseconds) + 1500
         let endpoint = up.count == 1 && (cancel ? (up[0]["x"] as! Double) < 300 : abs((up[0]["x"] as! Double) - 300) < 1)
-        let passed = failure == nil && timing && endpoint && !CGEventSource.buttonState(.hidSystemState, button: .left)
-        output(["duration_ms": milliseconds, "cancel": cancel, "legacy": legacy, "passed": passed, "held_ms": held, "error": failure ?? "", "events": events])
+        let passed = failure == nil && timing && (cancel || eventHeld >= Double(milliseconds)) && endpoint && !CGEventSource.buttonState(.hidSystemState, button: .left)
+        output(["duration_ms": milliseconds, "cancel": cancel, "legacy": legacy, "passed": passed, "held_ms": held, "event_held_ms": eventHeld, "error": failure ?? "", "events": events])
         if !passed { failures += 1 }
         let ownsFocus = NSWorkspace.shared.frontmostApplication?.processIdentifier == child.processIdentifier
         child.terminate(); child.waitUntilExit()
