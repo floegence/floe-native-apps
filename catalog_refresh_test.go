@@ -101,3 +101,67 @@ func TestRetiredTIFFArchiveRefreshPreservesPublishedRecipes(t *testing.T) {
 		}
 	}
 }
+
+func TestOctoberPublisherRefreshPreservesPublishedRecipes(t *testing.T) {
+	versions := map[string]string{"brotli-libs": "1.2.1-r0", "py3-brotli": "1.2.1-r0", "py3-brotli-pyc": "1.2.1-r0", "musl": "1.2.5-r24", "c-ares": "1.34.9-r0", "ca-certificates": "20261020-r0", "ca-certificates-bundle": "20261020-r0"}
+	for _, recipe := range []struct {
+		name     string
+		resolve  func(string, string) (Package, error)
+		previous map[string]string
+	}{
+		{"xpra", ForPlatform, xpraR8Digests}, {"desktop", DesktopForPlatform, desktopR9Digests},
+		{"host-desktop", HostDesktopForPlatform, map[string]string{"amd64": "9aba4fa39567c2002ca2e7a666e388355bf9a59523648fcf88d35805374c3794", "arm64": "8e075b38ba336caba2dbc706b7c9d82dd00814d2c5301e00876260aaa88178f9"}},
+	} {
+		for arch, previous := range recipe.previous {
+			t.Run(recipe.name+"/"+arch, func(t *testing.T) {
+				pkg, err := recipe.resolve("linux", arch)
+				if err != nil {
+					t.Fatal(err)
+				}
+				refreshed := 0
+				for _, a := range pkg.Artifacts {
+					parts := strings.Split(a.Name, "-")
+					if len(parts) < 3 {
+						continue
+					}
+					name := strings.Join(parts[:len(parts)-2], "-")
+					if version, ok := versions[name]; ok {
+						refreshed++
+						if a.Name != name+"-"+version+".apk" {
+							t.Fatal("retired publisher pin", a.Name)
+						}
+					}
+				}
+				if refreshed == 0 || pkg.Digest() == previous {
+					t.Fatal("refresh did not change recipe")
+				}
+				retained := false
+				for _, item := range compatibleInstallations(pkg) {
+					retained = retained || item.Digest == previous
+				}
+				if !retained {
+					t.Fatal("lost published installation", previous)
+				}
+				root := t.TempDir()
+				original, _ := json.Marshal(operation{Version: 2, Package: previous, Installed: previous, Status: Status{State: "ready"}})
+				path := filepath.Join(root, "operation.json")
+				if err = os.WriteFile(path, original, 0600); err != nil {
+					t.Fatal(err)
+				}
+				manager, err := New(root, pkg, nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer manager.Close()
+				installed := manager.Snapshot("owner").Installed
+				if installed == nil || installed.Digest != previous || installed.Ready {
+					t.Fatal("lost identity or trusted missing files", installed)
+				}
+				actual, err := os.ReadFile(path)
+				if err != nil || !bytes.Equal(original, actual) {
+					t.Fatal("rewrote old installation", err)
+				}
+			})
+		}
+	}
+}

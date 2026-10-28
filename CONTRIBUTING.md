@@ -6,7 +6,7 @@ Read [AGENTS.md](AGENTS.md) for the implementation and repository boundaries.
 
 ## Development
 
-Use Go **1.27.2**, Python 3, Node.js 20 or later, Git, and a POSIX shell. The Go version in `go.mod`
+Use Go **1.27.3**, Python 3, Node.js 20 or later, Git, and a POSIX shell. The Go version in `go.mod`
 is authoritative and must remain aligned with Redeven. CI reads that file;
 workflow YAML must not carry an independent Go version.
 
@@ -197,6 +197,13 @@ The TIFF refresh selects publisher-signed 4.7.2-r0 after mirrors retired
 closure receives a new digest. Both architectures retain every previous recipe
 identity and unchanged installed files. Qualification retains the old signed TIFF
 archives only as legacy-update fixtures; production always acquires new pins.
+
+The October 28 catalog refresh selects signed Brotli 1.2.1-r0, musl
+1.2.5-r24, c-ares 1.34.9-r0 and CA certificates 20261020-r0 after
+older publisher archives were retired. Xpra advances to r9 and private desktop
+to r10; physical media receives a new content digest. Published installation
+identities and files remain intact. Both architecture closures require signature,
+full acquisition and installed-stack qualification.
 
 The graphical check covers Unix sockets and three WebSocket attachments. Each
 attachment must paint, deliver fresh input, and preserve the fixture's process

@@ -2,8 +2,8 @@
   {
     "id": "alpine-3.23-host-desktop-1-amd64",
     "architecture": "amd64",
-    "size_bytes": 179136714,
-    "installed_bytes": 497460056,
+    "size_bytes": 179136028,
+    "installed_bytes": 497458181,
     "artifacts": [
       {
         "name": "a52dec-0.8.0-r11.apk",
@@ -118,17 +118,17 @@
         ]
       },
       {
-        "name": "brotli-libs-1.2.0-r0.apk",
-        "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/brotli-libs-1.2.0-r0.apk",
-        "sha256": "09fbf1ddf0c71c6c4ab7bc12aef3452d8ace5adeab10c4c30214fc70f5e0e087",
-        "size_bytes": 429601,
+        "name": "brotli-libs-1.2.1-r0.apk",
+        "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/brotli-libs-1.2.1-r0.apk",
+        "sha256": "cf3dc08928958bb42fe71c07a179ca33adb9e2c341daa29d88777061956d84f5",
+        "size_bytes": 429434,
         "format": "apk",
         "license": "MIT",
         "source": "https://gitlab.alpinelinux.org/alpine/aports/-/tree/3.23-stable/main/brotli",
         "mirrors": [
-          "https://mirrors.aliyun.com/alpine/v3.23/main/x86_64/brotli-libs-1.2.0-r0.apk",
-          "https://mirrors.tuna.tsinghua.edu.cn/alpine/v3.23/main/x86_64/brotli-libs-1.2.0-r0.apk",
-          "https://mirrors.ustc.edu.cn/alpine/v3.23/main/x86_64/brotli-libs-1.2.0-r0.apk"
+          "https://mirrors.aliyun.com/alpine/v3.23/main/x86_64/brotli-libs-1.2.1-r0.apk",
+          "https://mirrors.tuna.tsinghua.edu.cn/alpine/v3.23/main/x86_64/brotli-libs-1.2.1-r0.apk",
+          "https://mirrors.ustc.edu.cn/alpine/v3.23/main/x86_64/brotli-libs-1.2.1-r0.apk"
         ]
       },
       {
@@ -160,45 +160,45 @@
         ]
       },
       {
-        "name": "c-ares-1.34.8-r0.apk",
-        "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/c-ares-1.34.8-r0.apk",
-        "sha256": "7a570d080d05e60b1256ea73586924bf9a25f468c57aae10d1cdfe7fcc3f93a2",
-        "size_bytes": 110636,
+        "name": "c-ares-1.34.9-r0.apk",
+        "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/c-ares-1.34.9-r0.apk",
+        "sha256": "90a5da68630b32cddbd5e5fd68f0f244f065f812f97fded3252800dbe6c6c85c",
+        "size_bytes": 113079,
         "format": "apk",
         "license": "MIT",
         "source": "https://gitlab.alpinelinux.org/alpine/aports/-/tree/3.23-stable/main/c-ares",
         "mirrors": [
-          "https://mirrors.aliyun.com/alpine/v3.23/main/x86_64/c-ares-1.34.8-r0.apk",
-          "https://mirrors.tuna.tsinghua.edu.cn/alpine/v3.23/main/x86_64/c-ares-1.34.8-r0.apk",
-          "https://mirrors.ustc.edu.cn/alpine/v3.23/main/x86_64/c-ares-1.34.8-r0.apk"
+          "https://mirrors.aliyun.com/alpine/v3.23/main/x86_64/c-ares-1.34.9-r0.apk",
+          "https://mirrors.tuna.tsinghua.edu.cn/alpine/v3.23/main/x86_64/c-ares-1.34.9-r0.apk",
+          "https://mirrors.ustc.edu.cn/alpine/v3.23/main/x86_64/c-ares-1.34.9-r0.apk"
         ]
       },
       {
-        "name": "ca-certificates-20260909-r0.apk",
-        "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/ca-certificates-20260909-r0.apk",
-        "sha256": "68ee230255f291fcc7539bacd1cc38cb15debda9cff66e57e9ff022a2c38816c",
-        "size_bytes": 130924,
+        "name": "ca-certificates-20261020-r0.apk",
+        "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/ca-certificates-20261020-r0.apk",
+        "sha256": "0ff2550833ee3e5ace48fab67147b49f80b77dfe34ab85e5a3ba63b178710d53",
+        "size_bytes": 129340,
         "format": "apk",
         "license": "MPL-2.0 AND MIT",
         "source": "https://gitlab.alpinelinux.org/alpine/aports/-/tree/3.23-stable/main/ca-certificates",
         "mirrors": [
-          "https://mirrors.aliyun.com/alpine/v3.23/main/x86_64/ca-certificates-20260909-r0.apk",
-          "https://mirrors.tuna.tsinghua.edu.cn/alpine/v3.23/main/x86_64/ca-certificates-20260909-r0.apk",
-          "https://mirrors.ustc.edu.cn/alpine/v3.23/main/x86_64/ca-certificates-20260909-r0.apk"
+          "https://mirrors.aliyun.com/alpine/v3.23/main/x86_64/ca-certificates-20261020-r0.apk",
+          "https://mirrors.tuna.tsinghua.edu.cn/alpine/v3.23/main/x86_64/ca-certificates-20261020-r0.apk",
+          "https://mirrors.ustc.edu.cn/alpine/v3.23/main/x86_64/ca-certificates-20261020-r0.apk"
         ]
       },
       {
-        "name": "ca-certificates-bundle-20260909-r0.apk",
-        "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/ca-certificates-bundle-20260909-r0.apk",
-        "sha256": "31cad7c94ffa88b271c95c91c49af158bd7f31ac85508508ce8b742250e0363c",
-        "size_bytes": 108530,
+        "name": "ca-certificates-bundle-20261020-r0.apk",
+        "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/ca-certificates-bundle-20261020-r0.apk",
+        "sha256": "a4c5de1bf37652cd98cbe71aec209512ae0508a964961957a6c9650f795e46c4",
+        "size_bytes": 107116,
         "format": "apk",
         "license": "MPL-2.0 AND MIT",
         "source": "https://gitlab.alpinelinux.org/alpine/aports/-/tree/3.23-stable/main/ca-certificates",
         "mirrors": [
-          "https://mirrors.aliyun.com/alpine/v3.23/main/x86_64/ca-certificates-bundle-20260909-r0.apk",
-          "https://mirrors.tuna.tsinghua.edu.cn/alpine/v3.23/main/x86_64/ca-certificates-bundle-20260909-r0.apk",
-          "https://mirrors.ustc.edu.cn/alpine/v3.23/main/x86_64/ca-certificates-bundle-20260909-r0.apk"
+          "https://mirrors.aliyun.com/alpine/v3.23/main/x86_64/ca-certificates-bundle-20261020-r0.apk",
+          "https://mirrors.tuna.tsinghua.edu.cn/alpine/v3.23/main/x86_64/ca-certificates-bundle-20261020-r0.apk",
+          "https://mirrors.ustc.edu.cn/alpine/v3.23/main/x86_64/ca-certificates-bundle-20261020-r0.apk"
         ]
       },
       {
@@ -2210,17 +2210,17 @@
         ]
       },
       {
-        "name": "musl-1.2.5-r23.apk",
-        "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/musl-1.2.5-r23.apk",
-        "sha256": "4f3c4a7bf9f51d2c91007e333b17459362ffd881b4a343e8da07b6c50c4f4a0d",
-        "size_bytes": 414071,
+        "name": "musl-1.2.5-r24.apk",
+        "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/musl-1.2.5-r24.apk",
+        "sha256": "d49d703392f1a6d2fe822db1b57e61735063077e1ad846d5f40d79fe507ec727",
+        "size_bytes": 414107,
         "format": "apk",
         "license": "MIT",
         "source": "https://gitlab.alpinelinux.org/alpine/aports/-/tree/3.23-stable/main/musl",
         "mirrors": [
-          "https://mirrors.aliyun.com/alpine/v3.23/main/x86_64/musl-1.2.5-r23.apk",
-          "https://mirrors.tuna.tsinghua.edu.cn/alpine/v3.23/main/x86_64/musl-1.2.5-r23.apk",
-          "https://mirrors.ustc.edu.cn/alpine/v3.23/main/x86_64/musl-1.2.5-r23.apk"
+          "https://mirrors.aliyun.com/alpine/v3.23/main/x86_64/musl-1.2.5-r24.apk",
+          "https://mirrors.tuna.tsinghua.edu.cn/alpine/v3.23/main/x86_64/musl-1.2.5-r24.apk",
+          "https://mirrors.ustc.edu.cn/alpine/v3.23/main/x86_64/musl-1.2.5-r24.apk"
         ]
       },
       {
@@ -3053,8 +3053,8 @@
   {
     "id": "alpine-3.23-host-desktop-1-arm64",
     "architecture": "arm64",
-    "size_bytes": 160840149,
-    "installed_bytes": 455780302,
+    "size_bytes": 160839365,
+    "installed_bytes": 455774331,
     "artifacts": [
       {
         "name": "a52dec-0.8.0-r11.apk",
@@ -3169,17 +3169,17 @@
         ]
       },
       {
-        "name": "brotli-libs-1.2.0-r0.apk",
-        "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/aarch64/brotli-libs-1.2.0-r0.apk",
-        "sha256": "c8a9113b0007d40291e55cfc196744b64004253707e37b3c07e188166fb2d0a0",
-        "size_bytes": 424926,
+        "name": "brotli-libs-1.2.1-r0.apk",
+        "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/aarch64/brotli-libs-1.2.1-r0.apk",
+        "sha256": "bec9ee522095e9fd01113d8732119847944e3152f228034246a33e2ab82e4195",
+        "size_bytes": 424994,
         "format": "apk",
         "license": "MIT",
         "source": "https://gitlab.alpinelinux.org/alpine/aports/-/tree/3.23-stable/main/brotli",
         "mirrors": [
-          "https://mirrors.aliyun.com/alpine/v3.23/main/aarch64/brotli-libs-1.2.0-r0.apk",
-          "https://mirrors.tuna.tsinghua.edu.cn/alpine/v3.23/main/aarch64/brotli-libs-1.2.0-r0.apk",
-          "https://mirrors.ustc.edu.cn/alpine/v3.23/main/aarch64/brotli-libs-1.2.0-r0.apk"
+          "https://mirrors.aliyun.com/alpine/v3.23/main/aarch64/brotli-libs-1.2.1-r0.apk",
+          "https://mirrors.tuna.tsinghua.edu.cn/alpine/v3.23/main/aarch64/brotli-libs-1.2.1-r0.apk",
+          "https://mirrors.ustc.edu.cn/alpine/v3.23/main/aarch64/brotli-libs-1.2.1-r0.apk"
         ]
       },
       {
@@ -3211,45 +3211,45 @@
         ]
       },
       {
-        "name": "c-ares-1.34.8-r0.apk",
-        "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/aarch64/c-ares-1.34.8-r0.apk",
-        "sha256": "7468b8355eb7a54c2829ed3e72b61f49b2968c1dd0281e16ddf939fcf1c9e91b",
-        "size_bytes": 108739,
+        "name": "c-ares-1.34.9-r0.apk",
+        "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/aarch64/c-ares-1.34.9-r0.apk",
+        "sha256": "2af302c4a232fff2abeb56ec9f16edabdb06f0e5f8d040d6e466e91f1c473d00",
+        "size_bytes": 110972,
         "format": "apk",
         "license": "MIT",
         "source": "https://gitlab.alpinelinux.org/alpine/aports/-/tree/3.23-stable/main/c-ares",
         "mirrors": [
-          "https://mirrors.aliyun.com/alpine/v3.23/main/aarch64/c-ares-1.34.8-r0.apk",
-          "https://mirrors.tuna.tsinghua.edu.cn/alpine/v3.23/main/aarch64/c-ares-1.34.8-r0.apk",
-          "https://mirrors.ustc.edu.cn/alpine/v3.23/main/aarch64/c-ares-1.34.8-r0.apk"
+          "https://mirrors.aliyun.com/alpine/v3.23/main/aarch64/c-ares-1.34.9-r0.apk",
+          "https://mirrors.tuna.tsinghua.edu.cn/alpine/v3.23/main/aarch64/c-ares-1.34.9-r0.apk",
+          "https://mirrors.ustc.edu.cn/alpine/v3.23/main/aarch64/c-ares-1.34.9-r0.apk"
         ]
       },
       {
-        "name": "ca-certificates-20260909-r0.apk",
-        "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/aarch64/ca-certificates-20260909-r0.apk",
-        "sha256": "66ed7ee7ef784bc5bd1052d673e6b569496cb5ca42d72f2f0c984b3762e5dfdd",
-        "size_bytes": 132568,
+        "name": "ca-certificates-20261020-r0.apk",
+        "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/aarch64/ca-certificates-20261020-r0.apk",
+        "sha256": "dff46a0de98dff0f3c865752da06ab4524ce40b67c260b4807dc7ed1b1611374",
+        "size_bytes": 130920,
         "format": "apk",
         "license": "MPL-2.0 AND MIT",
         "source": "https://gitlab.alpinelinux.org/alpine/aports/-/tree/3.23-stable/main/ca-certificates",
         "mirrors": [
-          "https://mirrors.aliyun.com/alpine/v3.23/main/aarch64/ca-certificates-20260909-r0.apk",
-          "https://mirrors.tuna.tsinghua.edu.cn/alpine/v3.23/main/aarch64/ca-certificates-20260909-r0.apk",
-          "https://mirrors.ustc.edu.cn/alpine/v3.23/main/aarch64/ca-certificates-20260909-r0.apk"
+          "https://mirrors.aliyun.com/alpine/v3.23/main/aarch64/ca-certificates-20261020-r0.apk",
+          "https://mirrors.tuna.tsinghua.edu.cn/alpine/v3.23/main/aarch64/ca-certificates-20261020-r0.apk",
+          "https://mirrors.ustc.edu.cn/alpine/v3.23/main/aarch64/ca-certificates-20261020-r0.apk"
         ]
       },
       {
-        "name": "ca-certificates-bundle-20260909-r0.apk",
-        "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/aarch64/ca-certificates-bundle-20260909-r0.apk",
-        "sha256": "ad418de0031d2de47650002084ab494e0c8f28c386e8744173311b410e56fcf5",
-        "size_bytes": 108513,
+        "name": "ca-certificates-bundle-20261020-r0.apk",
+        "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/aarch64/ca-certificates-bundle-20261020-r0.apk",
+        "sha256": "bdf6033710a251d8239f63236eacf40c84afdf8f7b25bb58d69a2c75202350e7",
+        "size_bytes": 107097,
         "format": "apk",
         "license": "MPL-2.0 AND MIT",
         "source": "https://gitlab.alpinelinux.org/alpine/aports/-/tree/3.23-stable/main/ca-certificates",
         "mirrors": [
-          "https://mirrors.aliyun.com/alpine/v3.23/main/aarch64/ca-certificates-bundle-20260909-r0.apk",
-          "https://mirrors.tuna.tsinghua.edu.cn/alpine/v3.23/main/aarch64/ca-certificates-bundle-20260909-r0.apk",
-          "https://mirrors.ustc.edu.cn/alpine/v3.23/main/aarch64/ca-certificates-bundle-20260909-r0.apk"
+          "https://mirrors.aliyun.com/alpine/v3.23/main/aarch64/ca-certificates-bundle-20261020-r0.apk",
+          "https://mirrors.tuna.tsinghua.edu.cn/alpine/v3.23/main/aarch64/ca-certificates-bundle-20261020-r0.apk",
+          "https://mirrors.ustc.edu.cn/alpine/v3.23/main/aarch64/ca-certificates-bundle-20261020-r0.apk"
         ]
       },
       {
@@ -5255,17 +5255,17 @@
         ]
       },
       {
-        "name": "musl-1.2.5-r23.apk",
-        "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/aarch64/musl-1.2.5-r23.apk",
-        "sha256": "6a3edd924ead1fad88a69e28c5775809af3026b322f58428001cd02fedc5299e",
-        "size_bytes": 416104,
+        "name": "musl-1.2.5-r24.apk",
+        "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/aarch64/musl-1.2.5-r24.apk",
+        "sha256": "d7043c549029c98d438e9bc94213b006e5c88540eb58d1f5b0f0d1d56dbf9c98",
+        "size_bytes": 416083,
         "format": "apk",
         "license": "MIT",
         "source": "https://gitlab.alpinelinux.org/alpine/aports/-/tree/3.23-stable/main/musl",
         "mirrors": [
-          "https://mirrors.aliyun.com/alpine/v3.23/main/aarch64/musl-1.2.5-r23.apk",
-          "https://mirrors.tuna.tsinghua.edu.cn/alpine/v3.23/main/aarch64/musl-1.2.5-r23.apk",
-          "https://mirrors.ustc.edu.cn/alpine/v3.23/main/aarch64/musl-1.2.5-r23.apk"
+          "https://mirrors.aliyun.com/alpine/v3.23/main/aarch64/musl-1.2.5-r24.apk",
+          "https://mirrors.tuna.tsinghua.edu.cn/alpine/v3.23/main/aarch64/musl-1.2.5-r24.apk",
+          "https://mirrors.ustc.edu.cn/alpine/v3.23/main/aarch64/musl-1.2.5-r24.apk"
         ]
       },
       {
