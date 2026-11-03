@@ -1704,3 +1704,15 @@ operation ID, challenge ID and complete target policy digest in the authenticate
 service reply. Both management transports exchange five-second liveness messages.
 Publication, replacement and rollback synchronize the affected directory entries;
 an uncommitted journal remains the recovery authority after a process exit.
+
+### Window-directed input qualification
+
+Run swift run NativeDragQualification --directed on an authorized macOS desktop.
+The disposable AppKit receiver checks actual down/drag/up events, duration,
+endpoint and cancellation release. A session tap distinguishes concurrent human
+pointer movement from tool-originated global input; focus must remain with the
+original application. Ordinary swift run NativeDragQualification retains the
+foreground regression. This qualifies the fixture, not every application.
+The window-local SPI field protocol is cross-referenced in DeepSeek Harness's
+PIDEventPoster.swift and WindowPointerInput.swift; unavailable symbols or a
+mismatched live window fail without a second dispatch path.

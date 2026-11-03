@@ -544,3 +544,20 @@ and no-replay coverage. With explicit foreground authorization, run
 swift run NativeDragQualification to record actual AppKit pointer events at
 0/1/500/5000 ms and interrupted 5000 ms; the fixture owns its window and releases
 held input. The --legacy option reproduces immediate dispatch for comparison.
+
+### Explicit macOS computer input
+
+NativeDesktopInput constructs left/right/middle clicks with modifiers and hold
+intervals, drags and keyboard transitions. NativeInputSequence also accepts a
+bounded explicit transition schedule. NativeInputDelivery(pid:window:directed:)
+opts into window-directed posting; the default retains foreground delivery.
+Directed delivery verifies the live window owner and requires optional
+WindowServer entry points. Missing support fails before posting, without retry
+or foreground substitution. postAuxiliary releases host-owned held input on the
+same route. Tap receipts are delivery evidence, never application success.
+
+NativeClipboard reads/writes explicit typed pasteboard data within byte limits.
+Its conditional restore checks the pasteboard change counter; hosts decide when
+consumption is verified and whether restoration is appropriate. Authorization,
+target process identity, cancellation and sensitive-data handling remain host
+responsibilities. Background behavior depends on the receiving application.

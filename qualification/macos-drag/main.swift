@@ -3,6 +3,21 @@ import FloeNativeDesktop
 
 // Separate receiver process: a synchronous sender must not delay the AppKit
 // callbacks used to measure delivery. Only this disposable window receives input.
+final class GlobalInputProbe {
+    var ownEvents = 0, userEvents = 0
+    var tap: CFMachPort?
+    var source: CFRunLoopSource?
+    init() {
+        let mask = [CGEventType.mouseMoved, .leftMouseDown, .leftMouseDragged, .leftMouseUp].reduce(CGEventMask(0)) { $0 | (1 << $1.rawValue) }
+        tap = CGEvent.tapCreate(tap: .cgSessionEventTap, place: .headInsertEventTap, options: .listenOnly, eventsOfInterest: mask, callback: { _, _, event, pointer in
+            let owner = Unmanaged<GlobalInputProbe>.fromOpaque(pointer!).takeUnretainedValue()
+            if event.getIntegerValueField(.eventSourceUnixProcessID) == Int64(getpid()) { owner.ownEvents += 1 } else { owner.userEvents += 1 }
+            return Unmanaged.passUnretained(event)
+        }, userInfo: Unmanaged.passUnretained(self).toOpaque())
+        if let tap { source = CFMachPortCreateRunLoopSource(nil,tap,0); CFRunLoopAddSource(CFRunLoopGetMain(),source,.commonModes); CGEvent.tapEnable(tap:tap,enable:true) }
+    }
+    deinit { if let tap { CFMachPortInvalidate(tap) }; if let source { CFRunLoopRemoveSource(CFRunLoopGetMain(),source,.commonModes) } }
+}
 let app = NSApplication.shared
 func output(_ value: [String: Any]) {
     let body = try! JSONSerialization.data(withJSONObject: value, options: [.sortedKeys])
@@ -40,7 +55,7 @@ if CommandLine.arguments.contains("--fixture") {
         let start = window.convertPoint(toScreen: NSPoint(x: 50, y: 100))
         let end = window.convertPoint(toScreen: NSPoint(x: 300, y: 150))
         let height = NSScreen.screens[0].frame.maxY
-        let value: [String: Any] = ["events": pad.received, "ready": window.isKeyWindow,
+        let value: [String: Any] = ["events": pad.received, "window_id":window.windowNumber, "ready": window.isKeyWindow,
             "start_x": start.x, "start_y": height - start.y, "end_x": end.x, "end_y": height - end.y]
         try! JSONSerialization.data(withJSONObject: value).write(to: URL(fileURLWithPath: path), options: .atomic)
     }
@@ -57,6 +72,7 @@ if CommandLine.arguments.contains("--fixture") {
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     var failures = 0
     let legacy = CommandLine.arguments.contains("--legacy")
+    let directed = CommandLine.arguments.contains("--directed")
     let cases = legacy ? [(500, false)] : [(0, false), (1, false), (500, false), (5000, false), (5000, true)]
     enum Stopped: Error { case cancelled, targetChanged, fixtureUnavailable }
     for (index, item) in cases.enumerated() {
@@ -71,6 +87,11 @@ if CommandLine.arguments.contains("--fixture") {
             return (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
         }
         var pressed = false, cancelled = false
+        var delivery: NativeInputDelivery?
+        var lastPoint = CGPoint.zero
+        var backgroundFocus: pid_t?
+        var backgroundPointer: CGPoint?
+        var probe: GlobalInputProbe?
         var downTime: Double?
         var failure: String?
         do {
@@ -86,14 +107,19 @@ if CommandLine.arguments.contains("--fixture") {
             guard state["ready"] as? Bool == true else { throw Stopped.fixtureUnavailable }
             let start = CGPoint(x: state["start_x"] as! Double, y: state["start_y"] as! Double)
             let end = CGPoint(x: state["end_x"] as! Double, y: state["end_y"] as! Double)
-            let delivery = NativeInputDelivery(pid: child.processIdentifier)
+            delivery = NativeInputDelivery(pid: child.processIdentifier, window: CGWindowID(state["window_id"] as! Int), directed: directed)
+            if directed, let original { original.activate(options: []) ; CFRunLoopRunInMode(.defaultMode,0.2,false) }
+            probe = GlobalInputProbe()
+            backgroundFocus = NSWorkspace.shared.frontmostApplication?.processIdentifier
+            backgroundPointer = CGEvent(source:nil)?.location
             func check() throws {
-                guard NSWorkspace.shared.frontmostApplication?.processIdentifier == child.processIdentifier else { throw Stopped.targetChanged }
+                guard directed || NSWorkspace.shared.frontmostApplication?.processIdentifier == child.processIdentifier else { throw Stopped.targetChanged }
                 if cancel, let downTime, ProcessInfo.processInfo.systemUptime - downTime >= 0.1 { throw Stopped.cancelled }
             }
             let sequence = try NativeDesktopInput.dragSequence(from: start, to: end, durationMilliseconds: milliseconds)
             func post(_ event: CGEvent) throws {
-                try delivery.post(event, check: check, didPost: {
+                try delivery!.post(event, check: check, didPost: {
+                    lastPoint = event.location
                     if event.type == .leftMouseDown { pressed = true; downTime = ProcessInfo.processInfo.systemUptime }
                     if event.type == .leftMouseUp { pressed = false }
                 })
@@ -102,8 +128,8 @@ if CommandLine.arguments.contains("--fixture") {
             else { try sequence.deliver(check: check, post: post) }
         } catch Stopped.cancelled { cancelled = true }
         catch { failure = String(describing: error) }
-        if pressed, let up = CGEvent(mouseEventSource: nil, mouseType: .leftMouseUp, mouseCursorPosition: CGEvent(source: nil)?.location ?? .zero, mouseButton: .left) {
-            try? NativeInputDelivery.markAuxiliary(up); up.post(tap: .cghidEventTap)
+        if pressed, let up = CGEvent(mouseEventSource: nil, mouseType: .leftMouseUp, mouseCursorPosition: lastPoint, mouseButton: .left) {
+            try? delivery?.postAuxiliary(up)
         }
         let settle = ProcessInfo.processInfo.systemUptime + 0.2
         while ProcessInfo.processInfo.systemUptime < settle { CFRunLoopRunInMode(.defaultMode, 0.01, false) }
@@ -114,8 +140,9 @@ if CommandLine.arguments.contains("--fixture") {
         let eventHeld = down.count == 1 && up.count == 1 ? (up[0]["event_time_ms"] as! Double) - (down[0]["event_time_ms"] as! Double) : -1
         let timing = cancel ? held >= 75 && held < 1000 && cancelled : held >= Double(milliseconds) - 20 && held < Double(milliseconds) + 1500
         let endpoint = up.count == 1 && (cancel ? (up[0]["x"] as! Double) < 300 : abs((up[0]["x"] as! Double) - 300) < 1)
-        let passed = failure == nil && timing && (cancel || eventHeld >= Double(milliseconds)) && endpoint && !CGEventSource.buttonState(.hidSystemState, button: .left)
-        output(["duration_ms": milliseconds, "cancel": cancel, "legacy": legacy, "passed": passed, "held_ms": held, "event_held_ms": eventHeld, "error": failure ?? "", "events": events])
+        let backgroundStable = !directed || ((backgroundFocus == NSWorkspace.shared.frontmostApplication?.processIdentifier || ((probe?.userEvents ?? 0) > 0 && NSWorkspace.shared.frontmostApplication?.processIdentifier != child.processIdentifier)) && (backgroundPointer == CGEvent(source:nil)?.location || (probe?.userEvents ?? 0) > 0) && probe?.tap != nil && probe?.ownEvents == 0)
+        let passed = backgroundStable && failure == nil && timing && (cancel || eventHeld >= Double(milliseconds)) && endpoint && !CGEventSource.buttonState(.hidSystemState, button: .left)
+        output(["duration_ms": milliseconds, "cancel": cancel, "legacy": legacy, "directed":directed, "background_stable":backgroundStable,"global_own_events":probe?.ownEvents ?? -1,"concurrent_user_events":probe?.userEvents ?? -1,"focus_before":backgroundFocus ?? -1,"focus_after":NSWorkspace.shared.frontmostApplication?.processIdentifier ?? -1,"pointer_before":String(describing:backgroundPointer),"pointer_after":String(describing:CGEvent(source:nil)?.location), "passed": passed, "held_ms": held, "event_held_ms": eventHeld, "error": failure ?? "", "events": events])
         if !passed { failures += 1 }
         let ownsFocus = NSWorkspace.shared.frontmostApplication?.processIdentifier == child.processIdentifier
         child.terminate(); child.waitUntilExit()

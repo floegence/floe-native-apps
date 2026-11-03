@@ -10,25 +10,34 @@ public struct NativeDesktopError: Error {
 // Event construction is separate from posting so tests can inspect the actual
 // CGEvent sequence without sending input to the user's focused application.
 public enum NativeDesktopInput {
+    public static func pointer(at point: CGPoint, button: CGMouseButton = .left, pressed: Bool? = nil, dragging: Bool = false, modifiers: CGEventFlags = []) throws -> CGEvent {
+        guard point.x.isFinite, point.y.isFinite, [.left, .right, .center].contains(button) else { throw invalid("Invalid pointer parameters.") }
+        let type: CGEventType
+        if let pressed { type = button == .right ? (pressed ? .rightMouseDown : .rightMouseUp) : button == .center ? (pressed ? .otherMouseDown : .otherMouseUp) : (pressed ? .leftMouseDown : .leftMouseUp) }
+        else if dragging { type = button == .right ? .rightMouseDragged : button == .center ? .otherMouseDragged : .leftMouseDragged }
+        else { type = .mouseMoved }
+        guard let event = CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: point, mouseButton: button) else { throw unavailable() }
+        event.flags = modifiers
+        return event
+    }
+
     public static func click(at point: CGPoint, count: Int) throws -> [CGEvent] {
-        // Mouse button event coordinates do not move the system pointer.
-        // Move first so native hit testing sees the same pointer position.
-        guard let move = CGEvent(mouseEventSource: nil, mouseType: .mouseMoved,
-                                 mouseCursorPosition: point, mouseButton: .left) else {
-            throw unavailable()
-        }
-        var events: [CGEvent] = [move]
+        try clickSequence(at: point, count: count).events
+    }
+
+    public static func clickSequence(at point: CGPoint, button: CGMouseButton = .left, count: Int = 1, modifiers: CGEventFlags = [], holdMilliseconds: Int = 0) throws -> NativeInputSequence {
+        guard (1...3).contains(count), (0...5000).contains(holdMilliseconds) else { throw invalid("Invalid click count or duration.") }
+        var events = [try pointer(at: point, button: button, modifiers: modifiers)]
+        var offsets: [TimeInterval] = [0]
+        let hold = Double(holdMilliseconds) / 1000
         for index in 1...count {
-            for type: CGEventType in [.leftMouseDown, .leftMouseUp] {
-                guard let event = CGEvent(mouseEventSource: nil, mouseType: type,
-                                          mouseCursorPosition: point, mouseButton: .left) else {
-                    throw unavailable()
-                }
+            for pressed in [true, false] {
+                let event = try pointer(at: point, button: button, pressed: pressed, modifiers: modifiers)
                 event.setIntegerValueField(.mouseEventClickState, value: Int64(index))
-                events.append(event)
+                events.append(event); offsets.append(Double(index - 1) * hold + (pressed ? 0 : hold))
             }
         }
-        return events
+        return NativeInputSequence(events: events, offsets: offsets, anchorIndex: 1)
     }
 
 
@@ -40,10 +49,10 @@ public enum NativeDesktopInput {
 
     /// A bounded linear path held for at least durationMilliseconds after
     /// acknowledged mouse-down. OS delivery may extend the requested duration.
-    public static func dragSequence(from: CGPoint, to: CGPoint, durationMilliseconds: Int) throws -> NativeInputSequence {
+    public static func dragSequence(from: CGPoint, to: CGPoint, durationMilliseconds: Int, button: CGMouseButton = .left, modifiers: CGEventFlags = []) throws -> NativeInputSequence {
         guard durationMilliseconds >= 0 && durationMilliseconds <= 5_000 else { throw invalid("Drag duration is out of range.") }
-        guard let move = CGEvent(mouseEventSource:nil, mouseType:.mouseMoved, mouseCursorPosition:from, mouseButton:.left),
-              let down = CGEvent(mouseEventSource:nil, mouseType:.leftMouseDown, mouseCursorPosition:from, mouseButton:.left) else { throw unavailable() }
+        let move = try pointer(at: from, button: button, modifiers: modifiers)
+        let down = try pointer(at: from, button: button, pressed: true, modifiers: modifiers)
         var events:[CGEvent] = [move,down]
         var offsets: [TimeInterval] = [0, 0]
         let duration = Double(durationMilliseconds) / 1000
@@ -51,11 +60,11 @@ public enum NativeDesktopInput {
         for index in 1...steps {
             let t = CGFloat(index) / CGFloat(steps)
             let point = CGPoint(x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t)
-            guard let event = CGEvent(mouseEventSource: nil, mouseType: .leftMouseDragged, mouseCursorPosition: point, mouseButton: .left) else { throw unavailable() }
+            let event = try pointer(at: point, button: button, dragging: true, modifiers: modifiers)
             events.append(event)
             offsets.append(duration * Double(index) / Double(steps))
         }
-        guard let up = CGEvent(mouseEventSource: nil, mouseType: .leftMouseUp, mouseCursorPosition: to, mouseButton: .left) else { throw unavailable() }
+        let up = try pointer(at: to, button: button, pressed: false, modifiers: modifiers)
         events.append(up); offsets.append(duration)
         return NativeInputSequence(events: events, offsets: offsets, anchorIndex: 1)
     }

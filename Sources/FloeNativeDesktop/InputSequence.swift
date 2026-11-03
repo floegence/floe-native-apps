@@ -15,6 +15,18 @@ public struct NativeInputSequence {
         anchorIndex = nil
     }
 
+    /// Explicit transition timings, measured from sequence admission. The caller
+    /// owns held-input cleanup. Bounded to 100 events and 30 seconds total.
+    public init(events: [CGEvent], delaysMilliseconds: [Int]) throws {
+        guard !events.isEmpty, events.count <= 100, events.count == delaysMilliseconds.count,
+              delaysMilliseconds.allSatisfy({ (0...5000).contains($0) }),
+              delaysMilliseconds.reduce(0, +) <= 30000 else { throw NativeDesktopInput.invalid("Invalid input schedule.") }
+        self.events = events
+        var elapsed = 0
+        offsets = delaysMilliseconds.map { elapsed += $0; return Double(elapsed) / 1000 }
+        anchorIndex = nil
+    }
+
     init(events: [CGEvent], offsets: [TimeInterval], anchorIndex: Int) {
         precondition(events.count == offsets.count && events.indices.contains(anchorIndex))
         self.events = events
@@ -34,7 +46,7 @@ public struct NativeInputSequence {
 
     func deliver(now: () -> TimeInterval, wait: (TimeInterval) -> Void,
                  check: () throws -> Void, post: (CGEvent) throws -> Void) throws {
-        var origin: TimeInterval?
+        var origin: TimeInterval? = anchorIndex == nil ? now() : nil
         for (index, event) in events.enumerated() {
             if let origin {
                 let deadline = origin + offsets[index]

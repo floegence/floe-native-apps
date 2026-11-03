@@ -31,6 +31,8 @@ struct NativeInputReceipt {
 public final class NativeInputDelivery {
     private static let markerLock = NSLock()
     private static var nextMarker = Int64.random(in: 1...(1 << 40))
+    private let directed: Bool
+    private let route: NativeWindowInputRoute?
     private var tap: CFMachPort?
     private var source: CFRunLoopSource?
     private var receipt = NativeInputReceipt()
@@ -38,10 +40,13 @@ public final class NativeInputDelivery {
     private var observed = 0
 
     public var progress: NativeInputDeliveryProgress { .init(posted: posted, observed: observed) }
-    public var available: Bool { tap.map { CGEvent.tapIsEnabled(tap: $0) } ?? false }
+    public var available: Bool { (tap.map { CGEvent.tapIsEnabled(tap: $0) } ?? false) && (!directed || route?.available == true) }
 
-    /// Nil observes session delivery; a PID observes that process's tail tap.
-    public init(pid: pid_t? = nil) {
+    /// PID selects the receipt tap. Explicit directed delivery additionally
+    /// requires a live PID/window; it never activates or reroutes the target.
+    public init(pid: pid_t? = nil, window: CGWindowID? = nil, directed: Bool = false) {
+        self.directed = directed
+        route = pid.flatMap { pid in window.map { NativeWindowInputRoute(pid: pid, window: $0) } }
         let types: [CGEventType] = [.keyDown, .keyUp, .flagsChanged, .leftMouseDown, .leftMouseUp,
             .rightMouseDown, .rightMouseUp, .otherMouseDown, .otherMouseUp, .mouseMoved,
             .leftMouseDragged, .rightMouseDragged, .otherMouseDragged, .scrollWheel]
@@ -84,7 +89,10 @@ public final class NativeInputDelivery {
         defer { receipt.finish() }
         try Self.mark(event, marker: marker)
         let deadline = ProcessInfo.processInfo.systemUptime + max(0, timeout)
-        event.post(tap: .cghidEventTap)
+        if directed {
+            guard let route else { throw NativeInputDeliveryFailure(reason: .unavailable, progress: progress) }
+            try route.post(event)
+        } else { event.post(tap: .cghidEventTap) }
         posted += 1
         didPost()
         while !receipt.observed {
@@ -97,6 +105,15 @@ public final class NativeInputDelivery {
         }
         observed += 1
         try check()
+    }
+
+    /// Posts a host-owned release once on the original route, without retry.
+    public func postAuxiliary(_ event: CGEvent) throws {
+        try Self.markAuxiliary(event)
+        if directed {
+            guard let route else { throw NativeInputDeliveryFailure(reason: .unavailable, progress: progress) }
+            try route.post(event)
+        } else { event.post(tap: .cghidEventTap) }
     }
 
     /// A unique marker for host-owned cleanup; it can never confirm an input.
