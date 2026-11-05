@@ -255,7 +255,7 @@ func (s *loginServer) attachment(ctx context.Context, conn, media *net.UnixConn,
 	}
 	seatReader, err := openLoginSeatReader()
 	if err != nil {
-		replyError(0, "LOGIN_SESSION_UNSUPPORTED")
+		replyError(0, loginSessionCode(err))
 		return
 	}
 	defer seatReader.close()
@@ -448,7 +448,7 @@ func (s *loginServer) attachment(ctx context.Context, conn, media *net.UnixConn,
 			case "probe":
 				seat, err := readSeat()
 				if err != nil {
-					if !write(HostDesktopMessage{Version: 1, Type: "capabilities", ID: command.ID, Capabilities: &HostDesktopCapabilities{Backend: "linux-drm-kms", State: "unsupported", Reason: "LOGIN_SESSION_UNSUPPORTED", Displays: []HostDesktopDisplay{}}}) {
+					if !write(HostDesktopMessage{Version: 1, Type: "capabilities", ID: command.ID, Capabilities: &HostDesktopCapabilities{Backend: "linux-drm-kms", State: "unsupported", Reason: loginSessionCode(err), Displays: []HostDesktopDisplay{}}}) {
 						return
 					}
 					continue
@@ -483,7 +483,7 @@ func (s *loginServer) attachment(ctx context.Context, conn, media *net.UnixConn,
 				}
 				seat, err := readSeat()
 				if err != nil {
-					if !replyError(command.ID, "LOGIN_SESSION_UNSUPPORTED") {
+					if !replyError(command.ID, loginSessionCode(err)) {
 						return
 					}
 					continue
@@ -525,7 +525,7 @@ func (s *loginServer) attachment(ctx context.Context, conn, media *net.UnixConn,
 				seat, err := readSeat()
 				if err != nil {
 					_ = input.release()
-					replyError(command.ID, "LOGIN_SESSION_UNSUPPORTED")
+					replyError(command.ID, loginSessionCode(err))
 					return
 				}
 				if seat != authority.seat {
@@ -655,7 +655,7 @@ func (s *loginServer) attachment(ctx context.Context, conn, media *net.UnixConn,
 				probing = false
 				seat, err := readSeat()
 				if err != nil {
-					replyError(message.ID, "LOGIN_SESSION_UNSUPPORTED")
+					replyError(message.ID, loginSessionCode(err))
 					return
 				}
 				cap := message.Capabilities
@@ -746,7 +746,7 @@ func (s *loginServer) attachment(ctx context.Context, conn, media *net.UnixConn,
 	}
 }
 
-func loginCaptureOpenCode(err error) string {
+func loginSessionCode(err error) string {
 	for _, item := range []struct {
 		err  error
 		code string
@@ -762,6 +762,13 @@ func loginCaptureOpenCode(err error) string {
 			return item.code
 		}
 	}
+	if errors.Is(err, errLoginCaptureUnavailable) {
+		return "LOGIN_SESSION_UNSUPPORTED"
+	}
+	return "LOGIN_SESSION_UNSUPPORTED"
+}
+
+func loginCaptureOpenCode(err error) string {
 	if errors.Is(err, errLoginConverterStart) {
 		return "DRM_CONVERTER_START_UNAVAILABLE"
 	}
