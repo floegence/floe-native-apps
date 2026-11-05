@@ -769,6 +769,9 @@ func loginSessionCode(err error) string {
 }
 
 func loginCaptureOpenCode(err error) string {
+	if code := loginSessionCode(err); code != "LOGIN_SESSION_UNSUPPORTED" {
+		return code
+	}
 	if errors.Is(err, errLoginConverterStart) {
 		return "DRM_CONVERTER_START_UNAVAILABLE"
 	}
