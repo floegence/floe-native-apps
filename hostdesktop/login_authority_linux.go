@@ -4,11 +4,7 @@ package hostdesktop
 
 import (
 	"errors"
-	"sync"
-	"time"
 )
-
-var errLoginUnlockLimited = errors.New("unlock interaction rate limited")
 
 var errLoginAuthority = errors.New("desktop input authority rejected")
 
@@ -39,7 +35,6 @@ type loginAuthority struct {
 	offered                    map[uint64]bool
 	frameWindow                int
 	release                    func() error
-	attempts                   *loginUnlockLimiter
 }
 
 func (a *loginAuthority) transition(seat loginSeatState, mode string) error {
@@ -97,16 +92,6 @@ func (a *loginAuthority) input(command HostDesktopCommand) error {
 		if command.Method != "unlock_input" || command.FrameID != a.painted {
 			return errLoginAuthority
 		}
-		keyboardSubmit := command.Input.Kind == "key" && (command.Input.Code == "Enter" || command.Input.Code == "NumpadEnter") && command.Input.Pressed
-		pointerClick := command.Input.Kind == "down" && command.Input.Button == 0
-		if keyboardSubmit || pointerClick {
-			if a.attempts == nil {
-				a.attempts = &loginUnlockLimiter{}
-			}
-			if !a.attempts.admit(pointerClick) {
-				return errLoginUnlockLimited
-			}
-		}
 	} else if a.state != "active" || command.Method != "input" {
 		return errLoginAuthority
 	}
@@ -120,38 +105,4 @@ func (a *loginAuthority) cancel(generation uint64) error {
 		return errLoginAuthority
 	}
 	return a.transition(a.seat, a.mode)
-}
-
-// The service shares this limiter across attachments, so reconnecting, canceling
-// or starting another viewer cannot reset the administrator-authorized boundary.
-type loginUnlockLimiter struct {
-	mu       sync.Mutex
-	keyboard []time.Time
-	pointer  []time.Time
-	now      func() time.Time
-}
-
-func (l *loginUnlockLimiter) admit(pointer bool) bool {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	if l.now == nil {
-		l.now = time.Now
-	}
-	now := l.now()
-	attempts, limit := &l.keyboard, 5
-	if pointer {
-		attempts, limit = &l.pointer, 20
-	}
-	recent := (*attempts)[:0]
-	for _, at := range *attempts {
-		if now.Sub(at) < time.Minute {
-			recent = append(recent, at)
-		}
-	}
-	*attempts = recent
-	if len(recent) >= limit {
-		return false
-	}
-	*attempts = append(*attempts, now)
-	return true
 }

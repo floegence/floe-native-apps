@@ -28,14 +28,13 @@ func loginVirtualTerminalReady(number, active, current string) bool {
 }
 
 type loginServer struct {
-	config        LoginServiceConfig
-	digest        [32]byte
-	tickets       loginTickets
-	mu            sync.Mutex
-	controller    *net.UnixConn
-	unlockLimiter loginUnlockLimiter
-	attachments   map[*net.UnixConn]struct{}
-	maintenance   *net.UnixConn
+	config      LoginServiceConfig
+	digest      [32]byte
+	tickets     loginTickets
+	mu          sync.Mutex
+	controller  *net.UnixConn
+	attachments map[*net.UnixConn]struct{}
+	maintenance *net.UnixConn
 }
 
 func RunLoginScreenService(ctx context.Context, config LoginServiceConfig) error {
@@ -324,7 +323,7 @@ func (s *loginServer) attachment(ctx context.Context, conn, media *net.UnixConn,
 	for _, b := range seed {
 		generation = generation<<8 | uint64(b)
 	}
-	authority := loginAuthority{generation: generation, release: input.release, mode: "view", state: "unavailable", attempts: &s.unlockLimiter}
+	authority := loginAuthority{generation: generation, release: input.release, mode: "view", state: "unavailable"}
 	picture := HostDesktopPicture{Mode: "auto", MaxDimension: 1920, FrameRate: 30}
 	transition := func(seat loginSeatState, mode string) bool {
 		reset := seat != authority.seat
@@ -535,11 +534,7 @@ func (s *loginServer) attachment(ctx context.Context, conn, media *net.UnixConn,
 					continue
 				}
 				if err := authority.input(command); err != nil {
-					code := "INPUT_REJECTED"
-					if errors.Is(err, errLoginUnlockLimited) {
-						code = "UNLOCK_RATE_LIMITED"
-					}
-					if !replyError(command.ID, code) {
+					if !replyError(command.ID, "INPUT_REJECTED") {
 						return
 					}
 					continue

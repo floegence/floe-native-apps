@@ -4,7 +4,6 @@ package hostdesktop
 
 import (
 	"testing"
-	"time"
 )
 
 func unlockKey(a *loginAuthority) HostDesktopCommand {
@@ -133,23 +132,14 @@ func TestLoginAuthorityCancelAndUserSwitch(t *testing.T) {
 		t.Fatal("user switch retained input")
 	}
 }
-func TestLoginAuthorityAttemptLimitAndFrameBound(t *testing.T) {
+func TestLoginAuthorityUnlockInputRemainsAvailableUntilTheOSDecides(t *testing.T) {
 	a := paintedLoginAuthority(t)
-	now := time.Unix(1, 0)
-	a.attempts = &loginUnlockLimiter{now: func() time.Time { return now }}
 	command := unlockKey(a)
 	command.Input.Code = "Enter"
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 100; i++ {
 		if err := a.input(command); err != nil {
 			t.Fatal(err)
 		}
-	}
-	if a.input(command) == nil {
-		t.Fatal("unlock attempts not limited")
-	}
-	now = now.Add(time.Minute)
-	if err := a.input(command); err != nil {
-		t.Fatal(err)
 	}
 	for i := 0; i < 4; i++ {
 		if _, ok := a.offer(); !ok {
@@ -161,48 +151,14 @@ func TestLoginAuthorityAttemptLimitAndFrameBound(t *testing.T) {
 	}
 }
 
-func TestLoginUnlockLimiterSurvivesReconnectAndRepeatFlag(t *testing.T) {
-	limiter := &loginUnlockLimiter{}
-	for i := 0; i < 5; i++ {
-		a := paintedLoginAuthority(t)
-		a.attempts = limiter
-		command := unlockKey(a)
-		command.Input.Code = "Enter"
-		command.Input.Repeat = true
-		if err := a.input(command); err != nil {
-			t.Fatal(err)
-		}
-	}
-	successor := paintedLoginAuthority(t)
-	successor.attempts = limiter
-	command := unlockKey(successor)
-	command.Input.Code = "NumpadEnter"
-	if successor.input(command) == nil {
-		t.Fatal("reconnect reset attempt limiter")
-	}
-	command.Input = &HostDesktopInput{Kind: "down", Button: 0}
-	for i := 0; i < 20; i++ {
-		if err := successor.input(command); err != nil {
-			t.Fatal("keyboard submissions blocked ordinary pointer interaction", err)
-		}
-	}
-	if successor.input(command) == nil {
-		t.Fatal("pointer interaction limit was bypassed")
-	}
-}
-
-func TestLoginPointerClicksDoNotExhaustKeyboardSubmissions(t *testing.T) {
+func TestLoginPointerClicksRemainPhysicalInput(t *testing.T) {
 	a := paintedLoginAuthority(t)
 	command := unlockKey(a)
 	command.Input = &HostDesktopInput{Kind: "down", Button: 0}
-	for i := 0; i < 6; i++ {
+	for i := 0; i < 100; i++ {
 		if err := a.input(command); err != nil {
 			t.Fatal(err)
 		}
-	}
-	command.Input = &HostDesktopInput{Kind: "key", Code: "Enter", Pressed: true}
-	if err := a.input(command); err != nil {
-		t.Fatal("pointer clicks blocked keyboard submission", err)
 	}
 }
 
