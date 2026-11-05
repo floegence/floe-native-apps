@@ -97,11 +97,13 @@ func (a *loginAuthority) input(command HostDesktopCommand) error {
 		if command.Method != "unlock_input" || command.FrameID != a.painted {
 			return errLoginAuthority
 		}
-		if (command.Input.Kind == "key" && (command.Input.Code == "Enter" || command.Input.Code == "NumpadEnter") && command.Input.Pressed) || (command.Input.Kind == "down" && command.Input.Button == 0) {
+		keyboardSubmit := command.Input.Kind == "key" && (command.Input.Code == "Enter" || command.Input.Code == "NumpadEnter") && command.Input.Pressed
+		pointerClick := command.Input.Kind == "down" && command.Input.Button == 0
+		if keyboardSubmit || pointerClick {
 			if a.attempts == nil {
 				a.attempts = &loginUnlockLimiter{}
 			}
-			if !a.attempts.admit() {
+			if !a.attempts.admit(pointerClick) {
 				return errLoginUnlockLimited
 			}
 		}
@@ -124,27 +126,32 @@ func (a *loginAuthority) cancel(generation uint64) error {
 // or starting another viewer cannot reset the administrator-authorized boundary.
 type loginUnlockLimiter struct {
 	mu       sync.Mutex
-	attempts []time.Time
+	keyboard []time.Time
+	pointer  []time.Time
 	now      func() time.Time
 }
 
-func (l *loginUnlockLimiter) admit() bool {
+func (l *loginUnlockLimiter) admit(pointer bool) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if l.now == nil {
 		l.now = time.Now
 	}
 	now := l.now()
-	recent := l.attempts[:0]
-	for _, at := range l.attempts {
+	attempts, limit := &l.keyboard, 5
+	if pointer {
+		attempts, limit = &l.pointer, 20
+	}
+	recent := (*attempts)[:0]
+	for _, at := range *attempts {
 		if now.Sub(at) < time.Minute {
 			recent = append(recent, at)
 		}
 	}
-	l.attempts = recent
-	if len(recent) >= 5 {
+	*attempts = recent
+	if len(recent) >= limit {
 		return false
 	}
-	l.attempts = append(l.attempts, now)
+	*attempts = append(*attempts, now)
 	return true
 }

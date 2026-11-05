@@ -181,8 +181,28 @@ func TestLoginUnlockLimiterSurvivesReconnectAndRepeatFlag(t *testing.T) {
 		t.Fatal("reconnect reset attempt limiter")
 	}
 	command.Input = &HostDesktopInput{Kind: "down", Button: 0}
+	for i := 0; i < 20; i++ {
+		if err := successor.input(command); err != nil {
+			t.Fatal("keyboard submissions blocked ordinary pointer interaction", err)
+		}
+	}
 	if successor.input(command) == nil {
-		t.Fatal("pointer bypassed unlock interaction limit")
+		t.Fatal("pointer interaction limit was bypassed")
+	}
+}
+
+func TestLoginPointerClicksDoNotExhaustKeyboardSubmissions(t *testing.T) {
+	a := paintedLoginAuthority(t)
+	command := unlockKey(a)
+	command.Input = &HostDesktopInput{Kind: "down", Button: 0}
+	for i := 0; i < 6; i++ {
+		if err := a.input(command); err != nil {
+			t.Fatal(err)
+		}
+	}
+	command.Input = &HostDesktopInput{Kind: "key", Code: "Enter", Pressed: true}
+	if err := a.input(command); err != nil {
+		t.Fatal("pointer clicks blocked keyboard submission", err)
 	}
 }
 

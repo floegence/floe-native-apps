@@ -1,11 +1,11 @@
 {
   "architecture": "amd64",
-  "build_info": "/Volumes/JianDisk/code/floegence/task-artifacts/native-drag-timing-20261028/service-amd64/floe-host-desktop-service: go1.27.3\n\tpath\tgithub.com/floegence/floe-native-apps/cmd/floe-host-desktop-service\n\tmod\tgithub.com/floegence/floe-native-apps\t(devel)\t\n\tdep\tgithub.com/godbus/dbus/v5\tv5.2.2\th1:TUR3TgtSVDmjiXOgAAyaZbYmIeP3DPkld3jgKGV8mXQ=\n\tdep\tgolang.org/x/sys\tv0.49.0\th1:XbzkgYJHdqh/8m2Uu0W/dQv8nktxx4BFHp1M0gROTXA=\n\tbuild\t-buildmode=exe\n\tbuild\t-compiler=gc\n\tbuild\t-trimpath=true\n\tbuild\tCGO_ENABLED=0\n\tbuild\tGOARCH=amd64\n\tbuild\tGOOS=linux\n\tbuild\tGOAMD64=v1\n",
+  "build_info": "/tmp/floe-lock-service-amd64-20261105/floe-host-desktop-service: go1.27.3\n\tpath\tgithub.com/floegence/floe-native-apps/cmd/floe-host-desktop-service\n\tmod\tgithub.com/floegence/floe-native-apps\t(devel)\t\n\tdep\tgithub.com/godbus/dbus/v5\tv5.2.2\th1:TUR3TgtSVDmjiXOgAAyaZbYmIeP3DPkld3jgKGV8mXQ=\n\tdep\tgolang.org/x/sys\tv0.49.0\th1:XbzkgYJHdqh/8m2Uu0W/dQv8nktxx4BFHp1M0gROTXA=\n\tbuild\t-buildmode=exe\n\tbuild\t-compiler=gc\n\tbuild\t-trimpath=true\n\tbuild\tCGO_ENABLED=0\n\tbuild\tGOARCH=amd64\n\tbuild\tGOOS=linux\n\tbuild\tGOAMD64=v1\n",
   "files": {
     "floe-host-desktop-service": {
       "executable": true,
-      "sha256": "6265ae0e37b343570b7a0d47857b863205de5c07de2196c10f384706b34d9239",
-      "size_bytes": 4571260
+      "sha256": "0e2e4996240be2b6da8d62369d37a90ef7f251ac08b384b9f2ecd5cc3110de90",
+      "size_bytes": 4575356
     }
   },
   "sources": {
@@ -21,10 +21,10 @@
     "hostdesktop/deployment_other.go": "3eff55b58fa498eecaf1de8b0d47fbce2521ce53d4b1a23063f75636f8381790",
     "hostdesktop/deployment_protocol.go": "197433f6d4d31ee6ca7ed149c62c38e85aa79d11387bbc0df6f73d434fa17b62",
     "hostdesktop/deployment_transaction_linux.go": "d938a5b985417a9715ea60f11d305c454630b647c13f7fcf6d065a1d69c15559",
-    "hostdesktop/login_authority_linux.go": "5c99a6a434bcb3e18d22c1ccc0a037aaf7af02083d4ac407d4059c11cd9f68b2",
-    "hostdesktop/login_capture_linux.go": "64390d261e46335157a5c47836a7a735e4cd51b8db335ed6bb4c52c437264a54",
+    "hostdesktop/login_authority_linux.go": "6cab9bfea58c716c40bf2229095321957c48844ee8e92648e84554314a2bda0e",
+    "hostdesktop/login_capture_linux.go": "46765b32d4abd952132068cd1944957d8623b0410d99ceb8db6148ca415a352c",
     "hostdesktop/login_client.go": "60e746bf82ea251bb37ebe6dadaebb74ad29fc4c8fb4af491f020b80e85113db",
-    "hostdesktop/login_compositor_linux.go": "28dad97837574b870f4449842d047e3ae060b571e436325b6dfdbc72c0a33fd6",
+    "hostdesktop/login_compositor_linux.go": "6c4665ec522c766b0cbf9a0aaed50e84eea2eaf7619b29b12ac0a25b9c3a6fae",
     "hostdesktop/login_display_power_linux.go": "8c9fbbd6a9dc8cf9c63b015f1828dc04e92be519238426bb9cd344b563165463",
     "hostdesktop/login_display_power_other.go": "5ef7c2f8c4d6b25e4faefbc5c18682a2a28ecc5284d2bd70fc8b548e8b06f86f",
     "hostdesktop/login_identity_linux.go": "cfb663b89f36fddc73c5d85cc6bc4a7345e7ea8d2a733905e80756cea7c54c97",
@@ -32,9 +32,9 @@
     "hostdesktop/login_maintenance_linux.go": "a220729f1c0be28f27f40e329ef177918f0aa9aee4f54383a73521d16b42ff46",
     "hostdesktop/login_media_linux.go": "940336d1d626cc137c2e354ddefa39272f9f3ef3a428320c562ad5d9e318dc12",
     "hostdesktop/login_media_socket_linux.go": "f927609c4d3e085c111808a9df0d9239b3aade4d37d31828e95fa34682a0843e",
-    "hostdesktop/login_seat_linux.go": "26888a0a0851ea844d7ea881f5b694d67d9d95cf8d02defb47a6bfdae1f41389",
+    "hostdesktop/login_seat_linux.go": "9e46413044dd30e53d767da87d77a835e3a776aaa999874631d7becc2b5d5c00",
     "hostdesktop/login_service.go": "41a79279a9964d4ab7730009c9d490c761ee3881d309d2dfcfd2a57b7ac09041",
-    "hostdesktop/login_service_linux.go": "e15a23271fee420b3c569b2299477a0d5fff4c3021758d3ac3e37fc1f2dfe149",
+    "hostdesktop/login_service_linux.go": "33ba78746db6bf5ab986f3923ffe8da5d596a103438cc3483c7f3f44292a92a7",
     "hostdesktop/login_service_other.go": "a1276d65d3d3a9e3bad84fc7563b6d72cb623dbbda4609e085f819a40062650f",
     "hostdesktop/login_text_linux.go": "12b26b08d93480b2aa4a7f48d2d5c9c317c7d07a607f8220e429561195b15f7c",
     "hostdesktop/protocol.go": "e114d282e05bcb3e97eb0bafc2a97744c414552ff44f117066980653423b3990",
