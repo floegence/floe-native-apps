@@ -91,6 +91,9 @@ func loginCompositor(ctx context.Context, uid uint32) (string, error) {
 			return "", errLoginCompositorAmbiguous
 		}
 		identity = entry.Name() + ":" + start
+		if err := loginCompositorCurrent(uid, identity); err != nil {
+			return "", err
+		}
 	}
 	if identity == "" {
 		return "", errLoginCompositorMissing
