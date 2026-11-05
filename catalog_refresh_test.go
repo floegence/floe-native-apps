@@ -165,3 +165,75 @@ func TestOctoberPublisherRefreshPreservesPublishedRecipes(t *testing.T) {
 		}
 	}
 }
+
+func TestNovemberPublisherRefreshRetainsInstalledRecipes(t *testing.T) {
+	versions := map[string]string{
+		"libcurl": "8.23.0-r0", "libexpat": "2.10.0-r0", "pyc": "3.12.16-r0",
+		"python3": "3.12.16-r0", "python3-pyc": "3.12.16-r0", "python3-pycache-pyc0": "3.12.16-r0",
+	}
+	for _, recipe := range []struct {
+		name     string
+		resolve  func(string, string) (Package, error)
+		previous map[string][]string
+	}{
+		{"xpra", ForPlatform, map[string][]string{"amd64": {xpraR9Digests["amd64"]}, "arm64": {xpraR9Digests["arm64"]}}},
+		{"desktop", DesktopForPlatform, map[string][]string{"amd64": {desktopR10Digests["amd64"]}, "arm64": {desktopR10Digests["arm64"]}}},
+		{"host", HostDesktopForPlatform, map[string][]string{
+			"amd64": {"b4d67a277e17a6ee66b71ae03975e3490081ad859b42ebf923cd1156daf8ec7d", "55a5058ff54684c779d75a3e9b10a099443a02a4341dda79dd7ad6cf1254e8f5"},
+			"arm64": {"8a0bd5db805497730323a495dae5bf8fdd2af737510b3d8dba2324444ae1f8fa", "7e6dadaf087026572b618fc3987fb199f08d0557645c8619e5779f3970e76328"},
+		}},
+	} {
+		for arch, previous := range recipe.previous {
+			t.Run(recipe.name+"/"+arch, func(t *testing.T) {
+				pkg, err := recipe.resolve("linux", arch)
+				if err != nil {
+					t.Fatal(err)
+				}
+				found := map[string]bool{}
+				for _, artifact := range pkg.Artifacts {
+					parts := strings.Split(artifact.Name, "-")
+					if len(parts) < 3 {
+						continue
+					}
+					name := strings.Join(parts[:len(parts)-2], "-")
+					if version, ok := versions[name]; ok {
+						if artifact.Name != name+"-"+version+".apk" {
+							t.Fatal("retired archive remains selected", artifact.Name)
+						}
+						found[name] = true
+					}
+				}
+				for _, name := range []string{"libexpat", "python3"} {
+					if !found[name] {
+						t.Fatal("missing refreshed dependency", name)
+					}
+				}
+				for _, digest := range previous {
+					retained := false
+					for _, item := range compatibleInstallations(pkg) {
+						retained = retained || item.Digest == digest
+					}
+					if !retained || pkg.Digest() == digest {
+						t.Fatal("published identity was lost or reused", digest)
+					}
+					root := t.TempDir()
+					original, _ := json.Marshal(operation{Version: 2, Package: digest, Installed: digest, Status: Status{State: "ready"}})
+					path := filepath.Join(root, "operation.json")
+					if err := os.WriteFile(path, original, 0600); err != nil {
+						t.Fatal(err)
+					}
+					manager, err := New(root, pkg, nil)
+					if err != nil {
+						t.Fatal(err)
+					}
+					installed := manager.Snapshot("owner").Installed
+					manager.Close()
+					actual, err := os.ReadFile(path)
+					if err != nil || !bytes.Equal(original, actual) || installed == nil || installed.Digest != digest || installed.Ready {
+						t.Fatal("published installation was rewritten or missing files were trusted", installed, err)
+					}
+				}
+			})
+		}
+	}
+}

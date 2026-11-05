@@ -205,6 +205,14 @@ to r10; physical media receives a new content digest. Published installation
 identities and files remain intact. Both architecture closures require signature,
 full acquisition and installed-stack qualification.
 
+The November 5 refresh replaces retired libcurl, Expat and Python 3.12
+archives with their publisher-signed current versions, including matching Python
+bytecode packages. Xpra advances to r10, private desktop to r11, and physical
+media receives a new content digest. Previous Xpra and private-desktop recipe
+identities and the physical-media helper manifests from v0.26.0 and v0.26.1
+remain readable without rewriting installed state. Both architectures require
+full acquisition and installed-stack qualification.
+
 The graphical check covers Unix sockets and three WebSocket attachments. Each
 attachment must paint, deliver fresh input, and preserve the fixture's process
 identity; each browser-style detach must leave its window available for the next
