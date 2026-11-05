@@ -25,17 +25,23 @@ func loginCompositorCurrent(uid uint32, identity string) error {
 		return errLoginCaptureUnavailable
 	}
 	executable, err := os.Readlink(filepath.Join(base, "exe"))
-	if err != nil || executable != "/usr/bin/gnome-shell" {
+	if err != nil {
+		return errLoginCompositorChanged
+	}
+	if executable == "/usr/bin/gnome-shell (deleted)" {
+		return errLoginSessionStale
+	}
+	if executable != "/usr/bin/gnome-shell" {
 		return errLoginCaptureUnavailable
 	}
 	var live, installed unix.Stat_t
 	if unix.Stat(filepath.Join(base, "exe"), &live) != nil || unix.Stat(executable, &installed) != nil ||
 		live.Uid != 0 || live.Mode&0022 != 0 || live.Dev != installed.Dev || live.Ino != installed.Ino {
-		return errLoginCaptureUnavailable
+		return errLoginSessionStale
 	}
 	current, err := loginProcessStart(uint32(number))
 	if err != nil || current != start {
-		return errors.Join(errLoginCaptureUnavailable, err)
+		return errors.Join(errLoginCompositorChanged, err)
 	}
 	return nil
 }
@@ -68,17 +74,26 @@ func loginCompositor(ctx context.Context, uid uint32) (string, error) {
 			continue
 		}
 		executable, err := os.Readlink(filepath.Join(base, "exe"))
-		if err != nil || executable != "/usr/bin/gnome-shell" || loginRootOwnedExecutable(executable) != nil {
+		if err != nil {
+			return "", errLoginCompositorChanged
+		}
+		if executable == "/usr/bin/gnome-shell (deleted)" {
+			return "", errLoginSessionStale
+		}
+		if executable != "/usr/bin/gnome-shell" || loginRootOwnedExecutable(executable) != nil {
 			return "", errLoginCaptureUnavailable
 		}
 		start, err := loginProcessStart(uint32(number))
-		if err != nil || identity != "" {
-			return "", errLoginCaptureUnavailable
+		if err != nil {
+			return "", errLoginCompositorChanged
+		}
+		if identity != "" {
+			return "", errLoginCompositorAmbiguous
 		}
 		identity = entry.Name() + ":" + start
 	}
 	if identity == "" {
-		return "", errLoginCaptureUnavailable
+		return "", errLoginCompositorMissing
 	}
 	return identity, nil
 }

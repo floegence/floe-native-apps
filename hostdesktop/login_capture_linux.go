@@ -11,10 +11,16 @@ import (
 )
 
 var (
-	errLoginConverterStart     = errors.New("GPU converter start unavailable")
-	errLoginExporterStart      = errors.New("DRM exporter start unavailable")
-	errLoginCaptureUnavailable = errors.New("DRM scanout capture unavailable")
-	errLoginDisplayInactive    = errors.New("display_inactive")
+	errLoginConverterStart      = errors.New("GPU converter start unavailable")
+	errLoginExporterStart       = errors.New("DRM exporter start unavailable")
+	errLoginCaptureUnavailable  = errors.New("DRM scanout capture unavailable")
+	errLoginDisplayInactive     = errors.New("display_inactive")
+	errLoginSessionStale        = errors.New("LOGIN_SESSION_STALE_RUNTIME")
+	errLoginCompositorChanged   = errors.New("LOGIN_SESSION_COMPOSITOR_CHANGED")
+	errLoginCompositorMissing   = errors.New("LOGIN_SESSION_COMPOSITOR_MISSING")
+	errLoginCompositorAmbiguous = errors.New("LOGIN_SESSION_COMPOSITOR_AMBIGUOUS")
+	errLoginNoActiveSeat        = errors.New("LOGIN_SESSION_NO_ACTIVE_SEAT")
+	errLoginTTYMismatch         = errors.New("LOGIN_SESSION_TTY_MISMATCH")
 )
 
 func loginSocketPair() (*net.UnixConn, *os.File, error) {

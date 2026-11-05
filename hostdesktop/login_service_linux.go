@@ -747,6 +747,21 @@ func (s *loginServer) attachment(ctx context.Context, conn, media *net.UnixConn,
 }
 
 func loginCaptureOpenCode(err error) string {
+	for _, item := range []struct {
+		err  error
+		code string
+	}{
+		{errLoginSessionStale, "LOGIN_SESSION_STALE_RUNTIME"},
+		{errLoginCompositorChanged, "LOGIN_SESSION_COMPOSITOR_CHANGED"},
+		{errLoginCompositorMissing, "LOGIN_SESSION_COMPOSITOR_MISSING"},
+		{errLoginCompositorAmbiguous, "LOGIN_SESSION_COMPOSITOR_AMBIGUOUS"},
+		{errLoginNoActiveSeat, "LOGIN_SESSION_NO_ACTIVE_SEAT"},
+		{errLoginTTYMismatch, "LOGIN_SESSION_TTY_MISMATCH"},
+	} {
+		if errors.Is(err, item.err) {
+			return item.code
+		}
+	}
 	if errors.Is(err, errLoginConverterStart) {
 		return "DRM_CONVERTER_START_UNAVAILABLE"
 	}

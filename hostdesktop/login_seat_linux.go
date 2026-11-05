@@ -75,7 +75,7 @@ func (r *loginSeatReader) seat(parent context.Context, seat string) (loginSeatSt
 	defer cancel()
 	var state loginSeatState
 	if seat != "seat0" {
-		return state, errLoginCaptureUnavailable
+		return state, errLoginNoActiveSeat
 	}
 	values, err := r.readProperties(ctx, "/org/freedesktop/login1/seat/seat0", "org.freedesktop.login1.Seat")
 	if err != nil {
@@ -83,12 +83,12 @@ func (r *loginSeatReader) seat(parent context.Context, seat string) (loginSeatSt
 	}
 	active, ok := values["ActiveSession"].Value().([]any)
 	if !ok || len(active) != 2 {
-		return state, errLoginCaptureUnavailable
+		return state, errLoginNoActiveSeat
 	}
 	id, ok := active[0].(string)
 	path, pathOK := active[1].(dbus.ObjectPath)
 	if !ok || !pathOK || id == "" || len(id) > 80 || strings.ContainsAny(id, " \t\n/") || !path.IsValid() || !strings.HasPrefix(string(path), "/org/freedesktop/login1/session/") {
-		return state, errLoginCaptureUnavailable
+		return state, errLoginNoActiveSeat
 	}
 	values, err = r.readProperties(ctx, path, "org.freedesktop.login1.Session")
 	if err != nil {
@@ -98,8 +98,11 @@ func (r *loginSeatReader) seat(parent context.Context, seat string) (loginSeatSt
 	vt, _ := values["VTNr"].Value().(uint32)
 	enabled, _ := values["Active"].Value().(bool)
 	terminal, err := r.readTerminal()
-	if err != nil || vt == 0 || !enabled || strings.TrimSpace(string(terminal)) != "tty"+strconv.FormatUint(uint64(vt), 10) {
-		return state, errLoginCaptureUnavailable
+	if err != nil || vt == 0 || !enabled {
+		return state, errLoginNoActiveSeat
+	}
+	if strings.TrimSpace(string(terminal)) != "tty"+strconv.FormatUint(uint64(vt), 10) {
+		return state, errLoginTTYMismatch
 	}
 	if text("Type") != "wayland" && text("Type") != "x11" || text("Class") != "greeter" && text("Class") != "user" {
 		return state, errLoginCaptureUnavailable
