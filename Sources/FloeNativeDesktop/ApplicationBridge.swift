@@ -81,7 +81,15 @@ public enum NativeApplicationBridge {
         }
         defer {
             signals.forEach { $0.cancel() }
-            if let application, !application.isTerminated { application.forceTerminate() }
+            if let application, !application.isTerminated {
+                application.forceTerminate()
+                // The caller may start a successor immediately after relay exit.
+                // Observe termination before releasing the single capture owner.
+                let deadline = Date().addingTimeInterval(5)
+                while !application.isTerminated && Date() < deadline {
+                    RunLoop.current.run(until: Date().addingTimeInterval(0.01))
+                }
+            }
         }
         NSWorkspace.shared.openApplication(at: bundle, configuration: config) { app, error in
             DispatchQueue.main.async {
