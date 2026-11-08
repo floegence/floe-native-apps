@@ -11,3 +11,9 @@ Source catalog: https://github.com/floegence/floe-native-apps/blob/v0.22.29/cata
 OpenJPEG uses BSD-2-Clause; zlib uses the Zlib license. The original license texts
 are included as openjpeg.LICENSE and zlib.LICENSE. These are unmodified archives,
 not a reconstructed or relabeled installed stack.
+
+remote.json pins the original Python 3.12.15 and Expat 2.8.5 archives from the
+same published catalog. prepare_retired.py acquires these from reviewed mirror
+URLs and enforces the original size and SHA-256 before the legacy installer sees
+them. Failed downloads never populate the cache. Production catalogs and old
+module bytes remain unchanged. These remote archives are not redistributed here.

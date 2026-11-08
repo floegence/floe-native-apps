@@ -69,6 +69,7 @@ jobs:
               if artifact['architecture'] == sys.argv[1]:
                   shutil.copyfile(fixtures / artifact['fixture'], pathlib.Path(sys.argv[2]) / artifact['sha256'])
           PY
+          python3 qualification/legacy/prepare_retired.py "${{ matrix.arch }}" "$RUNNER_TEMP/legacy-state/archives"
           go run github.com/floegence/floe-native-apps/cmd/floe-native-apps@v0.22.29 \
             -state "$RUNNER_TEMP/legacy-state" 2>&1 | tee "$RUNNER_TEMP/qualification/legacy-install.log"
           FLOE_TEST_LEGACY_STATE="$RUNNER_TEMP/legacy-state" \
