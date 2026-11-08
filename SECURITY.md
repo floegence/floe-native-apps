@@ -156,3 +156,22 @@ operation ID, challenge ID and complete target policy digest in the authenticate
 service reply. Both management transports exchange five-second liveness messages.
 Publication, replacement and rollback synchronize the affected directory entries;
 an uncommitted journal remains the recovery authority after a process exit.
+
+## macOS permission application boundary
+
+`NativeApplicationBridge` launches an exact signed application URL through Launch
+Services. Ad-hoc and invalid signatures are rejected. Consumers own the expected
+application identity, trusted distribution path and signing-team policy; this
+API does not authorize an arbitrary signed application. Only explicitly supplied
+environment values cross the boundary. Consumers must not forward loader or
+untrusted renderer values.
+
+Private Unix sockets require the same UID and exact launched/launching PID on
+both sides. Endpoints are unlinked immediately after authenticated attachment.
+Stream EOF ends the session; input is never replayed. Relay termination ends its
+helper, not applications that the user opened. The relay status reports transport
+completion, not an arbitrary helper's exit code. The API must be called at process
+entry before initializing permission-sensitive resources. Presentation identity
+comes from that process's bundle; actual grant/capture checks remain authoritative.
+Permission requests, Settings navigation and revealing the signed bundle are
+separate explicit actions. No TCC database editing, reset or grant bypass exists.

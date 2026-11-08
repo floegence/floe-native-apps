@@ -83,9 +83,13 @@ public final class NativeDesktopSession {
 
     public static func capabilities() -> [String: Any] {
         let state = readiness
-        return ["backend": "macos", "state": state, "screen": CGPreflightScreenCaptureAccess(),
+        var result: [String: Any] = ["backend": "macos", "state": state, "screen": CGPreflightScreenCaptureAccess(),
                 "input": AXIsProcessTrusted(), "clipboard": true, "audio": NativeOpusEncoder.isSupported,
                 "unattended": true, "unlock": false, "encoder": "videotoolbox", "displays": displays()]
+        if let identity = NativeApplicationAccess.identity() {
+            result["permission_application"] = ["name": identity.name, "identifier": identity.identifier]
+        }
+        return result
     }
 
     private func emit(_ message: [String: Any]) {

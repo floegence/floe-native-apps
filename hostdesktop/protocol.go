@@ -36,23 +36,31 @@ type HostDesktopDisplay struct {
 	Primary bool    `json:"primary"`
 }
 
+// HostDesktopPermissionApplication identifies the running macOS permission owner.
+// Identity is presentation metadata, never proof that an OS grant exists.
+type HostDesktopPermissionApplication struct {
+	Name       string `json:"name"`
+	Identifier string `json:"identifier"`
+}
+
 type HostDesktopCapabilities struct {
-	FrameWindow   int                  `json:"frame_window,omitempty"`
-	Authorization string               `json:"authorization,omitempty"`
-	Backend       string               `json:"backend"`
-	State         string               `json:"state"`
-	Reason        string               `json:"reason,omitempty"`
-	Screen        bool                 `json:"screen"`
-	Input         bool                 `json:"input"`
-	Clipboard     bool                 `json:"clipboard"`
-	TextInput     bool                 `json:"text_input,omitempty"`
-	Audio         bool                 `json:"audio"`
-	Unattended    bool                 `json:"unattended"`
-	Unlock        bool                 `json:"unlock"`
-	LockedScreen  bool                 `json:"locked_screen,omitempty"`
-	Service       string               `json:"service,omitempty"`
-	Encoder       string               `json:"encoder,omitempty"`
-	Displays      []HostDesktopDisplay `json:"displays"`
+	PermissionApplication *HostDesktopPermissionApplication `json:"permission_application,omitempty"`
+	FrameWindow           int                               `json:"frame_window,omitempty"`
+	Authorization         string                            `json:"authorization,omitempty"`
+	Backend               string                            `json:"backend"`
+	State                 string                            `json:"state"`
+	Reason                string                            `json:"reason,omitempty"`
+	Screen                bool                              `json:"screen"`
+	Input                 bool                              `json:"input"`
+	Clipboard             bool                              `json:"clipboard"`
+	TextInput             bool                              `json:"text_input,omitempty"`
+	Audio                 bool                              `json:"audio"`
+	Unattended            bool                              `json:"unattended"`
+	Unlock                bool                              `json:"unlock"`
+	LockedScreen          bool                              `json:"locked_screen,omitempty"`
+	Service               string                            `json:"service,omitempty"`
+	Encoder               string                            `json:"encoder,omitempty"`
+	Displays              []HostDesktopDisplay              `json:"displays"`
 }
 
 type HostDesktopPicture struct {

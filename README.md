@@ -520,6 +520,31 @@ These are scheduling and resource guarantees, not a universal frame-rate claim.
 Real-host performance, permissions, physical displays and audio still require
 qualification in the consuming product's authenticated transport.
 
+### Independent macOS permission applications
+
+`NativeApplicationBridge` launches a consumer-owned signed `.app` through Launch
+Services, with a fresh process and no running-application substitution. Call
+`attach()` before native permission/capture initialization in that application;
+`relay(bundle:arguments:mediaFD:)` preserves the existing stdio protocol and an
+optional FD 3 binary media stream. Per-launch private Unix sockets validate the
+exact peer PID and UID. Disconnect, normal EOF and supervisor termination end
+only the owned helper; user applications and the consuming Runtime remain alive.
+The API rejects ad-hoc bundles. Consumers own distribution-signature policy,
+stable bundle identity/path, packaging, feature admission and session recovery.
+
+`NativeApplicationAccess` derives presentation from the running app bundle.
+Permission requests are distinct from settings navigation and Finder reveal;
+asynchronous accessibility prompts never imply denial. No API changes grants
+or edits TCC. Consumers verify capture/input after authorization and may restart
+only their helper when required. Existing input operations are never replayed.
+
+Run `swift test` for explicit-action/identity contracts. On an unlocked Mac,
+`NATIVE_APPLICATION_SIGNING_IDENTITY="Apple Development: ..." python3
+qualification/macos_application.py` verifies signed independent launch, fresh
+processes, duplex/media transport, EOF/signal/crash cleanup and ad-hoc rejection.
+It neither requests permissions nor certifies a complete consumer authorization
+flow; that remains an explicit product acceptance requirement.
+
 ### macOS input delivery receipts
 
 The Swift FloeNativeDesktop product exposes NativeInputDelivery. Each posted

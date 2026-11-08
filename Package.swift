@@ -7,6 +7,8 @@ let package = Package(
     products: [.library(name: "FloeNativeDesktop", targets: ["FloeNativeDesktop"])],
     targets: [
         .target(name: "FloeNativeDesktop"),
+        .executableTarget(name: "NativeApplicationQualification", dependencies: ["FloeNativeDesktop"],
+                          path: "qualification/macos-application"),
         .executableTarget(name: "NativeDesktopQualification", dependencies: ["FloeNativeDesktop"],
                           path: "qualification/macos-desktop"),
         .executableTarget(name: "NativeDragQualification", dependencies: ["FloeNativeDesktop"],

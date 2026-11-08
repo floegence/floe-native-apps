@@ -260,3 +260,21 @@ func TestDesktopCapabilityWindowRejectsUnboundedAdvertisements(t *testing.T) {
 		}
 	}
 }
+
+func TestPermissionApplicationIdentityRoundTrip(t *testing.T) {
+	original := HostDesktopCapabilities{Backend: "macos", PermissionApplication: &HostDesktopPermissionApplication{Name: "Fixture", Identifier: "com.example.fixture"}}
+	data, err := json.Marshal(original)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded HostDesktopCapabilities
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if decoded.PermissionApplication == nil || *decoded.PermissionApplication != *original.PermissionApplication {
+		t.Fatalf("identity lost: %s", data)
+	}
+	if decoded.Screen || decoded.Input {
+		t.Fatal("identity must not grant permission")
+	}
+}
